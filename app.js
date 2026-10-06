@@ -104,13 +104,12 @@ async function sendPrivateMessage(text) {
   try { await db.ref('dms/' + friendConversationId(state.dmFriend.key) + '/messages').push(payload); els.messageInput.value = ''; } catch (error) { showError('Could not send that message.'); }
 }
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyC60NQgrGpoChAUgHBVpZRIBLM_bTkvi0M",
-  authDomain: "vus-chat-dm.firebaseapp.com",
-  databaseURL: "https://vus-chat-dm-default-rtdb.firebaseio.com",
-  projectId: "vus-chat-dm",
-  storageBucket: "vus-chat-dm.firebasestorage.app",
-  messagingSenderId: "898140075693",
-  appId: "1:898140075693:web:0ad830a523dd12135f3824"
+  apiKey: "AIzaSyDsEa2jKRLSCnp5-EMTfDS4aGBcS-HMt2c",
+  authDomain: "sektor-vus.firebaseapp.com",
+  projectId: "sektor-vus",
+  storageBucket: "sektor-vus.firebasestorage.app",
+  messagingSenderId: "1032999949189",
+  appId: "1:1032999949189:web:83ea2f883df477e87beaec"
 };
 const db = firebase.initializeApp(FIREBASE_CONFIG).database();
 const firebaseAuth = firebase.auth();
