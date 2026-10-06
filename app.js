@@ -1,17 +1,3 @@
-function updateEditModeUi() {
-  const isOwner = !!(state.server && state.user && String(state.server.ownerKey || '').trim() === String(state.user.key || '').trim());
-  editModeButton.hidden = !isOwner;
-  editModeButton.setAttribute('aria-pressed', String(editMode));
-  editModeButton.classList.toggle('active', isOwner && editMode);
-  els.ownerTools.hidden = !isOwner || !editMode;
-}
-
-function toggleEditMode() {
-  if (!state.server || !state.user || String(state.server.ownerKey || '').trim() !== String(state.user.key || '').trim()) return;
-  editMode = !editMode;
-  updateEditModeUi();
-}
-
 function friendConversationId(friendKey) { return [state.user.key, friendKey].sort().join('_'); }
 function friendAvatarMarkup(friend) { return friend.avatar ? '<span class="friend-nav-avatar"><img src="' + esc(friend.avatar) + '" alt=""></span>' : '<span class="friend-nav-avatar">' + esc((friend.username || '?').slice(0,2).toUpperCase()) + '</span>'; }
 function startOnlinePresence() {
@@ -113,29 +99,32 @@ const FIREBASE_CONFIG = {
 };
 const db = firebase.initializeApp(FIREBASE_CONFIG).database();
 const firebaseAuth = firebase.auth();
-const state = { user:null, servers:[], server:null, channel:"general", gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[] };
+const state = { user:null, servers:[], server:null, channel:"general", editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[] };
 const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
 els.audioInput = $('audioInput');
 els.friendHome = $('friendHome');
 els.audioButton = $('audioButton');
-const editModeButton = $('editModeBtn');
 const sektorMusicInput = $('sektorMusicInput');
 const sektorMusicAudio = $('sektorMusicAudio');
 const sektorMusicName = $('sektorMusicName');
 let signupMode = false;
-let editMode = false;
 const safe = value => String(value || '').replace(/[.#$\[\]/]/g, '_');
 const esc = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
 const keyFor = name => safe(name.trim().toLowerCase());
-function isOwnerEditing() { return !!(state.server && state.user && String(state.server.ownerKey || '') === String(state.user.key || '') && state.editMode); }
+function isServerOwner() { return !!(state.server && state.user && String(state.server.ownerKey || '').trim() === String(state.user.key || '').trim()); }
+function isOwnerEditing() { return isServerOwner() && state.editMode; }
 function updateEditModeUi() {
-  const enabled = isOwnerEditing();
+  const owner = isServerOwner();
+  const enabled = owner && state.editMode;
   if (els.editModeBtn) {
+    els.editModeBtn.hidden = !owner;
+    els.editModeBtn.setAttribute('aria-pressed', String(enabled));
     els.editModeBtn.textContent = enabled ? '✓ Edit mode: On' : '✎ Edit mode: Off';
     els.editModeBtn.classList.toggle('active', enabled);
   }
+  if (els.ownerTools) els.ownerTools.hidden = !owner;
   if (els.serverSettings) els.serverSettings.disabled = !enabled;
   if (els.addChannel) els.addChannel.disabled = !enabled;
   if (els.rank) els.rank.disabled = !enabled;
@@ -459,7 +448,6 @@ els.popupCameraBtn.onclick = toggleCamera;
 els.popupScreenBtn.onclick = () => switchVideoSource('screen');
 els.popupLeaveBtn.onclick = leaveVoice;
 els.serverSettings.onclick = openServerSettings;
-editModeButton.onclick = toggleEditMode;
 els.modalClose.onclick = () => { els.modal.hidden = true; };
 els.addFriend.onclick = openFriendModal;
 new MutationObserver(() => {
@@ -503,7 +491,7 @@ new MutationObserver(() => {
 }).observe(els.modalBody, {childList:true});
 els.friendsBtn.onclick = openFriendsArea;
 els.editModeBtn.onclick = () => {
-  if (!state.server || String(state.server.ownerKey || '') !== String(state.user && state.user.key || '')) return;
+  if (!isServerOwner()) return;
   state.editMode = !state.editMode;
   updateEditModeUi();
   renderServer();
@@ -549,7 +537,7 @@ new MutationObserver(() => {
   };
 })();
 els.addChannel.onclick = () => {
-  if (state.server && state.user && String(state.server.ownerKey || '').trim() === String(state.user.key || '').trim()) state.server.ownerKey = state.user.key;
+  if (!isOwnerEditing()) return;
   openAddChannelModal();
 };
 (function keepOwnerToolsAvailable() {
