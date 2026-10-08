@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090f0d">
+  <title>Nexus · Sektor</title>
+  <link rel="stylesheet" href="./nexus.css?v=20261008-18">
+</head>
+<body>
+  <main class="nexus-app">
+    <header class="nexus-header">
+      <a class="nexus-back" href="./VUS-Servers.html" id="back-link">← Back to Sektor</a>
+      <div class="nexus-brand"><span class="nexus-mark">N</span><div><strong>Nexus</strong><small id="world-mode">Sektor social world</small></div></div>
+      <a class="nexus-header-link" id="inventory-link" href="./inventory.html">Inventory</a>
+      <button id="connect-button" class="nexus-primary" type="button">Connect to Nexus</button>
+    </header>
+    <p id="status" class="nexus-status" role="status" aria-live="polite">Open Nexus, then connect when you’re ready.</p>
+    <section id="content" class="nexus-content" aria-live="polite">
+      <div class="nexus-welcome"><span>SEKTOR · SOCIAL WORLD</span><h1>Trade, chat, and play.</h1><p>Connect to the shared world to see the marketplace, auctions, and live chat.</p></div>
+    </section>
+  </main>
+  <script>
+    const backUrl = new URL('./VUS-Servers.html', window.location.href);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('lan') === '1') backUrl.searchParams.set('lan', '1');
+    document.getElementById('back-link').href = backUrl.href;
+    const inventoryUrl = new URL('./inventory.html', window.location.href);
+    if (params.get('lan') === '1') inventoryUrl.searchParams.set('lan', '1');
+    document.getElementById('inventory-link').href = inventoryUrl.href;
+  </script>
+  <script src="./nexus.js?v=20261008-14"></script>
+</body>
+</html>

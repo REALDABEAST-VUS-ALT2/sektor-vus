@@ -1,67 +1,50 @@
 <!doctype html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Sektor launcher</title>
-	<style>
-		body{margin:24px;background:#101814;color:#edf7f2;font:14px system-ui,sans-serif}
-		button{padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer}
-		#status{color:#91b2a8}
-	</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sektor launcher</title>
+    <style>
+        body{margin:24px;background:#101814;color:#edf7f2;font:14px system-ui,sans-serif}
+        button{padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer}
+        #status{color:#91b2a8}
+    </style>
 </head>
 <body>
-	<button id="open-sektor" type="button">Open Sektor</button>
-	<p id="status" role="status" aria-live="polite"></p>
-	<script>
-		const sektorHtmlUrl = "https://raw.githubusercontent.com/REALDABEAST-jpg/sektor-vus/main/VUS-Servers.html";
-		const sektorPlayerUrl = "https://raw.githubusercontent.com/Cra-Z-Gaming/VUS/refs/heads/main/vus-music-player.html";
-		const baseUrl = "https://cdn.jsdelivr.net/gh/REALDABEAST-jpg/sektor-vus@main/";
-		const openButton = document.getElementById("open-sektor");
-		const status = document.getElementById("status");
+    <button id="open-sektor" type="button">Open Sektor</button>
+    <p id="status" role="status" aria-live="polite"></p>
+    <script>
+        const openButton = document.getElementById('open-sektor');
+        const status = document.getElementById('status');
+        const localHtmlUrl = new URL('./VUS-Servers.html', window.location.href).toString();
+        const remoteHtmlUrl = 'https://raw.githubusercontent.com/REALDABEAST-VUS-ALT2/sektor-vus/main/VUS-Servers.html';
 
-		openButton.addEventListener("click", async () => {
-			const popup = window.open("about:blank");
-			if (!popup) {
-				status.textContent = "Allow popups to open Sektor.";
-				return;
-			}
+        async function resolveAppUrl() {
+            try {
+                const localResponse = await fetch(localHtmlUrl, {cache: 'no-store'});
+                if (localResponse.ok) return localHtmlUrl;
+            } catch (error) {}
+            const remoteResponse = await fetch(remoteHtmlUrl, {cache: 'no-store'});
+            if (!remoteResponse.ok) throw new Error('Could not fetch Sektor.');
+            return remoteHtmlUrl;
+        }
 
-			status.textContent = "Loading Sektor...";
-			try {
-				const response = await fetch(sektorHtmlUrl);
-				if (!response.ok) throw new Error("Could not fetch Sektor.");
-				let html = await response.text();
-
-				try {
-					const playerResponse = await fetch(sektorPlayerUrl);
-					if (playerResponse.ok) {
-						let playerHtml = await playerResponse.text();
-						playerHtml = playerHtml.replace('<div class="brand-mark">VUS</div>', '<div class="brand-mark">S</div>')
-							.replace('<div class="b-name">Music Player</div>', '<div class="b-name">Sektor Audio</div>')
-							.replace('<div id="pl-panel">', '<input id="sektor-library-toggle" type="checkbox"><label id="sektor-library-label" for="sektor-library-toggle">Library <span>▸</span></label><div id="pl-panel">');
-						playerHtml = playerHtml.replace("</head>", '<style>body{background:#0b1117;color:#edf7f2}#app{max-width:none;padding:20px;font-family:ui-sans-serif,system-ui,sans-serif}:root{--bg0:#0b1117;--bg1:#121c24;--bg2:#17242c;--bg3:#1d3036;--bghov:#243b40;--acc:#65e6ad;--acc2:#8af0c2;--accglow:rgba(101,230,173,.2);--t1:#edf7f2;--t2:#91b2a8;--t3:#58736f;--bdr:rgba(151,196,181,.18);--bdr2:rgba(101,230,173,.28)}.brand-mark{background:linear-gradient(145deg,#65e6ad,#277f68);color:#06100d}.btn-t.active,.song-item.active .s-name,.song-item.active .s-num{color:var(--acc)}.song-item.active{background:rgba(101,230,173,.12);border-left-color:var(--acc)}button{border-radius:7px}#sektor-library-toggle{position:absolute;opacity:0;pointer-events:none}#main{position:relative;grid-template-columns:300px minmax(0,1fr)}#sektor-library-label{position:absolute;right:12px;top:12px;z-index:3;padding:8px 11px;border:1px solid rgba(101,230,173,.28);border-radius:7px;background:#17242c;color:#b7d8cd;cursor:pointer;font-size:11px;font-weight:700}#sektor-library-label span{display:inline-block;margin-left:5px;transition:transform .16s ease}#sektor-library-toggle:checked~#sektor-library-label span{transform:rotate(180deg)}#main:has(#sektor-library-toggle:checked){grid-template-columns:300px 0}#main:has(#sektor-library-toggle:checked) #pl-panel{display:none}input,select{background:#0d131b!important;color:#edf7f2!important;border-color:rgba(101,230,173,.3)!important}audio{width:100%}</style></head>');
-						playerHtml = playerHtml.replace("</body>", '<script>document.getElementById("sektor-library-toggle").addEventListener("change",function(){parent.postMessage({type:"sektor-library-toggle",collapsed:this.checked},"*")});<\/script></body>');
-						const srcdoc = playerHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-						html = html.replace(/<iframe class="sektor-music-frame"[^>]*><\/iframe>/, '<iframe class="sektor-music-frame" srcdoc="' + srcdoc + '" title="Sektor local music player"></iframe>');
-					}
-				} catch (playerError) {}
-
-				html = html.replace(/<head>/i, '<head><base href="' + baseUrl + '"><style>html,body{min-height:0;overflow:hidden}.app-view{height:100vh;min-height:0}.chat-column{min-height:0}.messages{min-height:0;overflow-y:auto}.message-form{flex:0 0 auto}.youtube-popup.library-collapsed{width:350px!important}.youtube-popup.library-collapsed .sektor-music-frame{height:min(560px,calc(100vh - 150px));min-height:420px}.sektor-popup-library-btn{padding:7px 10px;border:1px solid rgba(101,230,173,.3);border-radius:7px;background:#17242c;color:#b7d8cd;cursor:pointer;font-size:11px}</style>');
-				html = html.replace(/href="\.\/other\/VUS-Servers\/style\.css/g, 'href="./style.css')
-					.replace(/src="\.\/other\/VUS-Servers\/app\.js/g, 'src="./app.js');
-				html = html.replace('<button id="youtubePopupClose"', '<button id="sektorPopupLibraryBtn" class="sektor-popup-library-btn" type="button">Library</button><button id="youtubePopupClose"');
-				html = html.replace("</body>", '<script>(function(){var popup=document.getElementById("youtubePopup"),button=document.getElementById("sektorPopupLibraryBtn"),frame=popup&&popup.querySelector(".sektor-music-frame"),fullSrcdoc=frame&&frame.srcdoc;if(!button||!popup)return;button.onclick=function(){var collapsed=!popup.classList.contains("library-collapsed");popup.classList.toggle("library-collapsed",collapsed);if(frame){if(!fullSrcdoc)fullSrcdoc=frame.srcdoc;frame.srcdoc=collapsed?fullSrcdoc.replace("</head>","<style>#app{width:328px!important;min-width:328px!important;padding:14px!important}#main{grid-template-columns:300px!important;width:300px!important}#player-panel{width:300px!important}#pl-panel{display:none!important}</style></head>"):fullSrcdoc}}})();<\/script></body>');
-
-				popup.document.open();
-				popup.document.write(html);
-				popup.document.close();
-				status.textContent = "Sektor opened.";
-			} catch (error) {
-				popup.close();
-				status.textContent = error.message || "Could not load Sektor.";
-			}
-		});
-	</script>
+        openButton.addEventListener('click', async () => {
+            const popup = window.open('about:blank');
+            if (!popup) {
+                status.textContent = 'Allow popups to open Sektor.';
+                return;
+            }
+            status.textContent = 'Loading Sektor...';
+            try {
+                const targetUrl = await resolveAppUrl();
+                popup.location.href = targetUrl;
+                status.textContent = 'Sektor opened.';
+            } catch (error) {
+                popup.close();
+                status.textContent = error.message || 'Could not load Sektor.';
+            }
+        });
+    </script>
 </body>
 </html>

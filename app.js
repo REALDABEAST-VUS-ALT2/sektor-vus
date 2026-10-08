@@ -24,6 +24,7 @@ async function loadFriends() {
   } catch (error) {
     state.friends = [];
     state.friendRequests = [];
+    showError('Could not load friends and direct messages. Check your connection and try again.');
   }
   renderFriendsArea();
   renderFriendRequests();
@@ -74,8 +75,10 @@ async function acceptFriendRequest(request) {
     await loadFriends();
   } catch (error) { showError('Could not accept that friend request.'); }
 }
-function openFriendsArea() { closePrivateDm(); els.friendsList.hidden = false; els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false; els.textChannelsLabel.hidden = true; els.textChannels.hidden = true; els.voiceChannelsLabel.hidden = true; els.voiceChannels.hidden = true; els.voiceMembers.hidden = true; els.voiceControls.hidden = true; els.ownerTools.hidden = true; els.gamesPanel.hidden = true; els.friendsBtn.classList.add('active'); els.serverName.textContent = 'Friends & DMs'; els.serverCode.textContent = 'Everyone has this server'; els.channelHash.textContent = '◎'; els.channelName.textContent = 'Friends'; els.channelTopic.textContent = 'Private conversations'; els.channelPermission.textContent = ''; els.announcement.hidden = true; els.ownerComposer.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.messages.innerHTML = '<div class="empty-state">Choose a friend from the rail to start a private conversation.</div>'; els.messageInput.placeholder = 'Choose a friend to message'; loadFriends(); }
+function openFriendsArea() { state.activeView = 'friends'; closePrivateDm(); els.friendsBtn.classList.add('active'); els.friendsList.hidden = false; els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false; els.textChannelsLabel.hidden = true; els.textChannels.hidden = true; els.voiceChannelsLabel.hidden = true; els.voiceChannels.hidden = true; els.voiceMembers.hidden = true; els.voiceControls.hidden = true; els.ownerTools.hidden = true; els.gamesPanel.hidden = true; els.friendHome.hidden = false; els.announcement.hidden = true; els.ownerComposer.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.serverName.textContent = 'Friends & DMs'; els.serverCode.textContent = 'Everyone has this server'; els.channelHash.textContent = '◎'; els.channelName.textContent = 'Friends'; els.channelTopic.textContent = 'Private conversations'; els.channelPermission.textContent = ''; els.messages.innerHTML = '<div class="empty-state">Choose a friend from the rail to start a private conversation.</div>'; els.messageInput.placeholder = 'Choose a friend to message'; loadFriends(); }
 function openPrivateDm(friend) {
+  state.activeView = 'friends';
+  state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.dmFriend = friend; state.channel = ''; if (state.unsubMessages) state.unsubMessages(); if (state.dmRef && state.dmHandler) state.dmRef.off('child_added', state.dmHandler); state.dmRef = null; state.dmHandler = null;
   els.channelHash.textContent = '@'; els.channelName.textContent = friend.username; els.channelTopic.textContent = 'Private messages'; els.channelPermission.textContent = 'DM'; els.announcement.hidden = true; els.ownerComposer.hidden = true; els.messageInput.placeholder = 'Message @' + friend.username; renderFriendsArea(); selectPrivateMessages();
 }
@@ -89,17 +92,228 @@ async function sendPrivateMessage(text) {
   const payload = {fromAccountKey:state.user.key, name:state.user.username, avatar:state.user.avatar || '', key:state.user.key, text, ts:firebase.database.ServerValue.TIMESTAMP};
   try { await db.ref('dms/' + friendConversationId(state.dmFriend.key) + '/messages').push(payload); els.messageInput.value = ''; } catch (error) { showError('Could not send that message.'); }
 }
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDsEa2jKRLSCnp5-EMTfDS4aGBcS-HMt2c",
-  authDomain: "sektor-vus.firebaseapp.com",
-  projectId: "sektor-vus",
-  storageBucket: "sektor-vus.firebasestorage.app",
-  messagingSenderId: "1032999949189",
-  appId: "1:1032999949189:web:83ea2f883df477e87beaec"
+function makeLocalStorageDatabase() {
+  const STORE_KEY = 'sektorLocalDatabase';
+  const listeners = new Map();
+
+  function readStore() {
+    try {
+      return JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function writeStore(store) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  }
+
+  function normalizedPath(path) {
+    return String(path || '').split('/').filter(Boolean).join('/');
+  }
+
+  function getValueAt(path) {
+    const cleanPath = normalizedPath(path);
+    if (!cleanPath) return readStore();
+    const store = readStore();
+    return cleanPath.split('/').reduce((value, segment) => value && typeof value === 'object' ? value[segment] : undefined, store);
+  }
+
+  function setValueAt(path, value) {
+    const store = readStore();
+    const segments = normalizedPath(path).split('/').filter(Boolean);
+    let current = store;
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      const segment = segments[index];
+      if (!current[segment] || typeof current[segment] !== 'object') current[segment] = {};
+      current = current[segment];
+    }
+    if (segments.length) current[segments[segments.length - 1]] = value;
+    else Object.assign(store, value || {});
+    writeStore(store);
+  }
+
+  function updateValueAt(path, patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      setValueAt(path, patch);
+      return;
+    }
+    Object.entries(patch).forEach(([childPath, value]) => {
+      setValueAt([path, childPath].filter(Boolean).join('/'), value);
+    });
+  }
+
+  function deleteValueAt(path) {
+    const store = readStore();
+    const segments = normalizedPath(path).split('/').filter(Boolean);
+    if (!segments.length) {
+      writeStore({});
+      return;
+    }
+    let current = store;
+    for (let index = 0; index < segments.length - 1; index += 1) {
+      const segment = segments[index];
+      if (!current[segment] || typeof current[segment] !== 'object') return;
+      current = current[segment];
+    }
+    delete current[segments[segments.length - 1]];
+    writeStore(store);
+  }
+
+  function makeSnapshot(path, value) {
+    const cleanPath = normalizedPath(path);
+    return {
+      key: cleanPath.split('/').filter(Boolean).pop() || null,
+      val: () => value == null ? null : value,
+      exists: () => value != null
+    };
+  }
+
+  function captureListenerValues(path) {
+    const changedPath = normalizedPath(path);
+    const previousValues = new Map();
+    listeners.forEach((callbacks, key) => {
+      const separator = key.lastIndexOf(':');
+      const listenerPath = key.slice(0, separator);
+      const eventName = key.slice(separator + 1);
+      if ((eventName === 'value' && (!listenerPath || changedPath === listenerPath || changedPath.startsWith(listenerPath + '/'))) ||
+          (eventName === 'child_added' && (changedPath === listenerPath || changedPath.startsWith(listenerPath + '/')))) {
+        previousValues.set(key, getValueAt(listenerPath));
+      }
+    });
+    return previousValues;
+  }
+
+  function notifyChanges(path, previousValues) {
+    const changedPath = normalizedPath(path);
+    listeners.forEach((callbacks, key) => {
+      const separator = key.lastIndexOf(':');
+      const listenerPath = key.slice(0, separator);
+      const eventName = key.slice(separator + 1);
+      if (!previousValues.has(key)) return;
+      const currentValue = getValueAt(listenerPath);
+      if (eventName === 'value') {
+        callbacks.forEach(callback => callback(makeSnapshot(listenerPath, currentValue)));
+        return;
+      }
+      const oldValue = previousValues.get(key);
+      if (changedPath === listenerPath) {
+        Object.entries(currentValue || {}).forEach(([childKey, childValue]) => {
+          if (!oldValue || !Object.prototype.hasOwnProperty.call(oldValue, childKey)) {
+            const childSnapshot = makeSnapshot([listenerPath, childKey].filter(Boolean).join('/'), childValue);
+            childSnapshot.key = childKey;
+            callbacks.forEach(callback => callback(childSnapshot));
+          }
+        });
+        return;
+      }
+      const childKey = changedPath.slice(listenerPath ? listenerPath.length + 1 : 0).split('/')[0];
+      if (childKey && (!oldValue || !Object.prototype.hasOwnProperty.call(oldValue, childKey)) &&
+          currentValue && Object.prototype.hasOwnProperty.call(currentValue, childKey)) {
+        const childSnapshot = makeSnapshot([listenerPath, childKey].filter(Boolean).join('/'), currentValue[childKey]);
+        childSnapshot.key = childKey;
+        callbacks.forEach(callback => callback(childSnapshot));
+      }
+    });
+  }
+
+  function createReference(path = '') {
+    const cleanPath = normalizedPath(path);
+    return {
+      path: cleanPath,
+      key: cleanPath.split('/').filter(Boolean).pop() || null,
+      child(nextPath) {
+        return createReference([cleanPath, normalizedPath(nextPath)].filter(Boolean).join('/'));
+      },
+      limitToLast() { return this; },
+      async get() {
+        return makeSnapshot(cleanPath, getValueAt(cleanPath));
+      },
+      async set(value) {
+        const previousValues = captureListenerValues(cleanPath);
+        setValueAt(cleanPath, value);
+        notifyChanges(cleanPath, previousValues);
+        return value;
+      },
+      async update(values) {
+        const previousValues = captureListenerValues(cleanPath);
+        updateValueAt(cleanPath, values);
+        notifyChanges(cleanPath, previousValues);
+        return values;
+      },
+      async remove() {
+        const previousValues = captureListenerValues(cleanPath);
+        deleteValueAt(cleanPath);
+        notifyChanges(cleanPath, previousValues);
+        return null;
+      },
+      push(value) {
+        const key = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : 'local-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+        const childRef = this.child(key);
+        if (value !== undefined) {
+          childRef.set(value);
+        }
+        return childRef;
+      },
+      on(eventName, callback) {
+        const eventKey = cleanPath + ':' + eventName;
+        const handlers = listeners.get(eventKey) || [];
+        handlers.push(callback);
+        listeners.set(eventKey, handlers);
+        const value = getValueAt(cleanPath);
+        if (eventName === 'child_added') {
+          Object.entries(value || {}).forEach(([childKey, childValue]) => {
+            const childSnapshot = makeSnapshot([cleanPath, childKey].filter(Boolean).join('/'), childValue);
+            childSnapshot.key = childKey;
+            callback(childSnapshot);
+          });
+        } else {
+          callback(makeSnapshot(cleanPath, value));
+        }
+        return callback;
+      },
+      off(eventName, callback) {
+        const eventKey = cleanPath + ':' + eventName;
+        if (!callback) {
+          listeners.delete(eventKey);
+          return;
+        }
+        const handlers = listeners.get(eventKey) || [];
+        const nextHandlers = handlers.filter(handler => handler !== callback);
+        if (nextHandlers.length) listeners.set(eventKey, nextHandlers); else listeners.delete(eventKey);
+      },
+      onDisconnect() {
+        return { remove: async () => {}, cancel: async () => {} };
+      }
+    };
+  }
+
+  return { ref: createReference };
+}
+
+function makeLocalAuth() {
+  return {
+    currentUser: null,
+    async signInAnonymously() {
+      this.currentUser = { uid: 'local-user' };
+      return { user: this.currentUser };
+    }
+  };
+}
+
+const useLanBackend = new URLSearchParams(location.search).get('lan') === '1';
+const firebase = (useLanBackend && globalThis.firebase) || {
+  initializeApp: () => ({
+    database: () => makeLocalStorageDatabase(),
+    auth: () => makeLocalAuth()
+  }),
+  database: { ServerValue: { TIMESTAMP: { '.sv': 'timestamp' } } },
+  auth: () => makeLocalAuth()
 };
-const db = firebase.initializeApp(FIREBASE_CONFIG).database();
-const firebaseAuth = firebase.auth();
-const state = { user:null, servers:[], server:null, channel:"general", editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[] };
+
+const db = firebase.initializeApp().database();
+const firebaseAuth = firebase.auth ? firebase.auth() : makeLocalAuth();
+const state = { user:null, servers:[], server:null, channel:"general", activeView:'server', editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[], nexusData:null, nexusLoaded:false, nexusLoading:false, nexusInitialized:false, nexusRef:null, nexusHandler:null, nexusError:'' };
 const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
@@ -121,15 +335,17 @@ function updateEditModeUi() {
   if (els.editModeBtn) {
     els.editModeBtn.hidden = !owner;
     els.editModeBtn.setAttribute('aria-pressed', String(enabled));
-    els.editModeBtn.textContent = enabled ? '✓ Edit mode: On' : '✎ Edit mode: Off';
+    els.editModeBtn.textContent = enabled ? '✓' : '✎';
+    els.editModeBtn.title = enabled ? 'Turn off channel edit mode' : 'Turn on channel edit mode';
+    els.editModeBtn.setAttribute('aria-label', els.editModeBtn.title);
     els.editModeBtn.classList.toggle('active', enabled);
   }
   if (els.ownerTools) els.ownerTools.hidden = !owner;
-  if (els.serverSettings) els.serverSettings.disabled = !enabled;
-  if (els.addChannel) els.addChannel.disabled = !enabled;
-  if (els.rank) els.rank.disabled = !enabled;
-  if (els.announcementInput) els.announcementInput.disabled = !enabled;
-  if (els.publish) els.publish.disabled = !enabled;
+  if (els.serverSettings) els.serverSettings.disabled = !owner;
+  if (els.addChannel) els.addChannel.disabled = !owner;
+  if (els.rank) els.rank.disabled = !owner;
+  if (els.announcementInput) els.announcementInput.disabled = !owner;
+  if (els.publish) els.publish.disabled = !owner;
 }
 let pendingImage = '';
 let pendingAudio = '';
@@ -152,6 +368,7 @@ async function auth() {
   els.authStatus.textContent = 'Connecting...';
   if (!identifier || password.length < 4) { els.authError.textContent = 'Enter a username/ID and a 4+ character password.'; return; }
   try {
+    await ensureFirebaseAccess();
     if (signupMode) {
       const usernameKey = keyFor(identifier);
       if (!/^[a-zA-Z0-9_]{3,24}$/.test(identifier)) throw new Error('Username must use 3-24 letters, numbers, or underscores.');
@@ -172,7 +389,15 @@ async function auth() {
     showApp();
   } catch (error) { els.authError.textContent = error.message || 'Could not sign in.'; } finally { els.authStatus.textContent = ''; }
 }
-async function ensureFirebaseAccess() { try { if (!firebaseAuth.currentUser) await firebaseAuth.signInAnonymously(); return true; } catch (error) { return false; } }
+async function ensureFirebaseAccess() {
+  if (firebaseAuth.currentUser) return;
+  try {
+    await firebaseAuth.signInAnonymously();
+  } catch (error) {
+    console.error('[Sektor] Could not authenticate with the database.', error);
+    throw new Error('Could not connect to the account service. Anonymous sign-in may need to be enabled in Firebase Authentication.');
+  }
+}
 async function showApp() { els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); loadServers(); }
 function showAuth() { els.authView.hidden = false; els.appView.hidden = true; }
 function avatarMarkup(user, className) { const image = user && user.avatar; return image ? '<div class="' + className + ' has-image"><img src="' + esc(image) + '" alt=""></div>' : '<div class="' + className + '">' + esc((user && user.name || state.user.username).slice(0,2).toUpperCase()) + '</div>'; }
@@ -186,6 +411,7 @@ async function loadServers() {
   const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]');
   const visible = server => server.ownerKey === state.user.key || joined.includes(server.code);
   const savedLocally = localServers().filter(visible);
+  let useLocalTestServer = false;
   try {
     const snap = await db.ref('serverMeta').get();
     const remote = Object.entries(snap.val() || {}).map(([code, server]) => ({code, ...server})).filter(visible);
@@ -194,10 +420,47 @@ async function loadServers() {
     state.servers = [...byCode.values()];
   } catch (error) {
     state.servers = savedLocally;
+    useLocalTestServer = true;
     showError('Online storage is unavailable. Local servers are enabled on this device.');
   }
+  const testCode = 'TEST-' + safe(state.user.key);
+  let createdTestServer = false;
+  if (!state.servers.some(server => server.code === testCode)) {
+    const testServer = {
+      code:testCode,
+      name:'Sektor Test Lab',
+      description:'A sample server for testing chat and channels.',
+      ownerKey:state.user.key,
+      ownerName:state.user.username,
+      accent:'#a5f06d',
+      createdAt:Date.now(),
+      channels:{
+        general:{name:'general',type:'text',topic:'A place to try out messages.'},
+        'test-lab':{name:'test-lab',type:'text',topic:'Try server and channel features here.'},
+        lounge:{name:'Lounge',type:'voice',topic:'Test the voice room.'}
+      },
+      ranks:{},
+      ...(useLocalTestServer ? {localOnly:true} : {})
+    };
+    if (useLocalTestServer) {
+      saveLocalServers([...localServers().filter(server => server.code !== testCode), testServer]);
+    } else {
+      try {
+        const {code, ...metadata} = testServer;
+        await db.ref('serverMeta/' + code).set(metadata);
+      } catch (error) {
+        testServer.localOnly = true;
+        saveLocalServers([...localServers().filter(server => server.code !== testCode), testServer]);
+        showError('Could not save the shared test server. A local-only test server was created.');
+      }
+    }
+    state.servers.unshift(testServer);
+    createdTestServer = true;
+  }
   renderServerRail();
-  if (state.servers[0]) selectServer(state.servers[0].code); else clearServer();
+  if (state.activeView !== 'server') return;
+  if (createdTestServer) selectServer(testCode);
+  else if (state.servers[0]) selectServer(state.servers[0].code); else clearServer();
 }
 function openCreateServerModal() { els.modalTitle.textContent = 'Create a server'; els.modalBody.innerHTML = '<label class="modal-label" for="newServerName">Server name</label><input id="newServerName" class="modal-input" maxlength="32" placeholder="My community"><label class="modal-label" for="newServerColor">Accent color</label><input id="newServerColor" class="modal-color" type="color" value="#5865d9"><div id="modalError" class="error"></div><button id="confirmServer" class="primary-btn">Create server</button>'; els.modal.hidden = false; document.getElementById('newServerName').focus(); document.getElementById('confirmServer').onclick = confirmCreateServer; }
 async function confirmCreateServer() {
@@ -225,7 +488,54 @@ async function confirmCreateServer() {
   selectServer(code);
 }
 function clearSubscriptions() { leaveVoice(); if (state.metaRef && state.metaHandler) state.metaRef.off('value', state.metaHandler); if (state.presenceListRef && state.presenceHandler) state.presenceListRef.off('value', state.presenceHandler); if (state.unsubMessages) state.unsubMessages(); if (state.presenceRef) { state.presenceRef.onDisconnect().cancel(); state.presenceRef.remove(); } state.metaRef = state.metaHandler = state.presenceListRef = state.presenceHandler = state.unsubMessages = state.presenceRef = null; }
-async function selectServer(code) { try { clearSubscriptions(); state.server = state.servers.find(server => server.code === code); state.channel = 'general'; if (!state.server) return; localStorage.setItem('vusServersJoined', JSON.stringify([...new Set([...(JSON.parse(localStorage.getItem('vusServersJoined') || '[]')), code])])); renderServerRail(); if (state.server.localOnly) { state.serverMembers = {[state.user.key]:{key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''}}; renderMembers(state.serverMembers); renderServer(); return; } state.presenceRef = db.ref('serverPresence/' + code + '/' + state.user.key); state.presenceRef.onDisconnect().remove(); await state.presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''}); state.metaRef = db.ref('serverMeta/' + code); state.metaHandler = snap => { state.server = snap.exists() ? {code,...snap.val()} : null; renderServer(); }; state.metaRef.on('value', state.metaHandler); state.presenceListRef = db.ref('serverPresence/' + code); state.presenceHandler = snap => renderMembers(snap.val() || {}); state.presenceListRef.on('value', state.presenceHandler); renderServer(); } catch (error) { showError(error.message || 'Could not open that server.'); } }
+async function selectServer(code) {
+  const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
+  state.activeView = 'server';
+  try {
+    clearSubscriptions();
+    closePrivateDm();
+    state.server = state.servers.find(server => server.code === code);
+    state.channel = 'general';
+    if (!state.server) return;
+    els.friendsBtn.classList.remove('active');
+    els.friendHome.hidden = true;
+    els.friendRequestsPanel.hidden = true;
+    els.friendsDirectory.hidden = true;
+    els.textChannelsLabel.hidden = false;
+    els.textChannels.hidden = false;
+    els.voiceChannelsLabel.hidden = false;
+    els.voiceChannels.hidden = false;
+    els.voiceMembers.hidden = false;
+    els.voiceControls.hidden = true;
+    localStorage.setItem('vusServersJoined', JSON.stringify([...new Set([...(JSON.parse(localStorage.getItem('vusServersJoined') || '[]')), code])]));
+    renderServerRail();
+    if (state.server.localOnly) {
+      state.serverMembers = {[state.user.key]:{key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''}};
+      renderMembers(state.serverMembers);
+      renderServer();
+      return;
+    }
+    state.presenceRef = db.ref('serverPresence/' + code + '/' + state.user.key);
+    state.presenceRef.onDisconnect().remove();
+    await state.presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''});
+    if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
+    state.metaRef = db.ref('serverMeta/' + code);
+    state.metaHandler = snap => {
+      if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
+      state.server = snap.exists() ? {code,...snap.val()} : null;
+      renderServer();
+    };
+    state.metaRef.on('value', state.metaHandler);
+    state.presenceListRef = db.ref('serverPresence/' + code);
+    state.presenceHandler = snap => {
+      if (navigationVersion === state.navigationVersion && state.activeView === 'server') renderMembers(snap.val() || {});
+    };
+    state.presenceListRef.on('value', state.presenceHandler);
+    renderServer();
+  } catch (error) {
+    if (navigationVersion === state.navigationVersion) showError(error.message || 'Could not open that server.');
+  }
+}
 async function openJoinServerModal() { els.modalTitle.textContent = 'Join a server'; els.modalBody.innerHTML = '<label class="modal-label" for="joinCode">Invite code</label><input id="joinCode" class="modal-input" maxlength="20" placeholder="Paste an invite code"><div id="modalError" class="error"></div><button id="confirmJoin" class="primary-btn">Join server</button>'; els.modal.hidden = false; document.getElementById('joinCode').focus(); document.getElementById('confirmJoin').onclick = async () => { const code = document.getElementById('joinCode').value.trim().toUpperCase(); const error = document.getElementById('modalError'); if (!code) { error.textContent = 'Enter an invite code.'; return; } try { const snap = await db.ref('serverMeta/' + safe(code)).get(); if (!snap.exists()) throw new Error('Server not found.'); state.servers.push({code,...snap.val()}); els.modal.hidden = true; await selectServer(code); } catch (joinError) { error.textContent = joinError.message || 'Could not join server.'; } }; }
 function openProfileModal() { if (!state.user) return; state.user.avatar = state.user.avatar || ''; els.modalTitle.textContent = 'Your profile'; els.modalBody.innerHTML = '<img id="profilePreview" class="profile-preview" src="' + esc(state.user.avatar) + '" alt=""><label class="modal-label" for="profileFile">Profile picture</label><input id="profileFile" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveProfile" class="primary-btn" type="button">Save profile</button>'; const preview = document.getElementById('profilePreview'); if (!state.user.avatar) preview.style.display = 'none'; document.getElementById('profileFile').onchange = event => { const file = event.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { document.getElementById('modalError').textContent = 'Choose an image under 2 MB.'; return; } const reader = new FileReader(); reader.onload = () => { preview.src = reader.result; preview.style.display = 'block'; preview.dataset.value = reader.result; }; reader.readAsDataURL(file); }; document.getElementById('saveProfile').onclick = () => { state.user.avatar = preview.dataset.value || state.user.avatar || ''; localStorage.setItem('vusServersSession', JSON.stringify(state.user)); renderServerRail(); els.modal.hidden = true; if (state.server) selectServer(state.server.code); }; els.modal.hidden = false; }
 function openFriendModal() { els.modalTitle.textContent = 'Add a friend'; els.modalBody.innerHTML = '<label class="modal-label" for="friendSearch">Search by username</label><div class="friend-search-row"><input id="friendSearch" class="modal-input" maxlength="24" placeholder="username"><button id="friendSearchBtn" class="modal-secondary">Search</button></div><div id="friendResults" class="friend-results"></div><div id="modalError" class="error"></div>'; els.modal.hidden = false; const input = document.getElementById('friendSearch'); const search = async () => { const query = input.value.trim().toLowerCase(); const results = document.getElementById('friendResults'); const error = document.getElementById('modalError'); results.innerHTML = ''; error.textContent = ''; if (!query) { error.textContent = 'Enter a username.'; return; } const localMatches = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().includes(query) && member.key !== state.user.key); if (localMatches.length) renderFriendResults(localMatches.map(member => ({key:member.key,username:member.name})), results, error); else { try { const snap = await db.ref('usernameIndex/' + query).get(); if (!snap.exists()) throw new Error('No user found with that username.'); const key = snap.val(); const userSnap = await db.ref('users/' + key).get(); const user = userSnap.val(); if (!user) throw new Error('No user found with that username.'); renderFriendResults([{key,username:user.username}], results, error); } catch (searchError) { error.textContent = searchError.message || 'Could not search right now.'; } } }; document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus(); }
@@ -256,11 +566,435 @@ function addChannelDeleteButton(channelButton, channel) { if (!isOwnerEditing())
 function openRenameChannelModal(channel) { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Rename channel'; els.modalBody.innerHTML = '<label class="modal-label" for="renameChannelName">Channel name</label><input id="renameChannelName" class="modal-input" maxlength="24" value="' + esc(channel.name) + '"><div id="modalError" class="error"></div><button id="saveChannelName" class="primary-btn">Save name</button>'; els.modal.hidden = false; const input = document.getElementById('renameChannelName'); const error = document.getElementById('modalError'); input.focus(); input.select(); document.getElementById('saveChannelName').onclick = async () => { const name = input.value.trim(); if (!name) { error.textContent = 'Enter a channel name.'; return; } try { if (state.server.localOnly) { state.server.channels[channel.id].name = name.slice(0,24); saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id + '/name').set(name.slice(0,24)); els.modal.hidden = true; renderServer(); } catch (renameError) { error.textContent = 'Could not rename this channel.'; } }; }
 function openDeleteChannelModal(channel) { els.modalTitle.textContent = 'Delete channel'; els.modalBody.innerHTML = '<p class="modal-copy">Delete <strong>#' + esc(channel.name) + '</strong>? Messages in this channel will no longer be available.</p><div id="modalError" class="error"></div><div class="modal-actions"><button id="cancelDelete" class="modal-secondary">Cancel</button><button id="confirmDelete" class="modal-danger">Delete channel</button></div>'; els.modal.hidden = false; document.getElementById('cancelDelete').onclick = () => { els.modal.hidden = true; }; document.getElementById('confirmDelete').onclick = async () => { try { if (state.server.localOnly) { delete state.server.channels[channel.id]; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id).remove(); if (state.channel === channel.id) state.channel = 'general'; els.modal.hidden = true; renderServer(); } catch (error) { document.getElementById('modalError').textContent = 'Could not delete this channel.'; } }; }
 function closePrivateDm() { state.dmFriend = null; if (state.dmRef && state.dmHandler) state.dmRef.off('child_added', state.dmHandler); state.dmRef = null; state.dmHandler = null; }
-function selectChannel(id) { closePrivateDm(); leaveVoice(); els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); state.channel = id; renderServer(); }
-function renderGamesPanel(active) { const games = [{id:'would-you-rather',icon:'🤔',name:'Would You Rather',desc:'Pick a side and see what the party chooses.'},{id:'trivia-blitz',icon:'🧠',name:'Trivia Blitz',desc:'Challenge the room with quick-fire questions.'},{id:'rock-paper-scissors',icon:'✊',name:'Rock Paper Scissors',desc:'Start a quick best-of-three match.'}]; els.gamesPanel.innerHTML = '<div class="games-heading"><strong>Party games</strong><span>Play together with this server</span></div>' + games.map(game => '<article class="game-card"><div class="game-icon">' + game.icon + '</div><div class="game-card-copy"><strong>' + game.name + '</strong><small>' + game.desc + '</small></div><button type="button" data-game="' + game.id + '">' + (active && active.gameId === game.id ? 'Join game' : 'Start game') + '</button></article>').join('') + (active ? '<div class="game-lobby"><strong>' + esc(games.find(game => game.id === active.gameId)?.name || 'Game') + '</strong><span>' + Object.keys(active.players || {}).length + ' player(s) in the lobby</span></div>' : ''); els.gamesPanel.querySelectorAll('[data-game]').forEach(button => { button.onclick = () => startPartyGame(button.dataset.game); }); }
+function selectChannel(id) { closePrivateDm(); leaveVoice(); els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); els.friendHome.hidden = true; state.channel = id; renderServer(); }
+function defaultNexusData() {
+  return {
+    users: [],
+    listings: [{id:'sample-1', name:'Neon alley poster', type:'art', price:120, owner:'Market'}],
+    auctions: [{id:'auction-1', item:'Golden avatar frame', bid:250, bidder:'Open bid'}],
+    chat: [{user:'System', text:'Welcome to Nexus. Trade, chat, and spin the daily wheel.'}],
+    wheelClaims: {}
+  };
+}
+function normalizeNexusData(saved) {
+  const defaults = defaultNexusData();
+  return {
+    users: Array.isArray(saved && saved.users) ? saved.users : defaults.users,
+    listings: Array.isArray(saved && saved.listings) ? saved.listings : defaults.listings,
+    auctions: Array.isArray(saved && saved.auctions) ? saved.auctions : defaults.auctions,
+    chat: Array.isArray(saved && saved.chat) ? saved.chat : defaults.chat,
+    wheelClaims: saved && saved.wheelClaims && typeof saved.wheelClaims === 'object' ? saved.wheelClaims : defaults.wheelClaims
+  };
+}
+function getBlobtownData() {
+  if (state.nexusData) return state.nexusData;
+  try {
+    return normalizeNexusData(JSON.parse(localStorage.getItem('blobtownEconomy') || '{}'));
+  } catch (error) {
+    return defaultNexusData();
+  }
+}
+function saveBlobtownData(data) {
+  state.nexusData = normalizeNexusData(data);
+  localStorage.setItem('blobtownEconomy', JSON.stringify(state.nexusData));
+  if (!state.nexusRef) return Promise.resolve();
+  return state.nexusRef.set(state.nexusData).catch(error => {
+    const root = els.gamesPanel.querySelector('[data-blobtown-root]');
+    if (root) setBlobtownStatus(root, 'Could not sync with the Nexus world. Check your connection.', true);
+    console.error('[Sektor] Could not sync Nexus data.', error);
+  });
+}
+async function loadNexusWorld() {
+  if (state.nexusLoaded) {
+    return;
+  }
+  if (state.nexusLoading) return;
+  state.nexusLoading = true;
+  try {
+    if (!state.nexusRef) {
+      state.nexusRef = db.ref('nexus/sharedWorld');
+      state.nexusHandler = snapshot => {
+        state.nexusData = normalizeNexusData(snapshot.val() || {});
+        if (state.nexusInitialized) {
+          state.nexusLoaded = true;
+          state.nexusError = '';
+        }
+      };
+      state.nexusRef.on('value', state.nexusHandler);
+    }
+    const snapshot = await state.nexusRef.get();
+    if (snapshot.exists()) {
+      state.nexusData = normalizeNexusData(snapshot.val());
+      state.nexusInitialized = true;
+      state.nexusLoaded = true;
+      state.nexusError = '';
+    } else {
+      let initial = defaultNexusData();
+      try {
+        const saved = JSON.parse(localStorage.getItem('blobtownEconomy') || 'null');
+        if (saved && typeof saved === 'object') initial = normalizeNexusData(saved);
+      } catch (error) {}
+      await saveBlobtownData(initial);
+      state.nexusInitialized = true;
+      state.nexusLoaded = true;
+      state.nexusError = '';
+    }
+  } catch (error) {
+    state.nexusLoaded = false;
+    state.nexusError = 'Could not connect to the Nexus world. Check the server and try again.';
+    showError(state.nexusError);
+  } finally {
+    state.nexusLoading = false;
+  }
+}
+function getBlobtownSession() {
+  try {
+    const raw = localStorage.getItem('blobtownSession');
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+function setBlobtownSession(user) { localStorage.setItem('blobtownSession', JSON.stringify(user)); }
+function clearBlobtownSession() { localStorage.removeItem('blobtownSession'); }
+function blobtownCurrencyName() { return 'Sektorium'; }
+function cloneBlobtownUsers() {
+  const data = getBlobtownData();
+  if (!data.users.length) return [];
+  return data.users.map(user => ({...user}));
+}
+function blobtownCurrentUser() {
+  const session = getBlobtownSession();
+  if (!session) return null;
+  const data = getBlobtownData();
+  return data.users.find(user => user.username === session.username) || null;
+}
+function setBlobtownStatus(root, message, isError) {
+  const status = root && root.querySelector('[data-blobtown-status]');
+  if (!status) return;
+  status.textContent = message || '';
+  status.classList.toggle('blobtown-status-error', !!isError);
+}
+function blobtownUpdateBalances(data, username, delta) {
+  const user = data.users.find(item => item.username === username);
+  if (!user) return;
+  user.balance = Math.max(0, Number(user.balance || 0) + Number(delta || 0));
+}
+function renderGamesPanel(active, standalone = false) {
+  const games = [
+    {id:'would-you-rather',icon:'🤔',name:'Would You Rather',desc:'Pick a side and see what the party chooses.'},
+    {id:'trivia-blitz',icon:'🧠',name:'Trivia Blitz',desc:'Challenge the room with quick-fire questions.'},
+    {id:'rock-paper-scissors',icon:'✊',name:'Rock Paper Scissors',desc:'Start a quick best-of-three match.'},
+  ];
+  const activeGame = games.find(game => game.id === (active && active.gameId));
+  const blobtownMarkup = activeGame && activeGame.id === 'blobtown-2d' ? `
+    <div class="blobtown-panel" data-blobtown-root>
+      <div class="blobtown-copy">
+        <div class="blobtown-kicker">Nexus · social economy</div>
+        <p>Join a shared world to trade items, bid in auctions, chat with other players, and spin the daily wheel. The world is shared by everyone connected to the same multiplayer server.</p>
+        <div class="blobtown-tags"><span>Auctions</span><span>Marketplace</span><span>Live chat</span><span>Daily wheel</span></div>
+        <div class="blobtown-stats"><span>500 <strong>${blobtownCurrencyName()}</strong> starter wallet</span><span>${useLanBackend ? 'Shared server world' : 'This browser only'}</span></div>
+      </div>
+      <div class="blobtown-coin-wrap"><div class="blobtown-coin" aria-label="${blobtownCurrencyName()} currency"><span>S</span></div></div>
+      <div class="blobtown-eco">
+        <div class="blobtown-status" data-blobtown-status>${state.nexusError ? esc(state.nexusError) : state.nexusLoaded ? '' : 'Connecting to the Nexus world…'}</div>
+        ${!state.nexusLoaded ? '' : (() => {
+          const session = getBlobtownSession();
+          const data = getBlobtownData();
+          const user = session ? data.users.find(entry => entry.username === session.username) : null;
+          if (!user) {
+            return `
+              <div class="blobtown-auth-box">
+                <div class="blobtown-auth-row">
+                  <input data-blobtown-username placeholder="Username" maxlength="20">
+                  <input data-blobtown-password type="password" placeholder="Password" maxlength="32">
+                </div>
+                <div class="blobtown-auth-actions">
+                  <button type="button" data-blobtown-action="signup">Create account</button>
+                  <button type="button" data-blobtown-action="login">Log in</button>
+                </div>
+              </div>
+            `;
+          }
+          const today = new Date().toISOString().slice(0,10);
+          const alreadySpun = user.lastWheelDate === today;
+          return `
+            <div class="blobtown-wallet-row">
+              <div>
+                <strong>${esc(user.username)}</strong>
+                <small>${user.balance} ${esc(blobtownCurrencyName())}</small>
+              </div>
+            <div class="blobtown-wallet-actions">
+              <button type="button" data-blobtown-spin ${alreadySpun ? 'disabled' : ''}>${alreadySpun ? 'Wheel done' : 'Spin daily wheel'}</button>
+            </div>
+          </div>
+          <div class="blobtown-form-box">
+              <div class="blobtown-form-row">
+                <input data-blobtown-listing-name placeholder="Item name" maxlength="32">
+                <input data-blobtown-listing-price placeholder="Price" type="number" min="1" max="99999">
+              </div>
+              <div class="blobtown-form-row">
+                <select data-blobtown-listing-type>
+                  <option value="art">Art</option>
+                  <option value="sound">Sound</option>
+                  <option value="video">Video</option>
+                  <option value="item">Item</option>
+                </select>
+                <label class="blobtown-upload-label">
+                  Add media
+                  <input data-blobtown-media type="file" accept="audio/*,video/*,image/*">
+                </label>
+              </div>
+              <button type="button" data-blobtown-list-item>Sell item</button>
+            </div>
+          `;
+        })()}
+        <div class="blobtown-section">
+            <div class="blobtown-section-title">Nexus marketplace</div>
+          <div class="blobtown-list">
+            ${(() => {
+              const data = getBlobtownData();
+              const items = data.listings.length ? data.listings.slice(-25) : [{id:'sample-1', name:'Neon alley poster', type:'art', price:120, owner:'Market'}];
+              return items.map(item => `
+                <div class="blobtown-item">
+                  <div>
+                    <strong>${esc(item.name)}</strong>
+                    <small>${esc(item.type)} · ${Number(item.price || 0)} ${esc(blobtownCurrencyName())}</small>
+                  </div>
+                  <button type="button" data-blobtown-buy="${esc(item.id)}">Buy</button>
+                </div>
+              `).join('');
+            })()}
+          </div>
+        </div>
+        <div class="blobtown-section">
+          <div class="blobtown-section-title">Nexus auction room</div>
+          <div class="blobtown-list">
+            ${(() => {
+              const data = getBlobtownData();
+              const auctions = data.auctions.length ? data.auctions.slice(-25) : [{id:'auction-1', item:'Golden avatar frame', bid:250, bidder:'Open bid'}];
+              return auctions.map(item => `
+                <div class="blobtown-item">
+                  <div>
+                    <strong>${esc(item.item)}</strong>
+                    <small>High bid ${Number(item.bid || 0)} ${esc(blobtownCurrencyName())} · ${esc(item.bidder || 'Open bid')}</small>
+                  </div>
+                  <button type="button" data-blobtown-bid="${esc(item.id)}">Bid +25</button>
+                </div>
+              `).join('');
+            })()}
+          </div>
+        </div>
+        <div class="blobtown-section">
+          <div class="blobtown-section-title">Nexus live chat</div>
+          <div class="blobtown-chat-box">
+            ${(() => {
+              const data = getBlobtownData();
+              return (data.chat || []).slice(-6).map(message => `<div class="blobtown-chat-line"><strong>${esc(message.user || 'Unknown')}:</strong> <span>${esc(message.text || '')}</span></div>`).join('');
+            })()}
+          </div>
+          <div class="blobtown-chat-input-row">
+            <input data-blobtown-chat-input maxlength="180" placeholder="Say something in Nexus...">
+            <button type="button" data-blobtown-chat-send>Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ` : '';
+
+  els.gamesPanel.innerHTML = standalone
+    ? '<div class="games-heading"><strong>Nexus</strong><span>' + (useLanBackend ? 'Shared multiplayer world' : 'Local world · not multiplayer') + '</span></div>' + blobtownMarkup
+    : '<div class="games-heading"><strong>Party games</strong><span>Play together with this server</span></div>' + games.map(game => '<article class="game-card"><div class="game-icon">' + game.icon + '</div><div class="game-card-copy"><strong>' + game.name + '</strong><small>' + game.desc + '</small></div><button type="button" data-game="' + game.id + '">' + (active && active.gameId === game.id ? 'Join game' : 'Start game') + '</button></article>').join('') + (active ? '<div class="game-lobby"><strong>' + esc(games.find(game => game.id === active.gameId)?.name || 'Game') + '</strong><span>' + Object.keys(active.players || {}).length + ' player(s) in the lobby</span></div>' : '') + blobtownMarkup;
+
+  els.gamesPanel.querySelectorAll('[data-game]').forEach(button => {
+    button.onclick = () => startPartyGame(button.dataset.game);
+  });
+
+  const blobtownRoot = els.gamesPanel.querySelector('[data-blobtown-root]');
+  if (!blobtownRoot) return;
+  if (state.nexusLoaded) setBlobtownStatus(blobtownRoot, '');
+
+  const authAction = event => {
+    const current = event.currentTarget;
+    const root = current.closest('[data-blobtown-root]');
+    const username = (root.querySelector('[data-blobtown-username]') || {}).value || '';
+    const password = (root.querySelector('[data-blobtown-password]') || {}).value || '';
+    const action = current.dataset.blobtownAction;
+    try {
+      const data = getBlobtownData();
+      const cleanName = username.trim().replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20);
+      if (cleanName.length < 3 || password.length < 4) throw new Error('Use a 3+ character username and 4+ character password.');
+      if (action === 'signup') {
+        if (data.users.some(user => user.username.toLowerCase() === cleanName.toLowerCase())) throw new Error('That username is already taken.');
+        const user = {username: cleanName, password, balance: 500, lastWheelDate: null};
+        data.users.push(user);
+        saveBlobtownData(data);
+        setBlobtownSession(user);
+        setBlobtownStatus(root, 'Welcome to Nexus. Your starter wallet is 500 Sektorium.', false);
+      } else {
+        const user = data.users.find(item => item.username.toLowerCase() === cleanName.toLowerCase() && item.password === password);
+        if (!user) throw new Error('No matching account was found.');
+        setBlobtownSession({username: user.username});
+        setBlobtownStatus(root, 'Logged in to Nexus.', false);
+      }
+      renderGamesPanel(active, standalone);
+    } catch (error) {
+      setBlobtownStatus(root, error.message || 'Could not update Nexus.', true);
+    }
+  };
+
+  const signupButton = blobtownRoot.querySelector('[data-blobtown-action="signup"]');
+  const loginButton = blobtownRoot.querySelector('[data-blobtown-action="login"]');
+  if (signupButton) signupButton.onclick = authAction;
+  if (loginButton) loginButton.onclick = authAction;
+
+  const spinButton = blobtownRoot.querySelector('[data-blobtown-spin]');
+  if (spinButton) {
+    spinButton.onclick = () => {
+      const user = blobtownCurrentUser();
+      if (!user) {
+        setBlobtownStatus(blobtownRoot, 'Create a Nexus account first.', true);
+        return;
+      }
+      const data = getBlobtownData();
+      const today = new Date().toISOString().slice(0,10);
+      if (user.lastWheelDate === today) {
+        setBlobtownStatus(blobtownRoot, 'You already spun the wheel today.', true);
+        return;
+      }
+      const rewards = [25, 40, 60, 75, 100, 125, 150, 200, 250, 300];
+      const reward = rewards[Math.floor(Math.random() * rewards.length)];
+      const userEntry = data.users.find(entry => entry.username === user.username);
+      if (!userEntry) return;
+      userEntry.lastWheelDate = today;
+      userEntry.balance = Number(userEntry.balance || 0) + reward;
+      data.wheelClaims = data.wheelClaims || {};
+      data.wheelClaims[user.username] = today;
+      data.chat = Array.isArray(data.chat) ? data.chat : [];
+      data.chat.push({user:'Wheel', text:'You landed a ' + reward + ' ' + blobtownCurrencyName() + ' prize.'});
+      saveBlobtownData(data);
+      setBlobtownStatus(blobtownRoot, 'Daily wheel spin: +' + reward + ' ' + blobtownCurrencyName() + '!', false);
+      renderGamesPanel(active, standalone);
+    };
+  }
+
+  const sellButton = blobtownRoot.querySelector('[data-blobtown-list-item]');
+  if (sellButton) {
+    sellButton.onclick = () => {
+      try {
+        const user = blobtownCurrentUser();
+        if (!user) throw new Error('Sign in to sell an item.');
+        const data = getBlobtownData();
+        const nameInput = blobtownRoot.querySelector('[data-blobtown-listing-name]');
+        const priceInput = blobtownRoot.querySelector('[data-blobtown-listing-price]');
+        const typeInput = blobtownRoot.querySelector('[data-blobtown-listing-type]');
+        const mediaInput = blobtownRoot.querySelector('[data-blobtown-media]');
+        const name = (nameInput && nameInput.value || '').trim();
+        const price = Number(priceInput && priceInput.value || 0);
+        const type = (typeInput && typeInput.value) || 'item';
+        if (!name || !Number.isFinite(price) || price <= 0) throw new Error('Add an item name and a valid price.');
+        const listing = {id: 'listing-' + Date.now() + '-' + Math.random().toString(16).slice(2), name, type, price, owner: user.username};
+        if (mediaInput && mediaInput.files && mediaInput.files[0]) {
+          const file = mediaInput.files[0];
+          const reader = new FileReader();
+          reader.onload = () => {
+            listing.mediaData = String(reader.result || '');
+            listing.mediaType = file.type || type;
+            data.listings.push(listing);
+            saveBlobtownData(data);
+            setBlobtownStatus(blobtownRoot, 'Listing posted to the Nexus shop.', false);
+            renderGamesPanel(active, standalone);
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+        data.listings.push(listing);
+        saveBlobtownData(data);
+        setBlobtownStatus(blobtownRoot, 'Listing posted to the Nexus shop.', false);
+        renderGamesPanel(active, standalone);
+      } catch (error) {
+        setBlobtownStatus(blobtownRoot, error.message || 'Could not list that item.', true);
+      }
+    };
+  }
+
+  const buyButtonList = blobtownRoot.querySelectorAll('[data-blobtown-buy]');
+  buyButtonList.forEach(button => {
+    button.onclick = () => {
+      try {
+        const user = blobtownCurrentUser();
+        if (!user) throw new Error('Create a Nexus account to buy items.');
+        const data = getBlobtownData();
+        const listing = data.listings.find(item => item.id === button.dataset.blobtownBuy);
+        if (!listing) throw new Error('That listing is no longer available.');
+        const buyer = data.users.find(entry => entry.username === user.username);
+        if (!buyer) throw new Error('Your account could not be found.');
+        if (Number(buyer.balance || 0) < Number(listing.price || 0)) throw new Error('You do not have enough ' + blobtownCurrencyName() + '.');
+        buyer.balance = Number(buyer.balance || 0) - Number(listing.price || 0);
+        if (listing.owner && listing.owner !== 'Market') {
+          const owner = data.users.find(entry => entry.username === listing.owner);
+          if (owner) owner.balance = Number(owner.balance || 0) + Number(listing.price || 0);
+        }
+        data.listings = data.listings.filter(item => item.id !== listing.id);
+        data.chat.push({user:'Market', text: buyer.username + ' bought ' + listing.name + ' for ' + listing.price + ' ' + blobtownCurrencyName() + '.'});
+        saveBlobtownData(data);
+        setBlobtownStatus(blobtownRoot, 'Purchase complete. ' + listing.name + ' is in your collection.', false);
+        renderGamesPanel(active, standalone);
+      } catch (error) {
+        setBlobtownStatus(blobtownRoot, error.message || 'Could not complete that purchase.', true);
+      }
+    };
+  });
+
+  const bidButtons = blobtownRoot.querySelectorAll('[data-blobtown-bid]');
+  bidButtons.forEach(button => {
+    button.onclick = () => {
+      try {
+        const user = blobtownCurrentUser();
+        if (!user) throw new Error('Create a Nexus account to place a bid.');
+        const data = getBlobtownData();
+        const auction = data.auctions.find(item => item.id === button.dataset.blobtownBid);
+        if (!auction) throw new Error('That auction is no longer active.');
+        const buyer = data.users.find(entry => entry.username === user.username);
+        if (!buyer) throw new Error('Your account could not be found.');
+        const newBid = Number(auction.bid || 0) + 25;
+        if (Number(buyer.balance || 0) < newBid) throw new Error('You need more ' + blobtownCurrencyName() + ' to outbid that entry.');
+        auction.bid = newBid;
+        auction.bidder = user.username;
+        data.chat.push({user:'Auction', text: user.username + ' bid ' + newBid + ' ' + blobtownCurrencyName() + ' on ' + auction.item + '.'});
+        saveBlobtownData(data);
+        setBlobtownStatus(blobtownRoot, 'Your bid is now the leading offer.', false);
+        renderGamesPanel(active, standalone);
+      } catch (error) {
+        setBlobtownStatus(blobtownRoot, error.message || 'Could not place that bid.', true);
+      }
+    };
+  });
+
+  const chatSend = blobtownRoot.querySelector('[data-blobtown-chat-send]');
+  if (chatSend) {
+    chatSend.onclick = () => {
+      const user = blobtownCurrentUser();
+      const input = blobtownRoot.querySelector('[data-blobtown-chat-input]');
+      const text = (input && input.value || '').trim();
+      if (!text) return;
+      if (!user) {
+        setBlobtownStatus(blobtownRoot, 'Sign in to chat in Nexus.', true);
+        return;
+      }
+      const data = getBlobtownData();
+      data.chat = Array.isArray(data.chat) ? data.chat : [];
+      data.chat.push({user:user.username, text});
+      saveBlobtownData(data);
+      if (input) input.value = '';
+      renderGamesPanel(active, standalone);
+    };
+  }
+
+};
 function watchGamesChannel(channelId) { if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = db.ref('serverGames/' + state.server.code + '/' + safe(channelId) + '/active'); state.gameHandler = snap => renderGamesPanel(snap.val()); state.gameRef.on('value', state.gameHandler); }
 async function startPartyGame(gameId) { if (!state.server || !state.channel) return; const ref = db.ref('serverGames/' + state.server.code + '/' + safe(state.channel) + '/active'); const current = (await ref.get()).val(); const updates = current && current.gameId === gameId ? {['players/' + state.user.key]: {name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}} : {gameId,startedBy:state.user.key,startedAt:firebase.database.ServerValue.TIMESTAMP,players:{[state.user.key]:{name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}}}; await ref.update(updates); }
-function selectMessages(channelId) { if (!channelId || !state.server) { els.messages.innerHTML = '<div class="empty-state">Select a channel to start talking.</div>'; return; } if (state.unsubMessages) state.unsubMessages(); if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = state.gameHandler = null; const channel = channels().find(item => item && item.id === channelId); if (channel && channel.type === 'games') { els.messages.hidden = true; els.messageForm.hidden = true; els.gamesPanel.hidden = false; watchGamesChannel(channelId); return; } els.gamesPanel.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.messages.innerHTML = ''; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(channelId); const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(message => message && typeof message === 'object'); if (!messages.length) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>'; messages.forEach(renderMessage); return; } const ref = db.ref('serverMessages/' + state.server.code + '/' + safe(channelId)).limitToLast(100); const handler = snap => { const value = snap.val(); if (value && typeof value === 'object') renderMessage({id:snap.key,...value}); }; ref.on('child_added', handler); state.unsubMessages = () => ref.off('child_added', handler); }
+function selectMessages(channelId) { if (!channelId || !state.server) { els.messages.hidden = false; els.messageForm.hidden = true; els.gamesPanel.hidden = true; els.messages.innerHTML = '<div class="empty-state">Create or select a server to start talking.</div>'; return; } if (state.unsubMessages) state.unsubMessages(); if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = state.gameHandler = null; const channel = channels().find(item => item && item.id === channelId); if (channel && channel.type === 'games') { els.messages.hidden = true; els.messageForm.hidden = true; els.gamesPanel.hidden = false; watchGamesChannel(channelId); return; } els.gamesPanel.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>'; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(channelId); const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(message => message && typeof message === 'object'); if (messages.length) { els.messages.innerHTML = ''; messages.forEach(renderMessage); } return; } const ref = db.ref('serverMessages/' + state.server.code + '/' + safe(channelId)).limitToLast(100); const handler = snap => { const value = snap.val(); if (value && typeof value === 'object') renderMessage({id:snap.key,...value}); }; ref.on('child_added', handler); state.unsubMessages = () => ref.off('child_added', handler); }
 window.addEventListener('storage', event => {
   if (!event.key || !state.server || !state.server.localOnly || !state.channel) return;
   const messageKey = 'vusMessages_' + state.server.code + '_' + safe(state.channel);
@@ -499,6 +1233,7 @@ els.editModeBtn.onclick = () => {
 els.serverList.addEventListener('click', () => {
   state.editMode = false;
   updateEditModeUi();
+  els.friendHome.hidden = true;
 });
 els.serverList.addEventListener('click', () => { els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); });
 (function enablePrivateDmSubmit() {
@@ -536,10 +1271,7 @@ new MutationObserver(() => {
     return unsafeRenderMessage(message);
   };
 })();
-els.addChannel.onclick = () => {
-  if (!isOwnerEditing()) return;
-  openAddChannelModal();
-};
+els.addChannel.onclick = openAddChannelModal;
 (function keepOwnerToolsAvailable() {
   const observer = new MutationObserver(() => {
     updateEditModeUi();
@@ -593,6 +1325,7 @@ els.addChannel.onclick = () => {
   const originalOpenFriendsArea = openFriendsArea;
   openFriendsArea = function () {
     originalOpenFriendsArea();
+    state.navigationVersion = (state.navigationVersion || 0) + 1;
     leaveVoice();
     if (els.friendHome) els.friendHome.hidden = false;
     if (els.messages) els.messages.hidden = true;
