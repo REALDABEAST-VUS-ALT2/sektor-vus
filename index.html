@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opening Sektor...</title>
+</head>
+<body>
+  <p>Opening Sektor... <a href="./VUS-Servers.html">Continue to Sektor</a></p>
+  <script>
+    const appUrl = './VUS-Servers.html' + window.location.search + window.location.hash;
+    document.querySelector('a').href = appUrl;
+    window.location.replace(appUrl);
+  </script>
+</body>
+</html>

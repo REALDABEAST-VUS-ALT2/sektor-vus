@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sektor</title>
-  <link rel="stylesheet" href="./other/VUS-Servers/style.css?v=20260922-3">
+  <title>Sektor · Nexus</title>
+  <link rel="stylesheet" href="./style.css?v=20261008-10">
 </head>
 <body>
   <main id="authView" class="auth-view">
@@ -27,12 +27,13 @@
       <div id="serverList" class="server-list"></div>
       <button id="friendsBtn" class="server-button friends-server-btn" type="button" title="Friends &amp; DMs" aria-label="Friends and private messages">◎</button>
       <div id="friendsList" class="friends-list"></div>
+      <a id="nexusPageLink" class="server-button blobtown-server-btn" href="./nexus.html" title="Open Nexus" aria-label="Open Nexus">🌐</a>
       <button id="newServerBtn" class="rail-add" title="Create server">+</button>
       <button id="joinServerBtn" class="rail-join" title="Join server">↗</button>
       <button id="logoutBtn" class="rail-user" type="button" title="Open profile" aria-label="Open profile"></button>
     </aside>
     <aside class="channel-sidebar">
-      <header class="server-header"><div><strong id="serverName">Select a server</strong><small id="serverCode"></small></div><div><button id="editModeBtn" type="button" title="Toggle edit mode" aria-pressed="false" hidden>✎</button><button id="serverSettingsBtn" title="Server settings">⚙</button></div></header>
+      <header class="server-header"><div><strong id="serverName">Select a server</strong><small id="serverCode"></small></div><div class="server-header-actions"><button id="editModeBtn" type="button" title="Enable channel edit mode" aria-label="Enable channel edit mode" aria-pressed="false" hidden>✎</button><button id="serverSettingsBtn" type="button" title="Server settings" aria-label="Server settings">⚙</button></div></header>
       <div id="friendRequestsPanel" class="friend-requests-panel" hidden><div class="friend-panel-label">Friend requests</div><div id="friendRequestsList"></div></div>
       <div id="textChannelsLabel" class="channel-label">Text channels</div>
       <div id="textChannels"></div>
@@ -41,7 +42,7 @@
       <div id="voiceMembers" class="voice-members"></div>
       <div id="voiceControls" class="voice-controls" hidden><button id="muteVoiceBtn">Mute</button><button id="leaveVoiceBtn">Leave</button></div>
       <div id="friendsDirectory" class="friends-directory" hidden></div>
-      <div id="ownerTools" class="owner-tools" hidden><button id="editModeBtn" type="button">✎ Edit mode: Off</button><button id="addChannelBtn">＋ Add channel</button><button id="rankBtn">✦ Manage ranks</button></div>
+      <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
     </aside>
     <section class="chat-column">
       <section class="youtube-player" aria-label="YouTube audio player"><button id="youtubeOpenBtn" class="youtube-open-btn" type="button"><span class="youtube-player-icon">♪</span><span><strong>Sektor audio</strong><small id="youtubeTopStatus">Open player</small></span></button></section>
@@ -60,9 +61,12 @@
   <div id="mediaControlPopup" class="media-control-popup" hidden><div class="media-control-card"><div class="media-control-title">Video controls</div><div class="media-control-actions"><button id="popupMuteBtn" type="button">Mute</button><button id="popupCameraBtn" type="button">Camera</button><button id="popupScreenBtn" type="button">Share screen</button><button id="popupLeaveBtn" type="button" class="media-leave-btn">Leave</button></div></div></div>
   <div id="youtubePopup" class="youtube-popup" hidden><section class="youtube-popup-card sektor-music-card" role="dialog" aria-modal="true" aria-labelledby="youtubePopupTitle"><header class="youtube-popup-header"><div><strong id="youtubePopupTitle">Sektor music player</strong><small id="youtubeNowPlaying">Local music player</small></div><button id="youtubePopupClose" class="youtube-popup-close" type="button" aria-label="Close audio player">×</button></header><div class="sektor-inline-player"><div class="sektor-inline-brand"><span class="youtube-player-icon">♪</span><div><strong>Local audio</strong><small id="sektorMusicName">Choose a file from this device</small></div></div><label class="sektor-file-button">Choose audio<input id="sektorMusicInput" type="file" accept="audio/*"></label><audio id="sektorMusicAudio" controls preload="metadata"></audio></div></section></div>
   <div id="modal" class="modal" hidden><div class="modal-card"><button id="modalClose" class="modal-close">×</button><h2 id="modalTitle"></h2><div id="modalBody"></div></div></div>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="./other/VUS-Servers/app.js?v=20260922-4"></script>
+  <script>
+    const nexusPageUrl = new URL('./nexus.html', window.location.href);
+    if (new URLSearchParams(window.location.search).get('lan') === '1') nexusPageUrl.searchParams.set('lan', '1');
+    document.getElementById('nexusPageLink').href = nexusPageUrl.href;
+  </script>
+  <script src="./lan-adapter.js?v=20261008-9"></script>
+  <script src="./app.js?v=20261008-17"></script>
 </body>
 </html>
