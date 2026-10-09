@@ -552,7 +552,7 @@ function openFriendModal() {
   document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus();
 }
 function serverInviteCode(text) {
-  const match = String(text || '').match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
+  const match = String(text || '').trim().match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
   return match ? match[1].toUpperCase() : null;
 }
 const serverInviteLookups = new Map();

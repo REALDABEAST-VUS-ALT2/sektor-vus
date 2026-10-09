@@ -43,7 +43,7 @@
   const copyWorld = value => JSON.parse(JSON.stringify(value));
 
   function codeFromMessage(value) {
-    const text = String(value ?? '');
+    const text = String(value ?? '').trim();
     if (!text.startsWith('/code:')) return null;
     let code = text.slice(6);
     if (code.startsWith(' ')) code = code.slice(1);
@@ -52,7 +52,7 @@
     return code;
   }
   function serverInviteCode(value) {
-    const match = String(value || '').match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
+    const match = String(value || '').trim().match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
     return match ? match[1].toUpperCase() : null;
   }
 
