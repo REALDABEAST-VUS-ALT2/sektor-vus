@@ -632,10 +632,11 @@ function renderServer() {
   els.textChannels.innerHTML = '';
   text.forEach(channel => {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'channel-button' + (current && state.channel === channel.id ? ' active' : '');
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>#</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread messages" hidden></span>';
-    button.onclick = () => selectChannel(channel.id);
+    button.setAttribute('aria-pressed', String(current && state.channel === channel.id));
     if (owner && !channel.default) addChannelDeleteButton(button, channel);
     els.textChannels.appendChild(button);
     updateChannelUnreadDot(channel.id);
@@ -643,6 +644,7 @@ function renderServer() {
   els.voiceChannels.innerHTML = '';
   voice.forEach(channel => {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'channel-button';
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>' + (channel.type === 'video' ? '▣' : '🔊') + '</span><span>' + esc(channel.name) + '</span><span class="channel-meta">Join</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
@@ -653,10 +655,11 @@ function renderServer() {
   });
   games.forEach(channel => {
     const button = document.createElement('button');
+    button.type = 'button';
     button.className = 'channel-button' + (current && state.channel === channel.id ? ' active' : '');
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>🎲</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
-    button.onclick = () => selectChannel(channel.id);
+    button.setAttribute('aria-pressed', String(current && state.channel === channel.id));
     if (owner && !channel.default) addChannelDeleteButton(button, channel);
     els.textChannels.appendChild(button);
     updateChannelUnreadDot(channel.id);
@@ -684,6 +687,7 @@ function openRenameChannelModal(channel) { if (!state.server || state.server.own
 function openDeleteChannelModal(channel) { els.modalTitle.textContent = 'Delete channel'; els.modalBody.innerHTML = '<p class="modal-copy">Delete <strong>#' + esc(channel.name) + '</strong>? Messages in this channel will no longer be available.</p><div id="modalError" class="error"></div><div class="modal-actions"><button id="cancelDelete" class="modal-secondary">Cancel</button><button id="confirmDelete" class="modal-danger">Delete channel</button></div>'; els.modal.hidden = false; document.getElementById('cancelDelete').onclick = () => { els.modal.hidden = true; }; document.getElementById('confirmDelete').onclick = async () => { try { if (state.server.localOnly) { delete state.server.channels[channel.id]; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id).remove(); if (state.channel === channel.id) state.channel = 'general'; els.modal.hidden = true; renderServer(); } catch (error) { document.getElementById('modalError').textContent = 'Could not delete this channel.'; } }; }
 function closePrivateDm() { state.dmFriend = null; if (state.dmRef && state.dmHandler) state.dmRef.off('child_added', state.dmHandler); state.dmRef = null; state.dmHandler = null; }
 function selectChannel(id) {
+  if (!state.server || !channels().some(channel => channel.id === id)) return;
   closePrivateDm();
   leaveVoice();
   els.friendRequestsPanel.hidden = true;
@@ -700,6 +704,11 @@ function selectChannel(id) {
   markChannelRead(id);
   renderServer();
 }
+els.textChannels.addEventListener('click', event => {
+  const channelButton = event.target.closest('button[data-channel-id]');
+  if (!channelButton || !els.textChannels.contains(channelButton) || event.target.closest('.channel-action')) return;
+  selectChannel(channelButton.dataset.channelId);
+});
 function defaultNexusData() {
   return {
     users: [],

@@ -6,13 +6,12 @@
     <title>Sektor launcher</title>
     <style>
         body{margin:24px;background:#101814;color:#edf7f2;font:14px system-ui,sans-serif}
-        button, a{display:inline-block;padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer;text-decoration:none}
+        button{display:inline-block;padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer}
         #status{color:#91b2a8}
     </style>
 </head>
 <body>
     <button id="open-sektor" type="button">Open Sektor</button>
-    <a id="direct-link" href="https://sektor-b5021.web.app/VUS-Servers.html" target="_blank" rel="noopener">Open Sektor directly</a>
     <p id="status" role="status" aria-live="polite"></p>
     <script>
         const openButton = document.getElementById('open-sektor');
