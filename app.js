@@ -302,7 +302,7 @@ function makeLocalAuth() {
 }
 
 const useLanBackend = new URLSearchParams(location.search).get('lan') === '1';
-const firebase = (useLanBackend && globalThis.firebase) || {
+const firebase = globalThis.firebase || {
   initializeApp: () => ({
     database: () => makeLocalStorageDatabase(),
     auth: () => makeLocalAuth()
@@ -311,7 +311,8 @@ const firebase = (useLanBackend && globalThis.firebase) || {
   auth: () => makeLocalAuth()
 };
 
-const db = firebase.initializeApp().database();
+const firebaseApp = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp();
+const db = firebaseApp.database();
 const firebaseAuth = firebase.auth ? firebase.auth() : makeLocalAuth();
 const state = { user:null, servers:[], server:null, channel:"general", activeView:'server', editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[], nexusData:null, nexusLoaded:false, nexusLoading:false, nexusInitialized:false, nexusRef:null, nexusHandler:null, nexusError:'' };
 const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');

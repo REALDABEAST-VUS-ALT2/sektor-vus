@@ -1,8 +1,12 @@
 (() => {
   const lanMode = new URLSearchParams(location.search).get('lan') === '1';
+  const firebaseApi = globalThis.firebase;
+  const firebaseMode = !lanMode && !!(firebaseApi && firebaseApi.apps && firebaseApi.apps.length);
   const sharedPath = 'nexus/sharedWorld';
   const localDataKey = 'blobtownEconomy';
   const sessionKey = 'blobtownSession';
+  const cloudAuth = firebaseMode ? firebaseApi.auth() : null;
+  const cloudWorldRef = firebaseMode ? firebaseApi.database().ref(sharedPath) : null;
   const content = document.getElementById('content');
   const status = document.getElementById('status');
   const connectButton = document.getElementById('connect-button');
@@ -11,6 +15,7 @@
   let world = null;
   let lastSavedWorld = null;
   let liveEvents = null;
+  let cloudWorldHandler = null;
   let connecting = false;
   let activeTab = 'home';
   let wheelRotation = 0;
@@ -270,12 +275,22 @@
     }
   }
 
+  async function ensureFirebaseAccess() {
+    if (!firebaseMode || cloudAuth.currentUser) return;
+    try {
+      await cloudAuth.signInAnonymously();
+    } catch (error) {
+      console.error('[Nexus] Could not authenticate with Firebase.', error);
+      throw new Error('Could not connect to the shared world. Anonymous sign-in may need to be enabled in Firebase Authentication.');
+    }
+  }
+
   async function connect() {
     if (connecting || world) return;
     connecting = true;
     connectButton.disabled = true;
     connectButton.textContent = 'Connecting…';
-    setStatus('Connecting to the ' + (lanMode ? 'shared' : 'local') + ' world…');
+    setStatus('Connecting to the ' + (lanMode || firebaseMode ? 'shared' : 'local') + ' world…');
     try {
       if (lanMode) {
         const saved = await requestWorld('GET');
@@ -283,6 +298,14 @@
         if (saved == null) await requestWorld('PUT', world);
         worldMode.textContent = 'Shared multiplayer world';
         subscribeToWorld();
+      } else if (firebaseMode) {
+        await ensureFirebaseAccess();
+        const result = await cloudWorldRef.transaction(current =>
+          current == null ? normalize(defaults()) : current
+        );
+        world = normalize(result.snapshot.val());
+        worldMode.textContent = 'Shared multiplayer world';
+        subscribeToCloudWorld();
       } else {
         let saved = null;
         try {
@@ -295,7 +318,7 @@
         if (!saved) localStorage.setItem(localDataKey, JSON.stringify(world));
       }
       lastSavedWorld = copyWorld(world);
-      setStatus(lanMode ? 'Connected to the shared Nexus world.' : 'Connected to your local Nexus world.');
+      setStatus(lanMode || firebaseMode ? 'Connected to the shared Nexus world.' : 'Connected to your local Nexus world.');
       render();
       await settleExpiredAuctions();
     } catch (error) {
@@ -331,12 +354,29 @@
     liveEvents.onopen = () => setStatus('Connected to the shared Nexus world.');
   }
 
+  function subscribeToCloudWorld() {
+    if (cloudWorldHandler) cloudWorldRef.off('value', cloudWorldHandler);
+    cloudWorldHandler = snapshot => {
+      const value = snapshot.val();
+      if (value && typeof value === 'object') {
+        world = normalize(value);
+        lastSavedWorld = copyWorld(world);
+        render();
+      }
+    };
+    cloudWorldRef.on('value', cloudWorldHandler, error => {
+      setStatus('Live updates disconnected. Check your Firebase connection and database rules.', true);
+      console.error('[Nexus] Could not receive live world updates.', error);
+    });
+  }
+
   async function persist(successMessage) {
     const next = normalize(world);
     const previous = lastSavedWorld;
     world = next;
     try {
       if (lanMode) await requestWorld('PUT', world);
+      else if (firebaseMode) await cloudWorldRef.set(world);
       else localStorage.setItem(localDataKey, JSON.stringify(world));
       lastSavedWorld = copyWorld(world);
       setStatus(successMessage);
@@ -368,6 +408,10 @@
         } finally {
           clearTimeout(timer);
         }
+      } else if (firebaseMode) {
+        settleExpiredAuctionsInWorld(world, Date.now());
+        await cloudWorldRef.set(world);
+        lastSavedWorld = copyWorld(world);
       } else {
         settleExpiredAuctionsInWorld(world, Date.now());
         localStorage.setItem(localDataKey, JSON.stringify(world));
@@ -893,7 +937,8 @@
   setInterval(updateAuctionCountdowns, 1000);
   window.addEventListener('pagehide', () => {
     if (liveEvents) liveEvents.close();
+    if (cloudWorldHandler) cloudWorldRef.off('value', cloudWorldHandler);
   });
-  worldMode.textContent = lanMode ? 'Shared multiplayer world' : 'This browser only · not multiplayer';
+  worldMode.textContent = lanMode || firebaseMode ? 'Shared multiplayer world' : 'This browser only · not multiplayer';
   if (inventoryPage) connect();
 })();
