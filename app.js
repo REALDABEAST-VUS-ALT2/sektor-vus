@@ -496,6 +496,7 @@ async function selectServer(code) {
     clearSubscriptions();
     closePrivateDm();
     state.server = state.servers.find(server => server.code === code);
+    updateEditModeUi();
     state.channel = 'general';
     if (!state.server) return;
     els.friendsBtn.classList.remove('active');
@@ -516,14 +517,13 @@ async function selectServer(code) {
       renderServer();
       return;
     }
-    state.presenceRef = db.ref('serverPresence/' + code + '/' + state.user.key);
-    state.presenceRef.onDisconnect().remove();
-    await state.presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''});
-    if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
+    const presenceRef = db.ref('serverPresence/' + code + '/' + state.user.key);
+    state.presenceRef = presenceRef;
     state.metaRef = db.ref('serverMeta/' + code);
     state.metaHandler = snap => {
       if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
       state.server = snap.exists() ? {code,...snap.val()} : null;
+      updateEditModeUi();
       renderServer();
     };
     state.metaRef.on('value', state.metaHandler);
@@ -533,6 +533,17 @@ async function selectServer(code) {
     };
     state.presenceListRef.on('value', state.presenceHandler);
     renderServer();
+    presenceRef.onDisconnect().remove()
+      .then(() => {
+        if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
+        return presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''});
+      })
+      .catch(error => {
+        if (navigationVersion === state.navigationVersion && state.activeView === 'server') {
+          console.error('[Sektor] Could not update server presence.', error);
+          showError('Could not update online server presence.');
+        }
+      });
   } catch (error) {
     if (navigationVersion === state.navigationVersion) showError(error.message || 'Could not open that server.');
   }
@@ -1012,6 +1023,16 @@ function mentionMatches() { const match = els.messageInput.value.match(/(?:^|\s)
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
 function renderMembers(data) { const members = Object.values(data || {}).filter(member => member && typeof member === 'object'); state.serverMembers = Object.fromEntries(members.map(member => [member.key || member.name, member])); els.memberCount.textContent = members.length; els.membersList.innerHTML = ''; members.forEach(member => { const row = document.createElement('div'); row.className = 'member'; const rank = rankForMember(member.key, member.name); const rankText = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '<span class="member-rank">Member</span>'; row.innerHTML = avatarMarkup(member, 'member-avatar') + '<div><div class="member-name">' + esc(member.name || 'Member') + '</div><div class="member-rank">' + rankText + '</div></div>'; els.membersList.appendChild(row); }); }
 const RTC_CONFIG = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+function showVoicePermissionPrompt(channelId, videoMode) {
+  const message = document.createElement('div');
+  message.textContent = 'Allow access in the browser prompt. If permission was blocked, change it in your browser site settings and try again.';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'voice-permission-button';
+  button.textContent = videoMode ? 'Request microphone and camera access' : 'Request microphone access';
+  button.onclick = () => joinVoice(channelId, videoMode);
+  els.voiceMembers.replaceChildren(message, button);
+}
 async function joinVoice(channelId, videoMode = false) {
   if (!state.server || !channelId || !state.user || !state.user.key) return;
   try {
@@ -1021,7 +1042,16 @@ async function joinVoice(channelId, videoMode = false) {
       ? await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true})
       : await navigator.mediaDevices.getUserMedia({audio:true,video:videoMode ? {width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}} : false});
   }
-  catch (error) { els.voiceMembers.textContent = 'Microphone permission is required for voice.'; return; }
+  catch (error) {
+    if (error && ['NotAllowedError', 'PermissionDeniedError'].includes(error.name)) {
+      showVoicePermissionPrompt(channelId, videoMode);
+    } else {
+      els.voiceMembers.textContent = videoMode
+        ? 'Could not access your microphone and camera. Check that the devices are connected and available.'
+        : 'Could not access your microphone. Check that it is connected and available.';
+    }
+    return;
+  }
   state.voiceChannel = channelId;
   els.voiceControls.hidden = false;
   els.muteVoice.textContent = 'Mute';
@@ -1273,12 +1303,6 @@ new MutationObserver(() => {
   };
 })();
 els.addChannel.onclick = openAddChannelModal;
-(function keepOwnerToolsAvailable() {
-  const observer = new MutationObserver(() => {
-    updateEditModeUi();
-  });
-  observer.observe(els.ownerTools, {attributes:true, attributeFilter:['hidden']});
-})();
 (function addProfileButton() { els.logout.title = 'Profile (double-click) or log out'; })();
 (function restoreSession() { try { const session = JSON.parse(localStorage.getItem('vusServersSession')); if (session && session.key) { state.user = session; showApp(); } } catch (error) {} })();
 
