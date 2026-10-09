@@ -546,6 +546,34 @@ function openFriendModal() {
   document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus();
 }
 function channels() { return Object.entries((state.server && state.server.channels) || {}).filter(([, channel]) => channel && typeof channel === 'object').map(([id, channel]) => ({id,...channel, type:channel.type === 'games' || channel.game === true ? 'text' : channel.type, topic:String(channel.topic || '').replace(/^\[games\]\s*/, '')})); }
+function serverAnnouncements(server = state.server) {
+  if (!server) return [];
+  const saved = server.announcements;
+  const entries = Array.isArray(saved) ? saved : Object.values(saved || {});
+  return [...(server.announcement ? [server.announcement] : []), ...entries]
+    .filter(item => item && typeof item === 'object' && typeof item.text === 'string')
+    .sort((left, right) => (Number(left.ts) || 0) - (Number(right.ts) || 0));
+}
+function latestAnnouncement(server = state.server) {
+  const entries = serverAnnouncements(server);
+  return entries[entries.length - 1] || null;
+}
+function hiddenMessagesStorageKey(server = state.server, channelId = state.channel) {
+  return server && state.user
+    ? 'vusHiddenMessages_' + safe(state.user.key) + '_' + safe(server.code) + '_' + safe(channelId)
+    : '';
+}
+function loadHiddenMessageIds(server = state.server, channelId = state.channel) {
+  const key = hiddenMessagesStorageKey(server, channelId);
+  if (!key) return [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(saved) ? saved.filter(id => typeof id === 'string') : [];
+  } catch (error) {
+    console.error('[Sektor] Could not load hidden messages.', error);
+    return [];
+  }
+}
 function channelReadStorageKey(server = state.server) { return server && state.user ? 'vusChannelRead_' + safe(state.user.key) + '_' + safe(server.code) : ''; }
 function loadChannelReadState(server) {
   const key = channelReadStorageKey(server);
@@ -668,17 +696,27 @@ function renderServer() {
   syncUnreadChannelWatchers(text);
   if (!current) return;
   const announcementChannel = current.type === 'announcement';
-  const announcement = state.server.announcement;
+  const announcements = serverAnnouncements(state.server);
+  const latest = latestAnnouncement(state.server);
   els.channelName.textContent = current.name;
   els.channelTopic.textContent = current.topic || '';
   els.channelPermission.textContent = announcementChannel ? 'OWNER ONLY' : '';
-  els.announcement.hidden = !(announcementChannel && announcement);
-  els.announcementText.textContent = announcement ? announcement.text : '';
+  els.announcement.hidden = !(announcementChannel && announcements.length);
+  els.announcementText.replaceChildren(...announcements.map(announcement => {
+    const entry = document.createElement('article');
+    entry.className = 'announcement-entry';
+    const label = document.createElement('small');
+    label.textContent = 'OWNER ANNOUNCEMENT';
+    const text = document.createElement('div');
+    text.textContent = announcement.text;
+    entry.append(label, text);
+    return entry;
+  }));
   els.ownerComposer.hidden = !(announcementChannel && owner);
   els.messageInput.placeholder = announcementChannel ? 'Only the server owner can post here' : 'Message #' + current.name;
-  markChannelRead(current.id, announcementChannel && announcement ? announcement.ts : Date.now());
-  if (!announcement && current.id === 'announcements') setChannelUnread('announcements', false);
-  else if (announcement && !announcementChannel && Number(announcement.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
+  markChannelRead(current.id, announcementChannel && latest ? latest.ts : Date.now());
+  if (!latest && current.id === 'announcements') setChannelUnread('announcements', false);
+  else if (latest && !announcementChannel && Number(latest.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
   selectMessages(current.id);
   els.messageForm.hidden = announcementChannel;
 }
@@ -1207,6 +1245,11 @@ window.addEventListener('storage', event => {
     });
     return;
   }
+  const hiddenChannel = channels().find(channel => event.key === hiddenMessagesStorageKey(state.server, channel.id));
+  if (hiddenChannel) {
+    if (state.channel === hiddenChannel.id) selectMessages(state.channel);
+    return;
+  }
   if (!state.server.localOnly) return;
   const changedChannel = channels().find(channel => event.key === 'vusMessages_' + state.server.code + '_' + safe(channel.id));
   if (!changedChannel) return;
@@ -1216,6 +1259,11 @@ window.addEventListener('storage', event => {
 function renderMessage(message) {
   if (!isValidMessage(message)) return;
   const existing = [...els.messages.querySelectorAll('.message')].find(node => node.dataset.messageId === message.id);
+  if (loadHiddenMessageIds().includes(message.id)) {
+    if (existing) existing.remove();
+    if (!els.messages.querySelector('.message')) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+    return;
+  }
   const wasAtBottom = els.messages.scrollHeight - els.messages.scrollTop - els.messages.clientHeight < 40;
   const empty = els.messages.querySelector('.empty-state');
   if (empty) empty.remove();
@@ -1229,7 +1277,7 @@ function renderMessage(message) {
   const rank = rankForMember(message.key, message.name);
   const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
-  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '') + '</div></div>';
+  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
   item.querySelectorAll('.reaction').forEach(button => button.onclick = () => toggleReaction(message, button.dataset.emoji));
   item.querySelector('[data-action="react"]').onclick = event => openReactionPicker(event, item, message);
   item.querySelector('[data-action="reply"]').onclick = () => startReply(message);
@@ -1237,9 +1285,23 @@ function renderMessage(message) {
   if (editButton) editButton.onclick = () => startEdit(item, message);
   const deleteButton = item.querySelector('[data-action="delete"]');
   if (deleteButton) deleteButton.onclick = () => deleteMessage(item, message);
+  const hideButton = item.querySelector('[data-action="hide"]');
+  if (hideButton) hideButton.onclick = () => hideMessage(item, message);
   if (existing) existing.replaceWith(item);
   else els.messages.appendChild(item);
   if (!existing && wasAtBottom) els.messages.scrollTop = els.messages.scrollHeight;
+}
+function hideMessage(item, message) {
+  if (!state.server || String(message.key) === String(state.user.key) || !message.id) return;
+  try {
+    const key = hiddenMessagesStorageKey();
+    const hiddenIds = loadHiddenMessageIds();
+    if (!hiddenIds.includes(message.id)) localStorage.setItem(key, JSON.stringify([...hiddenIds, message.id]));
+    item.remove();
+    if (!els.messages.querySelector('.message')) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+  } catch (error) {
+    showError('Could not hide that message on this device.');
+  }
 }
 function openReactionPicker(event, item, message) { event.stopPropagation(); document.querySelectorAll('.reaction-picker').forEach(picker => picker.remove()); const picker = document.createElement('div'); picker.className = 'reaction-picker'; REACTION_EMOJIS.forEach(emoji => { const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.title = 'React ' + emoji; button.onclick = async pickerEvent => { pickerEvent.stopPropagation(); picker.remove(); await toggleReaction(message, emoji); }; picker.appendChild(button); }); item.style.position = 'relative'; item.appendChild(picker); picker.style.left = '48px'; picker.style.bottom = '32px'; }
 function startReply(message) { replyTo = {id:message.id || '', name:message.name, text:message.text}; els.messageInput.placeholder = 'Reply to ' + message.name + '…'; els.messageInput.focus(); }
@@ -1416,7 +1478,28 @@ async function toggleCamera() {
   if (localTile) localTile.classList.toggle('video-disabled', !track.enabled);
 }
 async function leaveVoice() { if (state.voiceMembersUnsub) state.voiceMembersUnsub(); if (state.voiceSignalUnsub) state.voiceSignalUnsub(); Object.keys(state.peers).forEach(closeVoicePeer); if (state.voiceRef) { state.voiceRef.onDisconnect().cancel(); await state.voiceRef.remove(); } if (state.localStream) state.localStream.getTracks().forEach(track => track.stop()); state.voiceMembersUnsub = state.voiceSignalUnsub = state.voiceRef = state.localStream = null; state.voiceChannel = null; state.voicePeerId = null; state.mediaMode = 'audio'; state.peers = {}; if (els.voiceControls) els.voiceControls.hidden = true; if (els.voiceMembers) els.voiceMembers.textContent = ''; if (els.videoStage) { els.videoStage.innerHTML = ''; els.videoStage.hidden = true; } if (els.mediaControlPopup) els.mediaControlPopup.hidden = true; }
-async function publishAnnouncement() { if (!state.server || state.server.ownerKey !== state.user.key) return; const text = els.announcementInput.value.trim(); if (!text) return; const announcement = {text:text.slice(0,240),by:state.user.username,ts:Date.now()}; try { if (state.server.localOnly) { state.server.announcement = announcement; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else { await db.ref('serverMeta/' + state.server.code + '/announcement').set({...announcement,ts:firebase.database.ServerValue.TIMESTAMP}); } els.announcementInput.value = ''; renderServer(); } catch (error) { showError('Could not publish the announcement.'); } }
+async function publishAnnouncement() {
+  if (!state.server || state.server.ownerKey !== state.user.key) return;
+  const text = els.announcementInput.value.trim();
+  if (!text) return;
+  const announcement = {text:text.slice(0,240),by:state.user.username,ts:Date.now()};
+  try {
+    if (state.server.localOnly) {
+      const existing = Array.isArray(state.server.announcements) ? state.server.announcements : [];
+      state.server.announcements = [...existing, announcement];
+      saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server));
+    } else {
+      await db.ref('serverMeta/' + state.server.code + '/announcements').push({...announcement,ts:firebase.database.ServerValue.TIMESTAMP});
+    }
+    els.announcementInput.value = '';
+    renderServer();
+    if (state.channel && channels().find(channel => channel.id === state.channel)?.type === 'announcement') {
+      els.announcement.scrollTop = els.announcement.scrollHeight;
+    }
+  } catch (error) {
+    showError('Could not publish the announcement.');
+  }
+}
 function openAddChannelModal() { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Add channel'; els.modalBody.innerHTML = '<label class="modal-label" for="newChannelName">Channel name</label><input id="newChannelName" class="modal-input" maxlength="24" value="new-channel" placeholder="chat-room"><label class="modal-label" for="newChannelType">Channel type</label><select id="newChannelType" class="modal-input"><option value="text">Chat · messages and images</option><option value="voice">Voice · live audio</option><option value="games">Games · party games</option><option value="announcement">Announcements · owner only</option></select><label class="modal-label" for="newChannelTopic">Topic</label><input id="newChannelTopic" class="modal-input" maxlength="80" placeholder="What is this channel for?"><div id="modalError" class="error"></div><button id="saveChannel" class="primary-btn">Create channel</button>'; els.modal.hidden = false; const nameInput = document.getElementById('newChannelName'); nameInput.focus(); nameInput.select(); document.getElementById('saveChannel').onclick = async () => { const name = nameInput.value.trim(); const type = document.getElementById('newChannelType').value; const topic = document.getElementById('newChannelTopic').value.trim(); const error = document.getElementById('modalError'); if (!name) { error.textContent = 'Enter a channel name.'; return; } const id = safe(name.toLowerCase().replace(/\s+/g,'-')); const channel = {name:name.slice(0,24),type:type === 'games' ? 'text' : type,topic:(type === 'games' ? '[games] ' : '') + (topic.slice(0,80) || (type === 'voice' ? 'Join the conversation.' : type === 'games' ? 'Party games for the server.' : type === 'announcement' ? 'Owner updates only.' : 'A new place to talk.'))}; try { if (state.server.localOnly) { state.server.channels[id] = channel; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); renderServer(); } else { await db.ref('serverMeta/' + state.server.code + '/channels/' + id).set(channel); } els.modal.hidden = true; } catch (saveError) { error.textContent = 'Could not create this channel.'; } }; }
 function openRankModal() { if (!state.server || state.server.ownerKey !== state.user.key) return; const members = Object.values(state.serverMembers || {}).filter(member => member.key !== state.user.key); const presetRanks = [
     {name:'Moderator', color:'#5bc0eb', permissions:{manage:true, announce:true}},
