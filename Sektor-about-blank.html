@@ -6,44 +6,29 @@
     <title>Sektor launcher</title>
     <style>
         body{margin:24px;background:#101814;color:#edf7f2;font:14px system-ui,sans-serif}
-        button{padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer}
+        button, a{display:inline-block;padding:10px 14px;border:1px solid #65e6ad;border-radius:7px;background:#17241e;color:#edf7f2;cursor:pointer;text-decoration:none}
         #status{color:#91b2a8}
     </style>
 </head>
 <body>
     <button id="open-sektor" type="button">Open Sektor</button>
+    <a id="direct-link" href="https://sektor-b5021.web.app/VUS-Servers.html" target="_blank" rel="noopener">Open Sektor directly</a>
     <p id="status" role="status" aria-live="polite"></p>
     <script>
         const openButton = document.getElementById('open-sektor');
         const status = document.getElementById('status');
-        const localHtmlUrl = new URL('./VUS-Servers.html', window.location.href).toString();
-        const remoteHtmlUrl = 'https://raw.githubusercontent.com/REALDABEAST-VUS-ALT2/sektor-vus/main/VUS-Servers.html';
+        const appUrl = 'https://sektor-b5021.web.app/VUS-Servers.html';
 
-        async function resolveAppUrl() {
-            try {
-                const localResponse = await fetch(localHtmlUrl, {cache: 'no-store'});
-                if (localResponse.ok) return localHtmlUrl;
-            } catch (error) {}
-            const remoteResponse = await fetch(remoteHtmlUrl, {cache: 'no-store'});
-            if (!remoteResponse.ok) throw new Error('Could not fetch Sektor.');
-            return remoteHtmlUrl;
-        }
-
-        openButton.addEventListener('click', async () => {
-            const popup = window.open('about:blank');
+        openButton.addEventListener('click', () => {
+            const popup = window.open('about:blank', '_blank');
             if (!popup) {
-                status.textContent = 'Allow popups to open Sektor.';
+                status.textContent = 'Allow popups, or use “Open Sektor directly”.';
                 return;
             }
-            status.textContent = 'Loading Sektor...';
-            try {
-                const targetUrl = await resolveAppUrl();
-                popup.location.href = targetUrl;
-                status.textContent = 'Sektor opened.';
-            } catch (error) {
-                popup.close();
-                status.textContent = error.message || 'Could not load Sektor.';
-            }
+            popup.document.open();
+            popup.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sektor</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}</style></head><body><iframe src="' + appUrl + '" title="Sektor"></iframe></body></html>');
+            popup.document.close();
+            status.textContent = 'Sektor opened.';
         });
     </script>
 </body>
