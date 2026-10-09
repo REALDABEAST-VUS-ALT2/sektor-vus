@@ -26,7 +26,7 @@
                 return;
             }
             popup.document.open();
-            popup.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sektor</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}</style></head><body><iframe src="' + appUrl + '" title="Sektor" allow="microphone; camera; autoplay; display-capture"></iframe></body></html>');
+            popup.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sektor</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}</style></head><body><iframe src="' + appUrl + '" title="Sektor" allow="microphone https://sektor-b5021.web.app; camera https://sektor-b5021.web.app; autoplay https://sektor-b5021.web.app; display-capture https://sektor-b5021.web.app"></iframe></body></html>');
             popup.document.close();
             status.textContent = 'Sektor opened.';
         });

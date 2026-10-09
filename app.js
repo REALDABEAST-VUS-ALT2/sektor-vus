@@ -1140,7 +1140,104 @@ function openRankModal() { if (!state.server || state.server.ownerKey !== state.
     '<div class="rank-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 8px;">' + presetRanks.map(preset => '<button type="button" class="modal-secondary" data-rank-preset="' + esc(preset.name) + '" style="width:auto; margin:0; padding:7px 10px; border-radius:999px;">' + esc(preset.name) + '</button>').join('') + '</div>' +
     '<label class="modal-label" for="rankName">Rank name</label><input id="rankName" class="modal-input" maxlength="20" placeholder="Moderator, VIP, Member"><label class="modal-label" for="rankColor">Rank color</label><input id="rankColor" class="modal-color" type="color" value="#9aa5b4"><label class="rank-check"><input id="rankManage" type="checkbox"> Can manage channels and members</label><label class="rank-check"><input id="rankAnnounce" type="checkbox"> Can publish announcements</label><button id="clearRank" class="modal-secondary"' + (members.length ? '' : ' disabled') + '>Remove rank</button><div id="modalError" class="error"></div><button id="saveRank" class="primary-btn"' + (members.length ? '' : ' disabled') + '>Save custom rank</button>';
   els.modal.hidden = false; const memberSelect = document.getElementById('rankMember'); const rankNameInput = document.getElementById('rankName'); const rankColorInput = document.getElementById('rankColor'); const rankManageInput = document.getElementById('rankManage'); const rankAnnounceInput = document.getElementById('rankAnnounce'); const fillRank = () => { const existing = state.server.ranks && state.server.ranks[memberSelect.value]; const rank = typeof existing === 'object' ? existing : null; rankNameInput.value = rank ? rank.name : (typeof existing === 'string' ? existing : ''); rankColorInput.value = rank && rank.color || '#9aa5b4'; rankManageInput.checked = !!(rank && rank.permissions && rank.permissions.manage); rankAnnounceInput.checked = !!(rank && rank.permissions && rank.permissions.announce); }; const applyPreset = (preset) => { rankNameInput.value = preset.name; rankColorInput.value = preset.color; rankManageInput.checked = !!preset.permissions.manage; rankAnnounceInput.checked = !!preset.permissions.announce; }; Array.from(document.querySelectorAll('[data-rank-preset]')).forEach(button => { const presetName = button.getAttribute('data-rank-preset'); const preset = presetRanks.find(item => item.name === presetName); if (preset) button.onclick = () => applyPreset(preset); }); memberSelect.onchange = fillRank; fillRank(); document.getElementById('saveRank').onclick = async () => { const memberKey = memberSelect.value; const rankName = rankNameInput.value.trim(); const rank = {name:rankName.slice(0,20),color:rankColorInput.value,permissions:{manage:rankManageInput.checked,announce:rankAnnounceInput.checked}}; if (!memberKey || !rankName) { document.getElementById('modalError').textContent = 'Choose a member and enter a rank name.'; return; } try { state.server.ranks = state.server.ranks || {}; state.server.ranks[memberKey] = rank; if (state.server.localOnly) { saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else { await db.ref('serverMeta/' + state.server.code + '/ranks/' + memberKey).set(rank); } renderMembers(state.serverMembers); els.modal.hidden = true; } catch (error) { document.getElementById('modalError').textContent = 'Could not save this rank.'; } }; document.getElementById('clearRank').onclick = async () => { const memberKey = memberSelect.value; if (!memberKey) { document.getElementById('modalError').textContent = 'Choose a member to remove.'; return; } try { if (!state.server.ranks) state.server.ranks = {}; delete state.server.ranks[memberKey]; if (state.server.localOnly) { saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else { await db.ref('serverMeta/' + state.server.code + '/ranks/' + memberKey).remove(); } renderMembers(state.serverMembers); els.modal.hidden = true; } catch (error) { document.getElementById('modalError').textContent = 'Could not remove this rank.'; } }; }
-function openServerSettings() { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Customize server'; els.modalBody.innerHTML = '<label class="modal-label" for="settingsServerName">Server name</label><input id="settingsServerName" class="modal-input" maxlength="32"><label class="modal-label" for="settingsDescription">Description</label><input id="settingsDescription" class="modal-input" maxlength="80" placeholder="What is this server about?"><label class="modal-label" for="settingsAccent">Accent color</label><input id="settingsAccent" class="modal-color" type="color"><label class="modal-label" for="settingsIcon">Server icon</label><input id="settingsIcon" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveServerSettings" class="primary-btn">Save changes</button>'; const nameInput = document.getElementById('settingsServerName'); const descriptionInput = document.getElementById('settingsDescription'); const accentInput = document.getElementById('settingsAccent'); nameInput.value = state.server.name || ''; descriptionInput.value = state.server.description || ''; accentInput.value = state.server.accent || '#5865f2'; let icon = state.server.icon || ''; document.getElementById('settingsIcon').onchange = event => { const file = event.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { document.getElementById('modalError').textContent = 'Choose an icon under 2 MB.'; return; } const reader = new FileReader(); reader.onload = () => { icon = reader.result; }; reader.readAsDataURL(file); }; document.getElementById('saveServerSettings').onclick = async () => { const name = nameInput.value.trim(); if (!name) { document.getElementById('modalError').textContent = 'Enter a server name.'; return; } const updates = {name:name.slice(0,32),description:descriptionInput.value.trim().slice(0,80),accent:accentInput.value,icon}; try { if (state.server.localOnly) { Object.assign(state.server, updates); saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); const index = state.servers.findIndex(server => server.code === state.server.code); if (index >= 0) Object.assign(state.servers[index], updates); } else await db.ref('serverMeta/' + state.server.code).update(updates); Object.assign(state.server, updates); renderServerRail(); renderServer(); els.modal.hidden = true; } catch (error) { document.getElementById('modalError').textContent = 'Could not save server settings.'; } }; els.modal.hidden = false; }
+function openServerSettings() {
+  if (!isServerOwner()) return;
+  const server = state.server;
+  els.modalTitle.textContent = 'Customize server';
+  els.modalBody.innerHTML = '<label class="modal-label" for="settingsServerName">Server name</label><input id="settingsServerName" class="modal-input" maxlength="32"><label class="modal-label" for="settingsDescription">Description</label><input id="settingsDescription" class="modal-input" maxlength="80" placeholder="What is this server about?"><label class="modal-label" for="settingsAccent">Accent color</label><input id="settingsAccent" class="modal-color" type="color"><label class="modal-label" for="settingsIcon">Server icon</label><input id="settingsIcon" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveServerSettings" class="primary-btn">Save changes</button><hr><button id="deleteServer" class="modal-danger" type="button">Delete server</button>';
+  const nameInput = document.getElementById('settingsServerName');
+  const descriptionInput = document.getElementById('settingsDescription');
+  const accentInput = document.getElementById('settingsAccent');
+  nameInput.value = server.name || '';
+  descriptionInput.value = server.description || '';
+  accentInput.value = server.accent || '#5865f2';
+  let icon = server.icon || '';
+  document.getElementById('settingsIcon').onchange = event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      document.getElementById('modalError').textContent = 'Choose an icon under 2 MB.';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { icon = reader.result; };
+    reader.readAsDataURL(file);
+  };
+  document.getElementById('saveServerSettings').onclick = async () => {
+    const name = nameInput.value.trim();
+    if (!name) { document.getElementById('modalError').textContent = 'Enter a server name.'; return; }
+    const updates = {name:name.slice(0,32),description:descriptionInput.value.trim().slice(0,80),accent:accentInput.value,icon};
+    try {
+      if (server.localOnly) {
+        Object.assign(server, updates);
+        saveLocalServers(localServers().map(item => item.code === server.code ? server : item));
+        const index = state.servers.findIndex(item => item.code === server.code);
+        if (index >= 0) Object.assign(state.servers[index], updates);
+      } else await db.ref('serverMeta/' + server.code).update(updates);
+      Object.assign(server, updates);
+      renderServerRail();
+      renderServer();
+      els.modal.hidden = true;
+    } catch (error) {
+      document.getElementById('modalError').textContent = 'Could not save server settings.';
+    }
+  };
+  document.getElementById('deleteServer').onclick = () => openDeleteServerConfirmation(server);
+  els.modal.hidden = false;
+}
+function openDeleteServerConfirmation(server) {
+  if (!isServerOwner() || state.server.code !== server.code) return;
+  els.modalTitle.textContent = 'Delete server';
+  els.modalBody.innerHTML = '<p class="modal-copy">This permanently deletes <strong>' + esc(server.name) + '</strong> and its server data. This cannot be undone.</p><label class="modal-label" for="confirmServerName">Type the server name to confirm</label><input id="confirmServerName" class="modal-input" autocomplete="off"><div id="modalError" class="error"></div><div class="modal-actions"><button id="cancelDeleteServer" class="modal-secondary" type="button">Cancel</button><button id="confirmDeleteServer" class="modal-danger" type="button" disabled>Delete server</button></div>';
+  const input = document.getElementById('confirmServerName');
+  const confirmButton = document.getElementById('confirmDeleteServer');
+  input.oninput = () => { confirmButton.disabled = input.value.trim() !== server.name; };
+  document.getElementById('cancelDeleteServer').onclick = openServerSettings;
+  confirmButton.onclick = async () => {
+    if (!isServerOwner() || state.server.code !== server.code || input.value.trim() !== server.name) return;
+    confirmButton.disabled = true;
+    try {
+      await deleteServer(server);
+    } catch (error) {
+      document.getElementById('modalError').textContent = 'Could not delete this server. Try again.';
+      console.error('[Sektor] Could not delete server.', error);
+      confirmButton.disabled = false;
+    }
+  };
+  els.modal.hidden = false;
+  input.focus();
+}
+async function deleteServer(server) {
+  if (!server || !isServerOwner() || state.server.code !== server.code) throw new Error('Only the server owner can delete this server.');
+  const code = server.code;
+  if (server.localOnly) {
+    saveLocalServers(localServers().filter(item => item.code !== code));
+  } else {
+    const updates = {};
+    ['serverMeta','serverMessages','serverPresence','serverVoice','voiceSignals','serverGames'].forEach(path => {
+      updates[path + '/' + code] = null;
+    });
+    await db.ref().update(updates);
+  }
+  const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]');
+  localStorage.setItem('vusServersJoined', JSON.stringify(joined.filter(joinedCode => joinedCode !== code)));
+  const messagePrefix = 'vusMessages_' + code + '_';
+  Object.keys(localStorage).filter(key => key.startsWith(messagePrefix)).forEach(key => localStorage.removeItem(key));
+  await clearSubscriptions();
+  state.servers = state.servers.filter(item => item.code !== code);
+  state.server = null;
+  state.channel = '';
+  state.editMode = false;
+  els.modal.hidden = true;
+  renderServerRail();
+  clearServer();
+  renderMembers({});
+  els.ownerTools.hidden = true;
+  els.announcement.hidden = true;
+  els.ownerComposer.hidden = true;
+  els.channelTopic.textContent = '';
+  els.channelPermission.textContent = '';
+}
 function clearServer() { els.serverName.textContent = 'Select a server'; els.serverCode.textContent = ''; els.textChannels.innerHTML = ''; els.voiceChannels.innerHTML = ''; els.messages.innerHTML = '<div class="empty-state">Create or select a server to begin.</div>'; }
 
 els.loginTab.onclick = () => { signupMode = false; els.loginTab.classList.add('active'); els.signupTab.classList.remove('active'); els.authSubmit.textContent = 'Log in'; };

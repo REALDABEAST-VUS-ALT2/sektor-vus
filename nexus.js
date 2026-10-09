@@ -5,6 +5,8 @@
   const sharedPath = 'nexus/sharedWorld';
   const localDataKey = 'blobtownEconomy';
   const sessionKey = 'blobtownSession';
+  const maxChatLength = 180;
+  const maxCodeLength = 4000;
   const cloudAuth = firebaseMode ? firebaseApi.auth() : null;
   const cloudWorldRef = firebaseMode ? firebaseApi.database().ref(sharedPath) : null;
   const content = document.getElementById('content');
@@ -39,6 +41,36 @@
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
   }[char]));
   const copyWorld = value => JSON.parse(JSON.stringify(value));
+
+  function codeFromMessage(value) {
+    const text = String(value ?? '');
+    if (!text.startsWith('/code:')) return null;
+    let code = text.slice(6);
+    if (code.startsWith(' ')) code = code.slice(1);
+    if (code.startsWith('\r\n')) code = code.slice(2);
+    else if (code.startsWith('\n')) code = code.slice(1);
+    return code;
+  }
+
+  function chatInitials(username) {
+    const parts = String(username || '?').trim().split(/[\s_-]+/).filter(Boolean);
+    return (parts.length > 1
+      ? parts[0].charAt(0) + parts[1].charAt(0)
+      : Array.from(parts[0] || '?').slice(0, 2).join('')).toUpperCase();
+  }
+
+  function renderChatMessage(message) {
+    const username = String(message.user || 'Unknown');
+    const text = String(message.text || '');
+    const code = codeFromMessage(text);
+    const content = code === null
+      ? '<div class="nexus-chat-text">' + escapeHtml(text) + '</div>'
+      : '<section class="nexus-code-card"><header><span>SEKTOR CODE</span><button class="nexus-code-copy" type="button" data-action="copy-code">Copy</button></header><pre><code>' +
+        escapeHtml(code) + '</code></pre></section>';
+    return '<article class="nexus-chat-line"><span class="nexus-chat-avatar" aria-hidden="true">' +
+      escapeHtml(chatInitials(username)) + '</span><div class="nexus-chat-message"><header><strong>' +
+      escapeHtml(username) + '</strong></header>' + content + '</div></article>';
+  }
 
   function currency(amount) {
     return '<span class="nexus-money"><span class="nexus-currency" aria-label="Sektorium"></span><span>' +
@@ -658,7 +690,7 @@
           (ownListing || !user || !canAfford ? 'disabled' : '') + '>' + buttonText + '</button></div>';
       }).join('')
       : '<div class="nexus-empty">No items are listed yet.</div>';
-    const messages = world.chat.slice(-30).map(message => '<div class="nexus-chat-line"><strong>' + escapeHtml(message.user || 'Unknown') + ':</strong> ' + escapeHtml(message.text || '') + '</div>').join('') || '<div class="nexus-empty">No messages yet.</div>';
+    const messages = world.chat.slice(-30).map(renderChatMessage).join('') || '<div class="nexus-empty">No messages yet.</div>';
     const shopTab = activeTab === 'shop';
     content.innerHTML = '<section class="nexus-welcome"><span>SEKTOR · SOCIAL WORLD</span><h1>' +
       (shopTab ? 'The Nexus shop.' : 'Welcome to Nexus.') + '</h1><p>' +
@@ -670,7 +702,7 @@
         ? '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
           '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
           (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
-        : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><input name="text" maxlength="180" placeholder="Say something in Nexus…" required><button class="nexus-button">Send</button></form></section>');
+        : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: to share a code block" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Tip: start with <code>/code:</code> to post a Sektor code card. Press Shift+Enter for a new line.</small></section>');
     const chat = content.querySelector('.nexus-chat');
     if (chat) chat.scrollTop = chat.scrollHeight;
     updateAuctionCountdowns();
@@ -782,14 +814,25 @@
       } else if (form.dataset.form === 'chat') {
         const user = currentUser();
         if (!user) throw new Error('Sign in to chat in Nexus.');
-        const text = String(formData.get('text') || '').trim();
-        if (!text) return;
-        world.chat.push({user:user.username,text});
+        const text = String(formData.get('text') || '').replace(/\r\n/g, '\n');
+        const code = codeFromMessage(text);
+        if (code === null && text.trim().length > maxChatLength) {
+          throw new Error('Chat messages are limited to ' + maxChatLength + ' characters. Use /code: for a code card.');
+        }
+        if (code !== null && code.length > maxCodeLength) throw new Error('Code cards are limited to ' + maxCodeLength + ' characters.');
+        if (!(code === null ? text.trim() : code.trim())) return;
+        world.chat.push({user:user.username,text:code === null ? text.trim() : text});
         await persist('Message sent.');
       }
     } catch (error) {
       setStatus(error.message || 'That action could not be completed.', true);
     }
+  });
+
+  content.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || event.shiftKey || !event.target.matches('textarea[name="text"]')) return;
+    event.preventDefault();
+    event.target.form.requestSubmit();
   });
 
   content.addEventListener('contextmenu', event => {
@@ -874,6 +917,12 @@
         if (!item) throw new Error('That inventory item no longer exists.');
         exportInventoryMedia(item);
         setStatus('Export started for ' + String(item.name || 'your file') + '.');
+      } else if (action === 'copy-code') {
+        const code = button.closest('.nexus-code-card')?.querySelector('pre code');
+        if (!code) throw new Error('The code block could not be found.');
+        if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('Clipboard access is unavailable. Select the code and copy it manually.');
+        await navigator.clipboard.writeText(code.textContent);
+        setStatus('Code copied to clipboard.');
       } else if (action === 'spin') {
         if (!user) throw new Error('Create a Nexus account first.');
         if (wheelSpinning) return;

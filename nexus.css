@@ -33,7 +33,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .nexus-welcome p { margin: 0; color: #a8b8ac; line-height: 1.6; }
 .nexus-card h2 { margin: 0 0 14px; font-size: 16px; }
 .nexus-form { display: grid; gap: 10px; }
-.nexus-form input, .nexus-form select, .nexus-chat-form input { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #d5e2d522; border-radius: 8px; background: #0d1410; color: #edf5ef; }
+.nexus-form input, .nexus-form select, .nexus-chat-form input, .nexus-chat-form textarea { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #d5e2d522; border-radius: 8px; background: #0d1410; color: #edf5ef; }
 .nexus-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .nexus-button { padding: 9px 12px; }
 .nexus-button.secondary { border-color: #d5e2d533; background: #ffffff0a; }
@@ -323,7 +323,7 @@ input::placeholder { color: #77877c; }
 .nexus-chat-line { padding: 9px 11px; border: 1px solid #d9edda0c; border-radius: 11px; background: #ffffff05; color: #d7e2d9; font-size: 12px; line-height: 1.5; }
 .nexus-chat-line strong { margin-right: 4px; color: var(--nexus-accent); }
 .nexus-chat-form { align-items: stretch; }
-.nexus-chat-form input { flex: 1; }
+.nexus-chat-form input, .nexus-chat-form textarea { flex: 1; }
 .nexus-chat-form .nexus-button { flex: 0 0 auto; min-width: 80px; }
 .nexus-inventory-form { margin-top: 18px; padding-top: 18px; border-color: var(--nexus-border); }
 .nexus-inventory-form button { min-height: 44px; }
@@ -472,12 +472,12 @@ body::before {
 .nexus-welcome p, .nexus-item small { color: #a1b0b7; }
 .nexus-card:hover { border-color: rgba(101,230,173,.24); }
 .nexus-card h2::before { background: linear-gradient(145deg, #65e6ad, #277f68); box-shadow: 0 0 13px rgba(101,230,173,.44); }
-.nexus-form input, .nexus-form select, .nexus-chat-form input, .nexus-auction-duration select,
+.nexus-form input, .nexus-form select, .nexus-chat-form input, .nexus-chat-form textarea, .nexus-auction-duration select,
 .nexus-art-toolbar select, .nexus-art-save input, .nexus-audio-import input, .nexus-art-text {
   border-color: rgba(194,224,215,.14);
   background: #0c1510;
 }
-.nexus-form input:focus, .nexus-form select:focus, .nexus-chat-form input:focus, .nexus-auction-duration select:focus,
+.nexus-form input:focus, .nexus-form select:focus, .nexus-chat-form input:focus, .nexus-chat-form textarea:focus, .nexus-auction-duration select:focus,
 .nexus-art-toolbar select:focus, .nexus-art-save input:focus, .nexus-art-text:focus {
   border-color: rgba(101,230,173,.68);
   background: #101b14;
@@ -501,6 +501,87 @@ body::before {
 .nexus-art-toolbar input[type="range"] { accent-color: #65e6ad; }
 .nexus-art-canvas { border-color: rgba(101,230,173,.22); }
 :focus-visible { outline-color: #65e6ad; }
+
+.nexus-chat-line {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 11px;
+}
+.nexus-chat-line strong { margin: 0; }
+.nexus-chat-avatar {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(101,230,173,.36);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 24%, rgba(101,230,173,.28), rgba(18,42,32,.95) 70%);
+  box-shadow: 0 0 14px rgba(101,230,173,.08), inset 0 1px rgba(255,255,255,.08);
+  color: #a4f4cb;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+.nexus-chat-message { flex: 1; min-width: 0; }
+.nexus-chat-message > header { margin: 0 0 3px; }
+.nexus-chat-text { white-space: pre-wrap; }
+.nexus-code-card {
+  overflow: hidden;
+  margin-top: 7px;
+  border: 1px solid rgba(101,230,173,.2);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(8,16,13,.98), rgba(13,24,20,.96));
+  box-shadow: inset 0 1px rgba(255,255,255,.025);
+}
+.nexus-code-card > header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 9px;
+  border-bottom: 1px solid rgba(101,230,173,.12);
+  background: rgba(101,230,173,.045);
+  color: #81dcb0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.nexus-code-copy {
+  padding: 4px 8px;
+  border: 1px solid rgba(101,230,173,.22);
+  border-radius: 6px;
+  background: rgba(101,230,173,.08);
+  color: #c5f8dc;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: normal;
+}
+.nexus-code-copy:hover { border-color: rgba(101,230,173,.5); background: rgba(101,230,173,.15); }
+.nexus-code-card pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #d9f4e5;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  tab-size: 2;
+}
+.nexus-code-card code { white-space: pre; }
+.nexus-chat-form textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 180px;
+  resize: vertical;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.nexus-chat-hint { display: block; margin-top: 7px; color: var(--nexus-muted); font-size: 10px; }
+.nexus-chat-hint code { color: #8ce6b7; }
+@media (max-width: 400px) {
+  .nexus-chat-form input, .nexus-chat-form textarea { flex: auto; }
+}
 @media (max-width: 650px) {
   .nexus-welcome::after { top: 62%; right: -18%; width: 62vw; height: 42vw; }
   .nexus-welcome::before { top: 62%; right: calc(-18% + 17.5vw); width: 27vw; height: 27vw; }
