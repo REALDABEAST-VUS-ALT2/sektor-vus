@@ -460,3 +460,5 @@ html, body { min-height:0; overflow:hidden; }
 .announcement-entry-heading small { margin-bottom:5px; }
 .announcement-delete { padding:3px 8px; border:1px solid rgba(243,100,122,.28); border-radius:5px; background:rgba(243,100,122,.08); color:#ffc0ca; cursor:pointer; font-size:10px; }
 .announcement-delete:hover { border-color:#f3647a; background:rgba(243,100,122,.16); }
+.announcement-delete:disabled { cursor:wait; opacity:.65; }
+.announcement-error { margin-top:8px; color:#ffc0ca; font-size:12px; }
