@@ -315,6 +315,9 @@ const firebaseApp = firebase.apps && firebase.apps.length ? firebase.app() : fir
 const db = firebaseApp.database();
 const firebaseAuth = firebase.auth ? firebase.auth() : makeLocalAuth();
 const state = { user:null, servers:[], server:null, channel:"general", activeView:'server', editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[], nexusData:null, nexusLoaded:false, nexusLoading:false, nexusInitialized:false, nexusRef:null, nexusHandler:null, nexusError:'' };
+const unreadChannelWatchers = new Map();
+let channelReadAt = {};
+let unreadChannels = {};
 const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
@@ -458,7 +461,7 @@ async function confirmCreateServer() {
   renderServerRail();
   selectServer(code);
 }
-function clearSubscriptions() { leaveVoice(); if (state.metaRef && state.metaHandler) state.metaRef.off('value', state.metaHandler); if (state.presenceListRef && state.presenceHandler) state.presenceListRef.off('value', state.presenceHandler); if (state.unsubMessages) state.unsubMessages(); if (state.presenceRef) { state.presenceRef.onDisconnect().cancel(); state.presenceRef.remove(); } state.metaRef = state.metaHandler = state.presenceListRef = state.presenceHandler = state.unsubMessages = state.presenceRef = null; }
+function clearSubscriptions() { leaveVoice(); if (state.metaRef && state.metaHandler) state.metaRef.off('value', state.metaHandler); if (state.presenceListRef && state.presenceHandler) state.presenceListRef.off('value', state.presenceHandler); if (state.unsubMessages) state.unsubMessages(); unreadChannelWatchers.forEach(watcher => watcher.ref.off('child_added', watcher.handler)); unreadChannelWatchers.clear(); unreadChannels = {}; if (state.presenceRef) { state.presenceRef.onDisconnect().cancel(); state.presenceRef.remove(); } state.metaRef = state.metaHandler = state.presenceListRef = state.presenceHandler = state.unsubMessages = state.presenceRef = null; }
 async function selectServer(code) {
   const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.activeView = 'server';
@@ -466,6 +469,8 @@ async function selectServer(code) {
     clearSubscriptions();
     closePrivateDm();
     state.server = state.servers.find(server => server.code === code);
+    channelReadAt = loadChannelReadState(state.server);
+    unreadChannels = {};
     updateEditModeUi();
     state.channel = 'general';
     if (!state.server) return;
@@ -541,13 +546,160 @@ function openFriendModal() {
   document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus();
 }
 function channels() { return Object.entries((state.server && state.server.channels) || {}).filter(([, channel]) => channel && typeof channel === 'object').map(([id, channel]) => ({id,...channel, type:channel.type === 'games' || channel.game === true ? 'text' : channel.type, topic:String(channel.topic || '').replace(/^\[games\]\s*/, '')})); }
+function channelReadStorageKey(server = state.server) { return server && state.user ? 'vusChannelRead_' + safe(state.user.key) + '_' + safe(server.code) : ''; }
+function loadChannelReadState(server) {
+  const key = channelReadStorageKey(server);
+  try {
+    const saved = key ? JSON.parse(localStorage.getItem(key) || '{}') : {};
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+  } catch (error) {
+    console.error('[Sektor] Could not load channel read state.', error);
+    return {};
+  }
+}
+function saveChannelReadState() {
+  const key = channelReadStorageKey();
+  if (key) localStorage.setItem(key, JSON.stringify(channelReadAt));
+}
+function markChannelRead(channelId, readAt = Date.now()) {
+  channelReadAt[channelId] = Math.max(Number(channelReadAt[channelId]) || 0, Date.now(), Number(readAt) || 0);
+  unreadChannels[channelId] = false;
+  saveChannelReadState();
+  updateChannelUnreadDot(channelId);
+}
+function updateChannelUnreadDot(channelId) {
+  const unread = !!unreadChannels[channelId];
+  [...els.textChannels.querySelectorAll('.channel-button'), ...els.voiceChannels.querySelectorAll('.channel-button')]
+    .filter(button => button.dataset.channelId === channelId)
+    .forEach(button => {
+      const dot = button.querySelector('.channel-unread');
+      if (dot) dot.hidden = !unread;
+      button.classList.toggle('has-unread', unread);
+    });
+}
+function setChannelUnread(channelId, unread) {
+  unreadChannels[channelId] = unread;
+  updateChannelUnreadDot(channelId);
+}
+function refreshLocalChannelUnread(channel) {
+  if (!state.server || !state.server.localOnly) return;
+  const key = 'vusMessages_' + state.server.code + '_' + safe(channel.id);
+  const messages = JSON.parse(localStorage.getItem(key) || '[]');
+  const lastRead = Number(channelReadAt[channel.id]) || 0;
+  const unread = messages.some(message => message && message.key !== state.user.key && Number(message.ts) > lastRead);
+  setChannelUnread(channel.id, unread);
+}
+function syncUnreadChannelWatchers(textChannels) {
+  if (!state.server || state.server.localOnly) {
+    textChannels.forEach(refreshLocalChannelUnread);
+    return;
+  }
+  const serverCode = state.server.code;
+  const channelIds = new Set(textChannels.map(channel => channel.id));
+  unreadChannelWatchers.forEach((watcher, channelId) => {
+    if (watcher.serverCode !== serverCode || !channelIds.has(channelId)) {
+      watcher.ref.off('child_added', watcher.handler);
+      unreadChannelWatchers.delete(channelId);
+    }
+  });
+  textChannels.forEach(channel => {
+    if (unreadChannelWatchers.has(channel.id)) return;
+    const ref = db.ref('serverMessages/' + serverCode + '/' + safe(channel.id)).limitToLast(100);
+    const handler = snap => {
+      if (!snap.exists() || !snap.val() || state.activeView !== 'server' || !state.server || state.server.code !== serverCode) return;
+      const message = snap.val();
+      if (state.channel === channel.id || message.key === state.user.key) return;
+      if (Number(message.ts) > (Number(channelReadAt[channel.id]) || 0)) setChannelUnread(channel.id, true);
+    };
+    unreadChannelWatchers.set(channel.id, {serverCode,ref,handler});
+    ref.on('child_added', handler);
+  });
+}
 function isGamesChannel() { return false; }
 function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manage:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
-function renderServer() { if (state.dmFriend) closePrivateDm(); if (!state.server) return clearServer(); els.serverName.textContent = state.server.name; els.serverCode.textContent = 'Invite code: ' + state.server.code; const text = channels().filter(channel => !['voice','video','games'].includes(channel.type)); const voice = channels().filter(channel => channel.type === 'voice' || channel.type === 'video'); const games = channels().filter(channel => channel.type === 'games'); const owner = state.server.ownerKey === state.user.key; els.textChannels.innerHTML = ''; text.forEach(channel => { const button = document.createElement('button'); button.className = 'channel-button' + (state.channel === channel.id ? ' active' : ''); button.innerHTML = '<span>#</span><span>' + esc(channel.name) + '</span>'; button.onclick = () => selectChannel(channel.id); if (owner && !channel.default) addChannelDeleteButton(button, channel); els.textChannels.appendChild(button); }); els.voiceChannels.innerHTML = ''; voice.forEach(channel => { const button = document.createElement('button'); button.className = 'channel-button'; button.innerHTML = '<span>' + (channel.type === 'video' ? '▣' : '🔊') + '</span><span>' + esc(channel.name) + '</span><span class="channel-meta">Join</span>'; button.onclick = () => joinVoice(channel.id, channel.type === 'video'); if (owner && !channel.default) addChannelDeleteButton(button, channel); els.voiceChannels.appendChild(button); }); games.forEach(channel => { const button = document.createElement('button'); button.className = 'channel-button' + (state.channel === channel.id ? ' active' : ''); button.innerHTML = '<span>🎲</span><span>' + esc(channel.name) + '</span>'; button.onclick = () => selectChannel(channel.id); if (owner && !channel.default) addChannelDeleteButton(button); els.textChannels.appendChild(button); }); els.ownerTools.hidden = !owner; if (state.server.announcement && state.channel === 'announcements') state.channel = 'general'; const current = channels().find(channel => channel.id === state.channel) || text[0]; if (current) { els.channelName.textContent = current.name; els.channelTopic.textContent = current.topic || ''; els.channelPermission.textContent = current.type === 'announcement' ? 'OWNER ONLY' : ''; els.announcement.hidden = !state.server.announcement; els.announcementText.textContent = state.server.announcement ? state.server.announcement.text : ''; els.ownerComposer.hidden = !(current.type === 'announcement' && owner); els.messageInput.placeholder = current.type === 'announcement' ? 'Only the server owner can post here' : 'Message #' + current.name; selectMessages(current.id); } }function addChannelDeleteButton(channelButton, channel) { if (!isOwnerEditing()) return; const renameButton = document.createElement('button'); renameButton.className = 'channel-action channel-rename'; renameButton.type = 'button'; renameButton.title = 'Rename ' + channel.name; renameButton.textContent = '✎'; renameButton.onclick = event => { event.stopPropagation(); openRenameChannelModal(channel); }; channelButton.appendChild(renameButton); if (['general','announcements','lounge'].includes(channel.id)) return; const removeButton = document.createElement('button'); removeButton.className = 'channel-action channel-delete'; removeButton.type = 'button'; removeButton.title = 'Delete ' + channel.name; removeButton.textContent = '×'; removeButton.onclick = event => { event.stopPropagation(); openDeleteChannelModal(channel); }; channelButton.appendChild(removeButton); }
+function renderServer() {
+  if (state.dmFriend) closePrivateDm();
+  if (!state.server) return clearServer();
+  els.serverName.textContent = state.server.name;
+  els.serverCode.textContent = 'Invite code: ' + state.server.code;
+  const allChannels = channels();
+  const text = allChannels.filter(channel => !['voice','video','games'].includes(channel.type));
+  const voice = allChannels.filter(channel => channel.type === 'voice' || channel.type === 'video');
+  const games = allChannels.filter(channel => channel.type === 'games');
+  const current = allChannels.find(channel => channel.id === state.channel) || text[0];
+  if (current) state.channel = current.id;
+  const owner = state.server.ownerKey === state.user.key;
+  els.textChannels.innerHTML = '';
+  text.forEach(channel => {
+    const button = document.createElement('button');
+    button.className = 'channel-button' + (current && state.channel === channel.id ? ' active' : '');
+    button.dataset.channelId = channel.id;
+    button.innerHTML = '<span>#</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread messages" hidden></span>';
+    button.onclick = () => selectChannel(channel.id);
+    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    els.textChannels.appendChild(button);
+    updateChannelUnreadDot(channel.id);
+  });
+  els.voiceChannels.innerHTML = '';
+  voice.forEach(channel => {
+    const button = document.createElement('button');
+    button.className = 'channel-button';
+    button.dataset.channelId = channel.id;
+    button.innerHTML = '<span>' + (channel.type === 'video' ? '▣' : '🔊') + '</span><span>' + esc(channel.name) + '</span><span class="channel-meta">Join</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
+    button.onclick = () => joinVoice(channel.id, channel.type === 'video');
+    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    els.voiceChannels.appendChild(button);
+    updateChannelUnreadDot(channel.id);
+  });
+  games.forEach(channel => {
+    const button = document.createElement('button');
+    button.className = 'channel-button' + (current && state.channel === channel.id ? ' active' : '');
+    button.dataset.channelId = channel.id;
+    button.innerHTML = '<span>🎲</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
+    button.onclick = () => selectChannel(channel.id);
+    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    els.textChannels.appendChild(button);
+    updateChannelUnreadDot(channel.id);
+  });
+  els.ownerTools.hidden = !owner;
+  syncUnreadChannelWatchers(text);
+  if (!current) return;
+  const announcementChannel = current.type === 'announcement';
+  const announcement = state.server.announcement;
+  els.channelName.textContent = current.name;
+  els.channelTopic.textContent = current.topic || '';
+  els.channelPermission.textContent = announcementChannel ? 'OWNER ONLY' : '';
+  els.announcement.hidden = !(announcementChannel && announcement);
+  els.announcementText.textContent = announcement ? announcement.text : '';
+  els.ownerComposer.hidden = !(announcementChannel && owner);
+  els.messageInput.placeholder = announcementChannel ? 'Only the server owner can post here' : 'Message #' + current.name;
+  markChannelRead(current.id, announcementChannel && announcement ? announcement.ts : Date.now());
+  if (!announcement && current.id === 'announcements') setChannelUnread('announcements', false);
+  else if (announcement && !announcementChannel && Number(announcement.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
+  selectMessages(current.id);
+  els.messageForm.hidden = announcementChannel;
+}
+function addChannelDeleteButton(channelButton, channel) { if (!isOwnerEditing()) return; const renameButton = document.createElement('button'); renameButton.className = 'channel-action channel-rename'; renameButton.type = 'button'; renameButton.title = 'Rename ' + channel.name; renameButton.textContent = '✎'; renameButton.onclick = event => { event.stopPropagation(); openRenameChannelModal(channel); }; channelButton.appendChild(renameButton); if (['general','announcements','lounge'].includes(channel.id)) return; const removeButton = document.createElement('button'); removeButton.className = 'channel-action channel-delete'; removeButton.type = 'button'; removeButton.title = 'Delete ' + channel.name; removeButton.textContent = '×'; removeButton.onclick = event => { event.stopPropagation(); openDeleteChannelModal(channel); }; channelButton.appendChild(removeButton); }
 function openRenameChannelModal(channel) { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Rename channel'; els.modalBody.innerHTML = '<label class="modal-label" for="renameChannelName">Channel name</label><input id="renameChannelName" class="modal-input" maxlength="24" value="' + esc(channel.name) + '"><div id="modalError" class="error"></div><button id="saveChannelName" class="primary-btn">Save name</button>'; els.modal.hidden = false; const input = document.getElementById('renameChannelName'); const error = document.getElementById('modalError'); input.focus(); input.select(); document.getElementById('saveChannelName').onclick = async () => { const name = input.value.trim(); if (!name) { error.textContent = 'Enter a channel name.'; return; } try { if (state.server.localOnly) { state.server.channels[channel.id].name = name.slice(0,24); saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id + '/name').set(name.slice(0,24)); els.modal.hidden = true; renderServer(); } catch (renameError) { error.textContent = 'Could not rename this channel.'; } }; }
 function openDeleteChannelModal(channel) { els.modalTitle.textContent = 'Delete channel'; els.modalBody.innerHTML = '<p class="modal-copy">Delete <strong>#' + esc(channel.name) + '</strong>? Messages in this channel will no longer be available.</p><div id="modalError" class="error"></div><div class="modal-actions"><button id="cancelDelete" class="modal-secondary">Cancel</button><button id="confirmDelete" class="modal-danger">Delete channel</button></div>'; els.modal.hidden = false; document.getElementById('cancelDelete').onclick = () => { els.modal.hidden = true; }; document.getElementById('confirmDelete').onclick = async () => { try { if (state.server.localOnly) { delete state.server.channels[channel.id]; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id).remove(); if (state.channel === channel.id) state.channel = 'general'; els.modal.hidden = true; renderServer(); } catch (error) { document.getElementById('modalError').textContent = 'Could not delete this channel.'; } }; }
 function closePrivateDm() { state.dmFriend = null; if (state.dmRef && state.dmHandler) state.dmRef.off('child_added', state.dmHandler); state.dmRef = null; state.dmHandler = null; }
-function selectChannel(id) { closePrivateDm(); leaveVoice(); els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); els.friendHome.hidden = true; state.channel = id; renderServer(); }
+function selectChannel(id) {
+  closePrivateDm();
+  leaveVoice();
+  els.friendRequestsPanel.hidden = true;
+  els.friendsDirectory.hidden = true;
+  els.textChannelsLabel.hidden = false;
+  els.textChannels.hidden = false;
+  els.voiceChannelsLabel.hidden = false;
+  els.voiceChannels.hidden = false;
+  els.voiceMembers.hidden = false;
+  els.voiceControls.hidden = false;
+  els.friendsBtn.classList.remove('active');
+  els.friendHome.hidden = true;
+  state.channel = id;
+  markChannelRead(id);
+  renderServer();
+}
 function defaultNexusData() {
   return {
     users: [],
@@ -977,9 +1129,21 @@ function watchGamesChannel(channelId) { if (state.gameRef && state.gameHandler) 
 async function startPartyGame(gameId) { if (!state.server || !state.channel) return; const ref = db.ref('serverGames/' + state.server.code + '/' + safe(state.channel) + '/active'); const current = (await ref.get()).val(); const updates = current && current.gameId === gameId ? {['players/' + state.user.key]: {name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}} : {gameId,startedBy:state.user.key,startedAt:firebase.database.ServerValue.TIMESTAMP,players:{[state.user.key]:{name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}}}; await ref.update(updates); }
 function selectMessages(channelId) { if (!channelId || !state.server) { els.messages.hidden = false; els.messageForm.hidden = true; els.gamesPanel.hidden = true; els.messages.innerHTML = '<div class="empty-state">Create or select a server to start talking.</div>'; return; } if (state.unsubMessages) state.unsubMessages(); if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = state.gameHandler = null; const channel = channels().find(item => item && item.id === channelId); if (channel && channel.type === 'games') { els.messages.hidden = true; els.messageForm.hidden = true; els.gamesPanel.hidden = false; watchGamesChannel(channelId); return; } els.gamesPanel.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>'; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(channelId); const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(message => message && typeof message === 'object'); if (messages.length) { els.messages.innerHTML = ''; messages.forEach(renderMessage); } return; } const ref = db.ref('serverMessages/' + state.server.code + '/' + safe(channelId)).limitToLast(100); const handler = snap => { const value = snap.val(); if (value && typeof value === 'object') renderMessage({id:snap.key,...value}); }; ref.on('child_added', handler); state.unsubMessages = () => ref.off('child_added', handler); }
 window.addEventListener('storage', event => {
-  if (!event.key || !state.server || !state.server.localOnly || !state.channel) return;
-  const messageKey = 'vusMessages_' + state.server.code + '_' + safe(state.channel);
-  if (event.key === messageKey) selectMessages(state.channel);
+  if (!event.key || !state.server) return;
+  if (event.key === channelReadStorageKey()) {
+    const previousReadAt = channelReadAt;
+    channelReadAt = loadChannelReadState(state.server);
+    channels().forEach(channel => {
+      if (Number(channelReadAt[channel.id]) > Number(previousReadAt[channel.id] || 0)) setChannelUnread(channel.id, false);
+      refreshLocalChannelUnread(channel);
+    });
+    return;
+  }
+  if (!state.server.localOnly) return;
+  const changedChannel = channels().find(channel => event.key === 'vusMessages_' + state.server.code + '_' + safe(channel.id));
+  if (!changedChannel) return;
+  if (state.channel === changedChannel.id) selectMessages(state.channel);
+  else refreshLocalChannelUnread(changedChannel);
 });
 function renderMessage(message) { const empty = els.messages.querySelector('.empty-state'); if (empty) empty.remove(); const item = document.createElement('article'); item.className = 'message'; item.dataset.messageId = message.id || ''; messageCache[message.id] = message; const image = message.image ? '<img class="message-image" src="' + esc(message.image) + '" alt="Image shared by ' + esc(message.name) + '">' : ''; const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : ''; const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join(''); const rank = rankForMember(message.key, message.name); const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : ''; item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (message.key === state.user.key ? '<button data-action="edit">Edit</button>' : '') + '</div></div>'; item.querySelectorAll('.reaction').forEach(button => button.onclick = () => toggleReaction(message, button.dataset.emoji)); item.querySelector('[data-action="react"]').onclick = event => openReactionPicker(event, item, message); item.querySelector('[data-action="reply"]').onclick = () => startReply(message); const editButton = item.querySelector('[data-action="edit"]'); if (editButton) editButton.onclick = () => startEdit(item, message); els.messages.appendChild(item); els.messages.scrollTop = els.messages.scrollHeight; }
 function openReactionPicker(event, item, message) { event.stopPropagation(); document.querySelectorAll('.reaction-picker').forEach(picker => picker.remove()); const picker = document.createElement('div'); picker.className = 'reaction-picker'; REACTION_EMOJIS.forEach(emoji => { const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.title = 'React ' + emoji; button.onclick = async pickerEvent => { pickerEvent.stopPropagation(); picker.remove(); await toggleReaction(message, emoji); }; picker.appendChild(button); }); item.style.position = 'relative'; item.appendChild(picker); picker.style.left = '48px'; picker.style.bottom = '32px'; }

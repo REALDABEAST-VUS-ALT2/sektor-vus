@@ -335,6 +335,9 @@ body { background-image:radial-gradient(circle at 18% 0%,rgba(101,230,173,.08),t
 .channel-label { padding:24px 18px 8px; color:#718095; letter-spacing:.14em; }
 .channel-button { width:calc(100% - 24px); margin:3px 12px; padding:11px 13px; border:1px solid transparent; border-radius:9px; color:#9eafc2; }
 .channel-button:hover { background:rgba(121,169,255,.08); color:#eaf2fb; }.channel-button.active { background:linear-gradient(90deg,rgba(101,230,173,.16),rgba(101,230,173,.04)); color:#f4fbff; box-shadow:inset 3px 0 var(--accent),0 5px 18px rgba(0,0,0,.12); }
+.channel-unread { width:7px; height:7px; flex:0 0 7px; margin-left:auto; border-radius:50%; background:#f04747; box-shadow:0 0 9px rgba(240,71,71,.55); }
+.channel-unread[hidden] { display:none; }
+.channel-button.has-unread { color:#e8edf4; }
 .voice-members { margin:5px 15px 0; padding:8px 10px; border:1px solid rgba(101,230,173,.12); border-radius:8px; background:rgba(101,230,173,.04); color:#78958d; }
 .voice-permission-button { display:block; width:100%; margin-top:8px; padding:7px 8px; border:1px solid rgba(101,230,173,.3); border-radius:6px; background:rgba(101,230,173,.1); color:#baf9d8; font-size:11px; cursor:pointer; }
 .voice-permission-button:hover { border-color:var(--accent); background:rgba(101,230,173,.18); color:#edf7f2; }

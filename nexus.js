@@ -108,6 +108,33 @@
     return extension ? {mimeType, extension, encoded:match[3]} : null;
   }
 
+  function downloadBlob(blob, filename) {
+    let downloadWindow = window;
+    try {
+      if (window.parent !== window && window.parent.location.origin === window.location.origin) {
+        downloadWindow = window.parent;
+      }
+    } catch (error) {
+      if (error.name !== 'SecurityError') throw error;
+    }
+    const url = downloadWindow.URL.createObjectURL(blob);
+    const link = downloadWindow.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    downloadWindow.document.body.appendChild(link);
+    try {
+      link.click();
+    } catch (error) {
+      link.remove();
+      downloadWindow.URL.revokeObjectURL(url);
+      throw error;
+    }
+    downloadWindow.setTimeout(() => {
+      link.remove();
+      downloadWindow.URL.revokeObjectURL(url);
+    }, 60000);
+  }
+
   function exportInventoryMedia(item) {
     const details = mediaExportDetails(item.media);
     if (!details) throw new Error('This inventory item does not contain a supported exportable file.');
@@ -118,17 +145,7 @@
       .slice(0, 80) || 'nexus-file';
     const binary = atob(details.encoded);
     const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-    const url = URL.createObjectURL(new Blob([bytes], {type:details.mimeType}));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename + '.' + details.extension;
-    document.body.appendChild(link);
-    try {
-      link.click();
-    } finally {
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
+    downloadBlob(new Blob([bytes], {type:details.mimeType}), filename + '.' + details.extension);
   }
 
   function exportWorld() {
@@ -139,18 +156,7 @@
     const exportData = normalize(world);
     exportData.users = exportData.users.map(({password, ...user}) => user);
     const payload = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([payload], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json';
-    document.body.appendChild(link);
-    try {
-      link.click();
-    } finally {
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
+    downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
     setStatus('World export started.');
   }
 
