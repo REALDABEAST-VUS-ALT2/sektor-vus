@@ -1136,7 +1136,66 @@ function renderGamesPanel(active, standalone = false) {
 };
 function watchGamesChannel(channelId) { if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = db.ref('serverGames/' + state.server.code + '/' + safe(channelId) + '/active'); state.gameHandler = snap => renderGamesPanel(snap.val()); state.gameRef.on('value', state.gameHandler); }
 async function startPartyGame(gameId) { if (!state.server || !state.channel) return; const ref = db.ref('serverGames/' + state.server.code + '/' + safe(state.channel) + '/active'); const current = (await ref.get()).val(); const updates = current && current.gameId === gameId ? {['players/' + state.user.key]: {name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}} : {gameId,startedBy:state.user.key,startedAt:firebase.database.ServerValue.TIMESTAMP,players:{[state.user.key]:{name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}}}; await ref.update(updates); }
-function selectMessages(channelId) { if (!channelId || !state.server) { els.messages.hidden = false; els.messageForm.hidden = true; els.gamesPanel.hidden = true; els.messages.innerHTML = '<div class="empty-state">Create or select a server to start talking.</div>'; return; } if (state.unsubMessages) state.unsubMessages(); if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = state.gameHandler = null; const channel = channels().find(item => item && item.id === channelId); if (channel && channel.type === 'games') { els.messages.hidden = true; els.messageForm.hidden = true; els.gamesPanel.hidden = false; watchGamesChannel(channelId); return; } els.gamesPanel.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>'; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(channelId); const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(message => message && typeof message === 'object'); if (messages.length) { els.messages.innerHTML = ''; messages.forEach(renderMessage); } return; } const ref = db.ref('serverMessages/' + state.server.code + '/' + safe(channelId)).limitToLast(100); const handler = snap => { const value = snap.val(); if (value && typeof value === 'object') renderMessage({id:snap.key,...value}); }; ref.on('child_added', handler); state.unsubMessages = () => ref.off('child_added', handler); }
+function selectMessages(channelId) {
+  if (!channelId || !state.server) {
+    els.messages.hidden = false;
+    els.messageForm.hidden = true;
+    els.gamesPanel.hidden = true;
+    els.messages.innerHTML = '<div class="empty-state">Create or select a server to start talking.</div>';
+    return;
+  }
+  if (state.unsubMessages) state.unsubMessages();
+  if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler);
+  state.gameRef = state.gameHandler = null;
+  const channel = channels().find(item => item && item.id === channelId);
+  if (channel && channel.type === 'games') {
+    els.messages.hidden = true;
+    els.messageForm.hidden = true;
+    els.gamesPanel.hidden = false;
+    watchGamesChannel(channelId);
+    return;
+  }
+  els.gamesPanel.hidden = true;
+  els.messages.hidden = false;
+  els.messageForm.hidden = false;
+  els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+  if (state.server.localOnly) {
+    const key = 'vusMessages_' + state.server.code + '_' + safe(channelId);
+    const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(message => message && typeof message === 'object');
+    if (messages.length) {
+      els.messages.innerHTML = '';
+      messages.forEach(renderMessage);
+    }
+    return;
+  }
+  const ref = db.ref('serverMessages/' + state.server.code + '/' + safe(channelId)).limitToLast(100);
+  const addedHandler = snap => {
+    const value = snap.val();
+    if (isValidMessage(value)) renderMessage({...value,id:snap.key});
+  };
+  const changedHandler = snap => {
+    const value = snap.val();
+    if (isValidMessage(value)) renderMessage({...value,id:snap.key});
+  };
+  const removedHandler = snap => {
+    const item = [...els.messages.querySelectorAll('.message')].find(node => node.dataset.messageId === snap.key);
+    if (item) item.remove();
+    delete messageCache[snap.key];
+    if (!els.messages.querySelector('.message')) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+  };
+  ref.on('child_added', addedHandler);
+  ref.on('child_changed', changedHandler);
+  ref.on('child_removed', removedHandler);
+  state.unsubMessages = () => {
+    ref.off('child_added', addedHandler);
+    ref.off('child_changed', changedHandler);
+    ref.off('child_removed', removedHandler);
+  };
+}
+function isValidMessage(message) {
+  return !!(message && typeof message === 'object' && message.key && message.name &&
+    (message.text || message.image || message.audioData));
+}
 window.addEventListener('storage', event => {
   if (!event.key || !state.server) return;
   if (event.key === channelReadStorageKey()) {
@@ -1154,11 +1213,69 @@ window.addEventListener('storage', event => {
   if (state.channel === changedChannel.id) selectMessages(state.channel);
   else refreshLocalChannelUnread(changedChannel);
 });
-function renderMessage(message) { const empty = els.messages.querySelector('.empty-state'); if (empty) empty.remove(); const item = document.createElement('article'); item.className = 'message'; item.dataset.messageId = message.id || ''; messageCache[message.id] = message; const image = message.image ? '<img class="message-image" src="' + esc(message.image) + '" alt="Image shared by ' + esc(message.name) + '">' : ''; const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : ''; const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join(''); const rank = rankForMember(message.key, message.name); const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : ''; item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (message.key === state.user.key ? '<button data-action="edit">Edit</button>' : '') + '</div></div>'; item.querySelectorAll('.reaction').forEach(button => button.onclick = () => toggleReaction(message, button.dataset.emoji)); item.querySelector('[data-action="react"]').onclick = event => openReactionPicker(event, item, message); item.querySelector('[data-action="reply"]').onclick = () => startReply(message); const editButton = item.querySelector('[data-action="edit"]'); if (editButton) editButton.onclick = () => startEdit(item, message); els.messages.appendChild(item); els.messages.scrollTop = els.messages.scrollHeight; }
+function renderMessage(message) {
+  if (!isValidMessage(message)) return;
+  const existing = [...els.messages.querySelectorAll('.message')].find(node => node.dataset.messageId === message.id);
+  const wasAtBottom = els.messages.scrollHeight - els.messages.scrollTop - els.messages.clientHeight < 40;
+  const empty = els.messages.querySelector('.empty-state');
+  if (empty) empty.remove();
+  const item = document.createElement('article');
+  item.className = 'message';
+  item.dataset.messageId = message.id || '';
+  messageCache[message.id] = message;
+  const image = message.image ? '<img class="message-image" src="' + esc(message.image) + '" alt="Image shared by ' + esc(message.name) + '">' : '';
+  const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : '';
+  const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join('');
+  const rank = rankForMember(message.key, message.name);
+  const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
+  const ownMessage = String(message.key) === String(state.user.key);
+  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '') + '</div></div>';
+  item.querySelectorAll('.reaction').forEach(button => button.onclick = () => toggleReaction(message, button.dataset.emoji));
+  item.querySelector('[data-action="react"]').onclick = event => openReactionPicker(event, item, message);
+  item.querySelector('[data-action="reply"]').onclick = () => startReply(message);
+  const editButton = item.querySelector('[data-action="edit"]');
+  if (editButton) editButton.onclick = () => startEdit(item, message);
+  const deleteButton = item.querySelector('[data-action="delete"]');
+  if (deleteButton) deleteButton.onclick = () => deleteMessage(item, message);
+  if (existing) existing.replaceWith(item);
+  else els.messages.appendChild(item);
+  if (!existing && wasAtBottom) els.messages.scrollTop = els.messages.scrollHeight;
+}
 function openReactionPicker(event, item, message) { event.stopPropagation(); document.querySelectorAll('.reaction-picker').forEach(picker => picker.remove()); const picker = document.createElement('div'); picker.className = 'reaction-picker'; REACTION_EMOJIS.forEach(emoji => { const button = document.createElement('button'); button.type = 'button'; button.textContent = emoji; button.title = 'React ' + emoji; button.onclick = async pickerEvent => { pickerEvent.stopPropagation(); picker.remove(); await toggleReaction(message, emoji); }; picker.appendChild(button); }); item.style.position = 'relative'; item.appendChild(picker); picker.style.left = '48px'; picker.style.bottom = '32px'; }
 function startReply(message) { replyTo = {id:message.id || '', name:message.name, text:message.text}; els.messageInput.placeholder = 'Reply to ' + message.name + '…'; els.messageInput.focus(); }
-function messageRef(message) { return db.ref('serverMessages/' + state.server.code + '/' + safe(state.channel) + '/' + message.id); }
-async function saveMessage(message, updates) { Object.assign(message, updates); if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(state.channel); const messages = JSON.parse(localStorage.getItem(key) || '[]').map(item => item.id === message.id ? {...item,...updates} : item); localStorage.setItem(key, JSON.stringify(messages)); } else if (message.id) await messageRef(message).update(updates); selectMessages(state.channel); }
+function messageRef(message, server = state.server, channelId = state.channel) { return db.ref('serverMessages/' + server.code + '/' + safe(channelId) + '/' + message.id); }
+async function saveMessage(message, updates) {
+  const server = state.server;
+  const channelId = state.channel;
+  if (server.localOnly) {
+    const key = 'vusMessages_' + server.code + '_' + safe(channelId);
+    const messages = JSON.parse(localStorage.getItem(key) || '[]').map(item => item.id === message.id ? {...item,...updates} : item);
+    localStorage.setItem(key, JSON.stringify(messages));
+  } else if (message.id) {
+    await messageRef(message, server, channelId).update(updates);
+  }
+  Object.assign(message, updates);
+  if (state.server === server && state.channel === channelId) renderMessage(message);
+}
+async function deleteMessage(item, message) {
+  if (!state.server || String(message.key) !== String(state.user.key) || !message.id) return;
+  const server = state.server;
+  const channelId = state.channel;
+  try {
+    if (server.localOnly) {
+      const key = 'vusMessages_' + server.code + '_' + safe(channelId);
+      const messages = JSON.parse(localStorage.getItem(key) || '[]').filter(saved => saved.id !== message.id);
+      localStorage.setItem(key, JSON.stringify(messages));
+    } else {
+      await messageRef(message, server, channelId).remove();
+    }
+    item.remove();
+    delete messageCache[message.id];
+    if (state.server === server && state.channel === channelId && !els.messages.querySelector('.message')) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+  } catch (error) {
+    showError('Could not delete that message.');
+  }
+}
 async function toggleReaction(message, emoji) { if (!message.id) { showError('This message is still loading. Try again.'); return; } const reactions = {...(message.reactions || {})}; const users = {...(reactions[emoji] || {})}; if (users[state.user.key]) delete users[state.user.key]; else users[state.user.key] = true; if (Object.keys(users).length) reactions[emoji] = users; else delete reactions[emoji]; try { await saveMessage(message, {reactions}); } catch (error) { showError('Could not update reaction.'); } }
 function startEdit(item, message) { const text = item.querySelector('.message-text'); const original = message.text; const input = document.createElement('textarea'); input.className = 'edit-input'; input.value = original; input.rows = 2; text.replaceWith(input); input.focus(); input.onkeydown = async event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const value = input.value.trim(); if (value) await saveMessage(message, {text:value, edited:true}); } if (event.key === 'Escape') selectMessages(state.channel); }; }
 function mentionMatches() { const match = els.messageInput.value.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/); if (!match) { els.mentionSuggestions.hidden = true; return; } const query = match[1].toLowerCase(); const members = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().startsWith(query)).slice(0,6); els.mentionSuggestions.innerHTML = ''; members.forEach(member => { const option = document.createElement('button'); option.type = 'button'; option.className = 'mention-option'; option.textContent = '@' + member.name; option.onclick = () => { els.messageInput.value = els.messageInput.value.slice(0, els.messageInput.value.length - match[1].length) + member.name + ' '; els.mentionSuggestions.hidden = true; els.messageInput.focus(); }; els.mentionSuggestions.appendChild(option); }); els.mentionSuggestions.hidden = !members.length; }
