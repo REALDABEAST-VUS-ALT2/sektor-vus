@@ -24,6 +24,10 @@
     if (new URLSearchParams(window.location.search).get('lan') === '1') backUrl.searchParams.set('lan', '1');
     document.getElementById('back-link').href = backUrl.href;
   </script>
-  <script src="./nexus.js?v=20261008-14"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="./nexus.js?v=20261009-1"></script>
 </body>
 </html>
