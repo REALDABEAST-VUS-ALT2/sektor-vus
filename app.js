@@ -559,18 +559,22 @@ const serverInviteLookups = new Map();
 function resolveServerInvite(code) {
   if (!serverInviteLookups.has(code)) {
     serverInviteLookups.set(code, (async () => {
-      const local = localServers().find(server => String(server.code).toUpperCase() === code);
-      if (local) return local;
       try {
         const snapshot = await db.ref('serverMeta/' + safe(code)).get();
-        return snapshot.exists() ? {code,...snapshot.val()} : null;
+        if (snapshot.exists()) return {code,...snapshot.val()};
       } catch (error) {
         console.error('[Sektor] Could not load a server invite.', error);
-        return null;
       }
+      return localServers().find(server => String(server.code).toUpperCase() === code) || null;
     })());
   }
   return serverInviteLookups.get(code);
+}
+function serverInviteIconSource(icon) {
+  if (typeof icon !== 'string') return '';
+  if (/^https:\/\/[^<>"']+$/i.test(icon) ||
+      /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(icon)) return icon;
+  return '';
 }
 function serverInviteMarkup(server) {
   const accent = /^#[0-9a-f]{6}$/i.test(server.accent || '') ? server.accent : '#5865f2';
@@ -584,9 +588,10 @@ function serverInviteMarkup(server) {
   body.className = 'server-invite-body';
   const icon = document.createElement('div');
   icon.className = 'server-invite-icon';
-  if (typeof server.icon === 'string' && server.icon) {
+  const iconSource = serverInviteIconSource(server.icon);
+  if (iconSource) {
     const image = document.createElement('img');
-    image.src = server.icon;
+    image.src = iconSource;
     image.alt = '';
     image.onerror = () => { icon.textContent = initials; };
     icon.appendChild(image);

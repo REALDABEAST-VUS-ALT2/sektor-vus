@@ -87,21 +87,21 @@
   function lookupServerInvite(code) {
     if (!inviteLookups.has(code)) {
       const lookup = (async () => {
+        if (firebaseMode) {
+          try {
+            const snapshot = await firebaseApi.database().ref('serverMeta/' + code).get();
+            if (snapshot.exists()) return {code,...snapshot.val()};
+          } catch (error) {
+            console.error('[Nexus] Could not look up server invite ' + code + '.', error);
+          }
+        }
         try {
           const localServers = JSON.parse(localStorage.getItem('vusServersLocal') || '[]');
-          const local = Array.isArray(localServers) && localServers.find(server =>
+          return Array.isArray(localServers) ? localServers.find(server =>
             server && String(server.code || '').toUpperCase() === code
-          );
-          if (local) return local;
+          ) || null : null;
         } catch (error) {
           console.error('[Nexus] Could not read local server invites.', error);
-        }
-        if (!firebaseMode) return null;
-        try {
-          const snapshot = await firebaseApi.database().ref('serverMeta/' + code).get();
-          return snapshot.exists() ? {code,...snapshot.val()} : null;
-        } catch (error) {
-          console.error('[Nexus] Could not look up server invite ' + code + '.', error);
           return null;
         }
       })();
@@ -110,12 +110,19 @@
     return inviteLookups.get(code);
   }
 
+  function serverInviteIconSource(icon) {
+    if (typeof icon !== 'string') return '';
+    if (/^https:\/\/[^<>"']+$/i.test(icon) ||
+        /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(icon)) return icon;
+    return '';
+  }
+
   function renderServerInvite(server, code) {
     const accent = /^#[0-9a-f]{6}$/i.test(server.accent || '') ? server.accent : '#65e6ad';
     const name = String(server.name || 'Sektor server');
-    const icon = typeof server.icon === 'string' &&
-      (/^https:\/\/[^<>"']+$/i.test(server.icon) || /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(server.icon))
-      ? '<img src="' + escapeHtml(server.icon) + '" alt="">'
+    const iconSource = serverInviteIconSource(server.icon);
+    const icon = iconSource
+      ? '<img src="' + escapeHtml(iconSource) + '" alt="">'
       : escapeHtml(chatInitials(name));
     const joinUrl = new URL('./VUS-Servers.html', location.href);
     joinUrl.searchParams.set('join', code);
@@ -132,7 +139,13 @@
       const server = await lookupServerInvite(code);
       if (!placeholder.isConnected) return;
       if (server) {
-        placeholder.outerHTML = renderServerInvite(server, code);
+        placeholder.insertAdjacentHTML('beforebegin', renderServerInvite(server, code));
+        const invite = placeholder.previousElementSibling;
+        const image = invite && invite.querySelector('.nexus-server-invite-icon img');
+        if (image) image.addEventListener('error', () => {
+          image.parentElement.textContent = chatInitials(server.name || 'Sektor server');
+        }, {once:true});
+        placeholder.remove();
         return;
       }
       placeholder.outerHTML = codeCardMarkup(code);
