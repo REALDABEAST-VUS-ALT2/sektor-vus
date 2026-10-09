@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sektor · Nexus</title>
-  <link rel="stylesheet" href="./style.css?v=20261008-10">
+  <link rel="stylesheet" href="./style.css?v=20261009-1">
 </head>
 <body>
   <main id="authView" class="auth-view">
@@ -39,7 +39,7 @@
       <div id="textChannels"></div>
       <div id="voiceChannelsLabel" class="channel-label">Voice channels</div>
       <div id="voiceChannels"></div>
-      <div id="voiceMembers" class="voice-members"></div>
+      <div id="voiceMembers" class="voice-members" aria-live="polite"></div>
       <div id="voiceControls" class="voice-controls" hidden><button id="muteVoiceBtn">Mute</button><button id="leaveVoiceBtn">Leave</button></div>
       <div id="friendsDirectory" class="friends-directory" hidden></div>
       <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
@@ -70,7 +70,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
-  <script src="./lan-adapter.js?v=20261008-9"></script>
-  <script src="./app.js?v=20261008-17"></script>
+  <script src="./lan-adapter.js?v=20261008-10"></script>
+  <script src="./app.js?v=20261009-3"></script>
 </body>
 </html>

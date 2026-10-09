@@ -17,5 +17,7 @@
     measurementId: 'G-05F79Y9VB6'
   };
 
-  globalThis.firebase.initializeApp(firebaseConfig);
+  if (!globalThis.firebase.apps.length) {
+    globalThis.firebase.initializeApp(firebaseConfig);
+  }
 })();

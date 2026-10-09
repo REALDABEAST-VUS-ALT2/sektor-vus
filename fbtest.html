@@ -1,0 +1,22 @@
+<!doctype html>
+<html><body style="font-family:sans-serif">
+<h3>Firebase test</h3>
+<button id="b">Send test message</button>
+<pre id="log"></pre>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script>
+const log = m => document.getElementById('log').textContent += m + '\n';
+firebase.initializeApp({
+  apiKey: 'AIzaSyD8eBtfrl86bOoQj9qu3cxdx0bqjDl1MRI',
+  authDomain: 'sektor-b5021.firebaseapp.com',
+  databaseURL: 'https://sektor-b5021-default-rtdb.firebaseio.com',
+  projectId: 'sektor-b5021',
+  appId: '1:63842268705:web:8fbfb1394280620f4b1560'
+});
+const ref = firebase.database().ref('fbtest');
+ref.on('child_added', s => log('received: ' + JSON.stringify(s.val())), e => log('READ ERROR: ' + e.message));
+document.getElementById('b').onclick = () =>
+  ref.push({ t: Date.now() }).then(() => log('sent ok')).catch(e => log('WRITE ERROR: ' + e.message));
+</script>
+</body></html>
