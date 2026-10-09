@@ -312,6 +312,8 @@ input::placeholder { color: #77877c; }
 .nexus-item > div { min-width: 0; }
 .nexus-item strong { color: #f0f5ef; font-size: 14px; }
 .nexus-item small { color: #96a69a; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.nexus-item-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.nexus-item-actions .nexus-button { white-space: nowrap; }
 .nexus-empty { padding: 18px 14px; border: 1px dashed #d9edda22; border-radius: 13px; color: #a3b1a6; line-height: 1.6; text-align: center; }
 .nexus-wheel-help { color: var(--nexus-muted); line-height: 1.65; }
 .nexus-wheel-wrap { width: min(250px, 74vw); height: min(250px, 74vw); margin: 18px auto 22px; }
@@ -367,7 +369,7 @@ a.nexus-button { display: inline-flex; align-items: center; justify-content: cen
   .nexus-card { padding: 21px; border-radius: 17px; }
   .nexus-inventory-panel, .nexus-inventory-editor { grid-column: auto; }
   .nexus-item { align-items: flex-start; gap: 9px; }
-  .nexus-item > .nexus-button { flex: 0 0 auto; }
+  .nexus-item-actions { flex-direction: column; }
   .nexus-chat { height: 260px; max-height: 48vh; }
   .nexus-art-toolbar label { flex-wrap: wrap; }
 }
