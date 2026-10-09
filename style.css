@@ -456,3 +456,7 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-file-button:hover { background:rgba(101,230,173,.18); color:#edf7f2; }
 .sektor-file-button input { display:none; }
 .sektor-inline-player audio { width:100%; height:38px; }
+.announcement-entry-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.announcement-entry-heading small { margin-bottom:5px; }
+.announcement-delete { padding:3px 8px; border:1px solid rgba(243,100,122,.28); border-radius:5px; background:rgba(243,100,122,.08); color:#ffc0ca; cursor:pointer; font-size:10px; }
+.announcement-delete:hover { border-color:#f3647a; background:rgba(243,100,122,.16); }
