@@ -549,9 +549,15 @@ function channels() { return Object.entries((state.server && state.server.channe
 function serverAnnouncements(server = state.server) {
   if (!server) return [];
   const saved = server.announcements;
-  const entries = Array.isArray(saved) ? saved : Object.values(saved || {});
-  return [...(server.announcement ? [server.announcement] : []), ...entries]
-    .filter(item => item && typeof item === 'object' && typeof item.text === 'string')
+  const entries = Array.isArray(saved)
+    ? saved.map((item, index) => ({item, key:String(item && item.id || 'index:' + index), source:'list', index}))
+    : Object.entries(saved || {}).map(([key, item]) => ({item, key, source:'list'}));
+  if (server.announcement && typeof server.announcement === 'object') {
+    entries.push({item:server.announcement,key:'legacy',source:'legacy'});
+  }
+  return entries
+    .filter(({item}) => item && typeof item === 'object' && typeof item.text === 'string')
+    .map(({item,key,source,index}) => ({...item,announcementKey:key,announcementSource:source,announcementIndex:index}))
     .sort((left, right) => (Number(left.ts) || 0) - (Number(right.ts) || 0));
 }
 function latestAnnouncement(server = state.server) {
@@ -707,9 +713,21 @@ function renderServer() {
     entry.className = 'announcement-entry';
     const label = document.createElement('small');
     label.textContent = 'OWNER ANNOUNCEMENT';
+    const heading = document.createElement('div');
+    heading.className = 'announcement-entry-heading';
+    heading.appendChild(label);
+    if (owner) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'announcement-delete';
+      remove.textContent = 'Delete';
+      remove.setAttribute('aria-label', 'Delete announcement');
+      remove.onclick = () => deleteAnnouncement(announcement);
+      heading.appendChild(remove);
+    }
     const text = document.createElement('div');
     text.textContent = announcement.text;
-    entry.append(label, text);
+    entry.append(heading, text);
     return entry;
   }));
   els.ownerComposer.hidden = !(announcementChannel && owner);
@@ -1498,6 +1516,35 @@ async function publishAnnouncement() {
     }
   } catch (error) {
     showError('Could not publish the announcement.');
+  }
+}
+async function deleteAnnouncement(announcement) {
+  const server = state.server;
+  if (!server || !isServerOwner() || !announcement.announcementKey) return;
+  if (!window.confirm('Delete this announcement?')) return;
+  try {
+    if (server.localOnly) {
+      if (announcement.announcementSource === 'legacy') {
+        delete server.announcement;
+      } else if (Array.isArray(server.announcements)) {
+        server.announcements = server.announcements.filter((item, index) =>
+          announcement.announcementKey.startsWith('index:')
+            ? index !== announcement.announcementIndex
+            : String(item && item.id) !== announcement.announcementKey
+        );
+      } else if (server.announcements && typeof server.announcements === 'object') {
+        delete server.announcements[announcement.announcementKey];
+      }
+      saveLocalServers(localServers().map(saved => saved.code === server.code ? server : saved));
+      if (state.server === server) renderServer();
+    } else {
+      const path = announcement.announcementSource === 'legacy'
+        ? 'announcement'
+        : 'announcements/' + safe(announcement.announcementKey);
+      await db.ref('serverMeta/' + server.code + '/' + path).remove();
+    }
+  } catch (error) {
+    showError('Could not delete this announcement.');
   }
 }
 function openAddChannelModal() { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Add channel'; els.modalBody.innerHTML = '<label class="modal-label" for="newChannelName">Channel name</label><input id="newChannelName" class="modal-input" maxlength="24" value="new-channel" placeholder="chat-room"><label class="modal-label" for="newChannelType">Channel type</label><select id="newChannelType" class="modal-input"><option value="text">Chat · messages and images</option><option value="voice">Voice · live audio</option><option value="games">Games · party games</option><option value="announcement">Announcements · owner only</option></select><label class="modal-label" for="newChannelTopic">Topic</label><input id="newChannelTopic" class="modal-input" maxlength="80" placeholder="What is this channel for?"><div id="modalError" class="error"></div><button id="saveChannel" class="primary-btn">Create channel</button>'; els.modal.hidden = false; const nameInput = document.getElementById('newChannelName'); nameInput.focus(); nameInput.select(); document.getElementById('saveChannel').onclick = async () => { const name = nameInput.value.trim(); const type = document.getElementById('newChannelType').value; const topic = document.getElementById('newChannelTopic').value.trim(); const error = document.getElementById('modalError'); if (!name) { error.textContent = 'Enter a channel name.'; return; } const id = safe(name.toLowerCase().replace(/\s+/g,'-')); const channel = {name:name.slice(0,24),type:type === 'games' ? 'text' : type,topic:(type === 'games' ? '[games] ' : '') + (topic.slice(0,80) || (type === 'voice' ? 'Join the conversation.' : type === 'games' ? 'Party games for the server.' : type === 'announcement' ? 'Owner updates only.' : 'A new place to talk.'))}; try { if (state.server.localOnly) { state.server.channels[id] = channel; saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); renderServer(); } else { await db.ref('serverMeta/' + state.server.code + '/channels/' + id).set(channel); } els.modal.hidden = true; } catch (saveError) { error.textContent = 'Could not create this channel.'; } }; }
