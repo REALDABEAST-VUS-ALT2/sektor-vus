@@ -60,6 +60,45 @@
     return '';
   }
 
+  function mediaExportDetails(media) {
+    if (typeof media !== 'string') return null;
+    const match = media.match(/^data:(image\/png|audio\/[a-zA-Z0-9.+-]+|video\/(mp4|webm|ogg|quicktime|mpeg|3gpp|3gpp2));base64,([a-zA-Z0-9+/=]+)$/);
+    if (!match) return null;
+    const mimeType = match[1];
+    const extensions = {
+      'image/png':'png',
+      'audio/mpeg':'mp3','audio/wav':'wav','audio/ogg':'ogg','audio/mp4':'m4a',
+      'audio/aac':'aac','audio/flac':'flac','audio/opus':'opus','audio/webm':'webm',
+      'video/mp4':'mp4','video/webm':'webm','video/ogg':'ogv',
+      'video/quicktime':'mov','video/mpeg':'mpeg','video/3gpp':'3gp','video/3gpp2':'3g2'
+    };
+    const extension = Object.prototype.hasOwnProperty.call(extensions, mimeType) ? extensions[mimeType] : '';
+    return extension ? {mimeType, extension, encoded:match[3]} : null;
+  }
+
+  function exportInventoryMedia(item) {
+    const details = mediaExportDetails(item.media);
+    if (!details) throw new Error('This inventory item does not contain a supported exportable file.');
+    const filename = String(item.name || 'nexus-file')
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+      .replace(/[. ]+$/g, '')
+      .trim()
+      .slice(0, 80) || 'nexus-file';
+    const binary = atob(details.encoded);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], {type:details.mimeType}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename + '.' + details.extension;
+    document.body.appendChild(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
+
   function normalize(value) {
     const base = defaults();
     const records = (items, fallback, limit) => (Array.isArray(items) ? items : fallback)
@@ -477,11 +516,16 @@
     const rows = items.map(item => {
       const media = typeof item.media === 'string' ? item.media : '';
       const preview = mediaPreview(media, item.name);
+      const exportButton = mediaExportDetails(media)
+        ? '<button class="nexus-button secondary" type="button" data-action="export-inventory" data-id="' +
+          escapeHtml(item.id) + '" aria-label="Export ' + escapeHtml(item.name) + '">Export</button>'
+        : '';
       return '<div class="nexus-item"><div><strong>' + escapeHtml(item.name) +
         '</strong><small>' + escapeHtml(item.type || 'item') + ' · Quantity ' + Number(item.quantity || 1) +
         (item.description ? ' · ' + escapeHtml(item.description) : '') +
-        '</small>' + preview + '</div><button class="nexus-button secondary" data-action="edit-inventory" data-id="' +
-        escapeHtml(item.id) + '">Edit</button></div>';
+        '</small>' + preview + '</div><div class="nexus-item-actions">' + exportButton +
+        '<button class="nexus-button secondary" type="button" data-action="edit-inventory" data-id="' +
+        escapeHtml(item.id) + '">Edit</button></div></div>';
     }).join('');
     const auctionOptions = items.filter(item => Number(item.quantity || 0) > 0).map(item =>
       '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.name) + ' · ' + Number(item.quantity) + ' available</option>').join('');
@@ -775,6 +819,12 @@
         localStorage.removeItem(sessionKey);
         render();
         setStatus('You are logged out.');
+      } else if (action === 'export-inventory') {
+        if (!user) throw new Error('Sign in to export files from your inventory.');
+        const item = inventoryFor(user).find(entry => entry.id === button.dataset.id);
+        if (!item) throw new Error('That inventory item no longer exists.');
+        exportInventoryMedia(item);
+        setStatus('Export started for ' + String(item.name || 'your file') + '.');
       } else if (action === 'spin') {
         if (!user) throw new Error('Create a Nexus account first.');
         if (wheelSpinning) return;
