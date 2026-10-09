@@ -10,6 +10,7 @@
   const content = document.getElementById('content');
   const status = document.getElementById('status');
   const connectButton = document.getElementById('connect-button');
+  const exportButton = document.getElementById('export-button');
   const worldMode = document.getElementById('world-mode');
   const inventoryPage = location.pathname.endsWith('/inventory.html');
   let world = null;
@@ -99,6 +100,27 @@
     }
   }
 
+  function exportWorld() {
+    if (!world) {
+      setStatus('Connect to Nexus before exporting the world.', true);
+      return;
+    }
+    const payload = JSON.stringify(normalize(world), null, 2);
+    const blob = new Blob([payload], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(link);
+    try {
+      link.click();
+    } finally {
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    setStatus('World export started.');
+  }
+
   function normalize(value) {
     const base = defaults();
     const records = (items, fallback, limit) => (Array.isArray(items) ? items : fallback)
@@ -136,6 +158,18 @@
   function inventoryFor(user) {
     if (!Array.isArray(user.inventory)) user.inventory = [];
     return user.inventory;
+  }
+
+  function quantityCost(quantity) {
+    return Math.max(0, Number(quantity || 0) - 1) * 10;
+  }
+
+  function chargeQuantityCost(user, quantity) {
+    const cost = quantityCost(quantity);
+    if (cost <= 0) return;
+    const balance = Number(user.balance || 0);
+    if (balance < cost) throw new Error('You need ' + cost + ' Sektorium to stock ' + quantity + ' of this item.');
+    user.balance = balance - cost;
   }
 
   function floodFill(canvas, context, point, hexColor) {
@@ -534,6 +568,7 @@
       '</div><form class="nexus-form nexus-inventory-form" data-form="inventory-add">' +
       '<input name="name" maxlength="32" placeholder="Item name" required>' +
       '<input name="quantity" type="number" min="1" max="9999" value="1" required>' +
+      '<small class="nexus-wheel-help">Each quantity beyond the first costs 10 Sektorium.</small>' +
       '<select name="type"><option>item</option><option>art</option><option>sound</option><option>video</option><option>collectible</option></select>' +
       '<input name="description" maxlength="120" placeholder="Description (optional)">' +
       '<button class="nexus-button">Add to inventory</button></form>' +
@@ -715,6 +750,7 @@
         const name = String(formData.get('name') || '').trim();
         const quantity = Number(formData.get('quantity'));
         if (!name || !Number.isInteger(quantity) || quantity < 1 || quantity > 9999) throw new Error('Enter an item name and a quantity from 1 to 9999.');
+        chargeQuantityCost(user, quantity);
         inventoryFor(user).push({
           id:'inventory-' + Date.now() + '-' + Math.random().toString(16).slice(2),
           name,
@@ -731,6 +767,12 @@
         const quantity = Number(formData.get('quantity'));
         if (!item) throw new Error('That inventory item no longer exists.');
         if (!name || !Number.isInteger(quantity) || quantity < 1 || quantity > 9999) throw new Error('Enter an item name and a quantity from 1 to 9999.');
+        const previousQuantity = Number(item.quantity || 1);
+        if (quantity > previousQuantity) {
+          const extraCost = (quantity - previousQuantity) * 10;
+          if (Number(user.balance || 0) < extraCost) throw new Error('You need ' + extraCost + ' Sektorium to raise this stack to ' + quantity + '.');
+          user.balance = Number(user.balance || 0) - extraCost;
+        }
         item.name = name;
         item.quantity = quantity;
         item.type = String(formData.get('type') || 'item');
@@ -979,6 +1021,7 @@
   });
 
   connectButton.addEventListener('click', connect);
+  exportButton.addEventListener('click', exportWorld);
   document.addEventListener('fullscreenchange', () => {
     const editor = content.querySelector('[data-art-editor]');
     const fullscreenButton = content.querySelector('[data-action="fullscreen-art"]');
