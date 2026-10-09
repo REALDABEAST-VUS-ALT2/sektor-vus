@@ -10,7 +10,6 @@
   const content = document.getElementById('content');
   const status = document.getElementById('status');
   const connectButton = document.getElementById('connect-button');
-  const exportButton = document.getElementById('export-button');
   const worldMode = document.getElementById('world-mode');
   const inventoryPage = location.pathname.endsWith('/inventory.html');
   let world = null;
@@ -105,7 +104,9 @@
       setStatus('Connect to Nexus before exporting the world.', true);
       return;
     }
-    const payload = JSON.stringify(normalize(world), null, 2);
+    const exportData = normalize(world);
+    exportData.users = exportData.users.map(({password, ...user}) => user);
+    const payload = JSON.stringify(exportData, null, 2);
     const blob = new Blob([payload], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -563,7 +564,7 @@
     }).join('');
     const auctionOptions = items.filter(item => Number(item.quantity || 0) > 0).map(item =>
       '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.name) + ' · ' + Number(item.quantity) + ' available</option>').join('');
-    return '<section class="nexus-card nexus-inventory-panel"><h2>Inventory</h2><div class="nexus-list">' +
+    return '<section class="nexus-card nexus-inventory-panel"><h2>Inventory</h2><button class="nexus-button secondary" type="button" data-action="export-world">Export world</button><div class="nexus-list">' +
       (rows || '<div class="nexus-empty">Your inventory is empty. Add your first item below.</div>') +
       '</div><form class="nexus-form nexus-inventory-form" data-form="inventory-add">' +
       '<input name="name" maxlength="32" placeholder="Item name" required>' +
@@ -584,8 +585,8 @@
       '<input class="nexus-art-text" type="text" maxlength="200" placeholder="Type text, choose the Text tool, then click the canvas" data-art-control="text">' +
       '<div class="nexus-art-save"><input type="text" maxlength="32" placeholder="Artwork name" data-art-name>' +
       '<button class="nexus-button" type="button" data-action="save-art">Save artwork to inventory</button></div></section>' +
-      '<div class="nexus-media-import"><div><label for="nexus-audio-file"><strong>Import audio</strong></label><small>MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, or WebM · up to 4 MB</small><input id="nexus-audio-file" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm" data-media-import="audio"></div>' +
-      '<div><label for="nexus-video-file"><strong>Import video</strong></label><small>MP4, WebM, OGG, MOV, or MPEG · up to 4 MB</small><input id="nexus-video-file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.mov,.mpeg" data-media-import="video"></div></div></section>' +
+      '<div class="nexus-media-import"><div><label for="nexus-audio-file"><strong>Import audio</strong></label><small>MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, or WebM · up to 10 MB</small><input id="nexus-audio-file" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm" data-media-import="audio"></div>' +
+      '<div><label for="nexus-video-file"><strong>Import video</strong></label><small>MP4, WebM, OGG, MOV, or MPEG · up to 10 MB</small><input id="nexus-video-file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.mov,.mpeg" data-media-import="video"></div></div></section>' +
       '<section class="nexus-card"><h2>Create an auction</h2><p class="nexus-wheel-help">Choose one item from your inventory, a starting bid, and how long the auction runs.</p>' +
       '<form class="nexus-form" data-form="auction-create"><select name="itemId" required ' + (auctionOptions ? '' : 'disabled') + '>' +
       (auctionOptions || '<option value="">Add an item to your inventory first</option>') + '</select>' +
@@ -812,7 +813,7 @@
     try {
       const mediaKind = input.dataset.mediaImport === 'video' ? 'video' : 'audio';
       if (!user) throw new Error('Sign in to import media into your inventory.');
-      if (file.size > 4 * 1024 * 1024) throw new Error('Choose a media file no larger than 4 MB.');
+      if (file.size > 10 * 1024 * 1024) throw new Error('Choose a media file no larger than 10 MB.');
       if (!mediaTypes[extension] || (file.type && file.type !== 'application/octet-stream' && !file.type.startsWith(mediaKind + '/'))) {
         throw new Error('Choose a supported ' + mediaKind + ' file.');
       }
@@ -853,14 +854,20 @@
       return;
     }
     const button = event.target.closest('button[data-action]');
-    if (!button || !world) return;
+    if (!button) return;
     const action = button.dataset.action;
+    if (!world) {
+      setStatus('Connect to Nexus before exporting.', true);
+      return;
+    }
     const user = currentUser();
     try {
       if (action === 'logout') {
         localStorage.removeItem(sessionKey);
         render();
         setStatus('You are logged out.');
+      } else if (action === 'export-world') {
+        exportWorld();
       } else if (action === 'export-inventory') {
         if (!user) throw new Error('Sign in to export files from your inventory.');
         const item = inventoryFor(user).find(entry => entry.id === button.dataset.id);
@@ -1021,7 +1028,6 @@
   });
 
   connectButton.addEventListener('click', connect);
-  exportButton.addEventListener('click', exportWorld);
   document.addEventListener('fullscreenchange', () => {
     const editor = content.querySelector('[data-art-editor]');
     const fullscreenButton = content.querySelector('[data-action="fullscreen-art"]');
