@@ -402,7 +402,7 @@ async function ensureFirebaseAccess() {
     throw new Error('Could not connect to the account service. Anonymous sign-in may need to be enabled in Firebase Authentication.');
   }
 }
-async function showApp() { els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); loadServers(); }
+async function showApp() { els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); await loadServers(); const joinCode = new URLSearchParams(location.search).get('join'); if (joinCode) { const existing = state.servers.find(server => String(server.code).toUpperCase() === joinCode.toUpperCase()); if (existing) selectServer(existing.code); else openJoinServerModal(joinCode); } }
 function showAuth() { els.authView.hidden = false; els.appView.hidden = true; }
 function avatarMarkup(user, className) { const image = user && user.avatar; return image ? '<div class="' + className + ' has-image"><img src="' + esc(image) + '" alt=""></div>' : '<div class="' + className + '">' + esc((user && user.name || state.user.username).slice(0,2).toUpperCase()) + '</div>'; }
 function showError(message) { if (els.authError) els.authError.textContent = message; console.error('[Sektor]', message); }
@@ -497,7 +497,13 @@ async function selectServer(code) {
     state.metaRef = db.ref('serverMeta/' + code);
     state.metaHandler = snap => {
       if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
-      state.server = snap.exists() ? {code,...snap.val()} : null;
+      if (snap.exists()) {
+        state.server = {code,...snap.val(),metadataMissing:false};
+      } else if (state.server && state.server.code === code && isServerOwner()) {
+        state.server.metadataMissing = true;
+      } else {
+        state.server = null;
+      }
       updateEditModeUi();
       renderServer();
     };
@@ -523,7 +529,7 @@ async function selectServer(code) {
     if (navigationVersion === state.navigationVersion) showError(error.message || 'Could not open that server.');
   }
 }
-async function openJoinServerModal() { els.modalTitle.textContent = 'Join a server'; els.modalBody.innerHTML = '<label class="modal-label" for="joinCode">Invite code</label><input id="joinCode" class="modal-input" maxlength="20" placeholder="Paste an invite code"><div id="modalError" class="error"></div><button id="confirmJoin" class="primary-btn">Join server</button>'; els.modal.hidden = false; document.getElementById('joinCode').focus(); document.getElementById('confirmJoin').onclick = async () => { const code = document.getElementById('joinCode').value.trim().toUpperCase(); const error = document.getElementById('modalError'); if (!code) { error.textContent = 'Enter an invite code.'; return; } try { const snap = await db.ref('serverMeta/' + safe(code)).get(); if (!snap.exists()) throw new Error('Server not found.'); state.servers.push({code,...snap.val()}); els.modal.hidden = true; await selectServer(code); } catch (joinError) { error.textContent = joinError.message || 'Could not join server.'; } }; }
+async function openJoinServerModal(inviteCode = '') { els.modalTitle.textContent = 'Join a server'; els.modalBody.innerHTML = '<label class="modal-label" for="joinCode">Invite code</label><input id="joinCode" class="modal-input" maxlength="20" placeholder="Paste an invite code"><div id="modalError" class="error"></div><button id="confirmJoin" class="primary-btn">Join server</button>'; els.modal.hidden = false; const codeInput = document.getElementById('joinCode'); codeInput.value = inviteCode; codeInput.focus(); document.getElementById('confirmJoin').onclick = async () => { const code = codeInput.value.trim().toUpperCase(); const error = document.getElementById('modalError'); if (!code) { error.textContent = 'Enter an invite code.'; return; } try { const local = localServers().find(server => String(server.code).toUpperCase() === code); const snap = local ? null : await db.ref('serverMeta/' + safe(code)).get(); if (!local && !snap.exists()) throw new Error('Server not found.'); const joinedServer = local || {code,...snap.val()}; state.servers = [...state.servers.filter(server => String(server.code).toUpperCase() !== code), joinedServer]; els.modal.hidden = true; await selectServer(joinedServer.code); } catch (joinError) { error.textContent = joinError.message || 'Could not join server.'; } }; }
 function openProfileModal() { if (!state.user) return; state.user.avatar = state.user.avatar || ''; els.modalTitle.textContent = 'Your profile'; els.modalBody.innerHTML = '<img id="profilePreview" class="profile-preview" src="' + esc(state.user.avatar) + '" alt=""><label class="modal-label" for="profileFile">Profile picture</label><input id="profileFile" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveProfile" class="primary-btn" type="button">Save profile</button>'; const preview = document.getElementById('profilePreview'); if (!state.user.avatar) preview.style.display = 'none'; document.getElementById('profileFile').onchange = event => { const file = event.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { document.getElementById('modalError').textContent = 'Choose an image under 2 MB.'; return; } const reader = new FileReader(); reader.onload = () => { preview.src = reader.result; preview.style.display = 'block'; preview.dataset.value = reader.result; }; reader.readAsDataURL(file); }; document.getElementById('saveProfile').onclick = () => { state.user.avatar = preview.dataset.value || state.user.avatar || ''; localStorage.setItem('vusServersSession', JSON.stringify(state.user)); renderServerRail(); els.modal.hidden = true; if (state.server) selectServer(state.server.code); }; els.modal.hidden = false; }
 function openFriendModal() { els.modalTitle.textContent = 'Add a friend'; els.modalBody.innerHTML = '<label class="modal-label" for="friendSearch">Search by username</label><div class="friend-search-row"><input id="friendSearch" class="modal-input" maxlength="24" placeholder="username"><button id="friendSearchBtn" class="modal-secondary">Search</button></div><div id="friendResults" class="friend-results"></div><div id="modalError" class="error"></div>'; els.modal.hidden = false; const input = document.getElementById('friendSearch'); const search = async () => { const query = input.value.trim().toLowerCase(); const results = document.getElementById('friendResults'); const error = document.getElementById('modalError'); results.innerHTML = ''; error.textContent = ''; if (!query) { error.textContent = 'Enter a username.'; return; } const localMatches = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().includes(query) && member.key !== state.user.key); if (localMatches.length) renderFriendResults(localMatches.map(member => ({key:member.key,username:member.name})), results, error); else { try { const snap = await db.ref('usernameIndex/' + query).get(); if (!snap.exists()) throw new Error('No user found with that username.'); const key = snap.val(); const userSnap = await db.ref('users/' + key).get(); const user = userSnap.val(); if (!user) throw new Error('No user found with that username.'); renderFriendResults([{key,username:user.username}], results, error); } catch (searchError) { error.textContent = searchError.message || 'Could not search right now.'; } } }; document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus(); }
 function renderFriendResults(users, container, error) { users.forEach(user => { const row = document.createElement('div'); row.className = 'friend-result'; row.innerHTML = '<span>@' + esc(user.username) + '</span><button class="modal-secondary">Add</button>'; row.querySelector('button').onclick = async () => { try { await db.ref('users/' + user.key + '/friendRequestsIncoming/' + state.user.key).set({fromUsername:state.user.username,sentAt:firebase.database.ServerValue.TIMESTAMP}); row.querySelector('button').textContent = 'Sent'; row.querySelector('button').disabled = true; } catch (requestError) { error.textContent = 'Could not send the friend request.'; } }; container.appendChild(row); }); }
@@ -544,6 +550,67 @@ function openFriendModal() {
     } catch (searchError) { error.textContent = searchError.message || 'Could not search right now.'; }
   };
   document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus();
+}
+function serverInviteCode(text) {
+  const match = String(text || '').match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
+  return match ? match[1].toUpperCase() : null;
+}
+const serverInviteLookups = new Map();
+function resolveServerInvite(code) {
+  if (!serverInviteLookups.has(code)) {
+    serverInviteLookups.set(code, (async () => {
+      const local = localServers().find(server => String(server.code).toUpperCase() === code);
+      if (local) return local;
+      try {
+        const snapshot = await db.ref('serverMeta/' + safe(code)).get();
+        return snapshot.exists() ? {code,...snapshot.val()} : null;
+      } catch (error) {
+        console.error('[Sektor] Could not load a server invite.', error);
+        return null;
+      }
+    })());
+  }
+  return serverInviteLookups.get(code);
+}
+function serverInviteMarkup(server) {
+  const accent = /^#[0-9a-f]{6}$/i.test(server.accent || '') ? server.accent : '#5865f2';
+  const initials = String(server.name || 'Server').trim().split(/[\s_-]+/).filter(Boolean).slice(0,2).map(part => Array.from(part)[0] || '').join('').toUpperCase() || 'S';
+  const card = document.createElement('section');
+  card.className = 'server-invite-card';
+  card.style.setProperty('--invite-accent', accent);
+  const banner = document.createElement('div');
+  banner.className = 'server-invite-banner';
+  const body = document.createElement('div');
+  body.className = 'server-invite-body';
+  const icon = document.createElement('div');
+  icon.className = 'server-invite-icon';
+  if (typeof server.icon === 'string' && server.icon) {
+    const image = document.createElement('img');
+    image.src = server.icon;
+    image.alt = '';
+    icon.appendChild(image);
+  } else icon.textContent = initials;
+  const name = document.createElement('strong');
+  name.className = 'server-invite-name';
+  name.textContent = server.name || 'Sektor server';
+  const join = document.createElement('button');
+  join.type = 'button';
+  join.className = 'server-invite-join';
+  join.textContent = 'Join';
+  join.onclick = () => {
+    const existing = state.servers.find(item => String(item.code).toUpperCase() === String(server.code).toUpperCase());
+    if (existing) selectServer(existing.code);
+    else openJoinServerModal(server.code);
+  };
+  body.append(icon, name, join);
+  card.append(banner, body);
+  return card;
+}
+async function hydrateServerInvite(card, code) {
+  const server = await resolveServerInvite(code);
+  if (!card.isConnected) return;
+  if (server) card.replaceWith(serverInviteMarkup(server));
+  else card.textContent = 'Server invite unavailable.';
 }
 function channels() { return Object.entries((state.server && state.server.channels) || {}).filter(([, channel]) => channel && typeof channel === 'object').map(([id, channel]) => ({id,...channel, type:channel.type === 'games' || channel.game === true ? 'text' : channel.type, topic:String(channel.topic || '').replace(/^\[games\]\s*/, '')})); }
 function serverAnnouncements(server = state.server) {
@@ -1296,6 +1363,14 @@ function renderMessage(message) {
   const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
   item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  const inviteCode = serverInviteCode(message.text);
+  if (inviteCode) {
+    const invite = document.createElement('div');
+    invite.className = 'server-invite-loading';
+    invite.textContent = 'Loading server invite…';
+    item.querySelector('.message-text').replaceWith(invite);
+    hydrateServerInvite(invite, inviteCode);
+  }
   item.querySelectorAll('.reaction').forEach(button => button.onclick = () => toggleReaction(message, button.dataset.emoji));
   item.querySelector('[data-action="react"]').onclick = event => openReactionPicker(event, item, message);
   item.querySelector('[data-action="reply"]').onclick = () => startReply(message);
@@ -1657,16 +1732,21 @@ async function deleteServer(server) {
   if (server.localOnly) {
     saveLocalServers(localServers().filter(item => item.code !== code));
   } else {
-    const updates = {};
-    ['serverMeta','serverMessages','serverPresence','serverVoice','voiceSignals','serverGames'].forEach(path => {
-      updates[path + '/' + code] = null;
-    });
-    await db.ref().update(updates);
+    if (!server.metadataMissing) await db.ref('serverMeta/' + code).remove();
+    const cleanupPaths = ['serverMessages','serverPresence','serverVoice','voiceSignals','serverGames'];
+    const cleanupResults = await Promise.allSettled(cleanupPaths.map(path => db.ref(path + '/' + code).remove()));
+    const cleanupErrors = cleanupResults.filter(result => result.status === 'rejected');
+    if (cleanupErrors.length) {
+      console.error('[Sektor] Server metadata was deleted, but some server data could not be cleaned up.', cleanupErrors);
+    }
   }
   const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]');
   localStorage.setItem('vusServersJoined', JSON.stringify(joined.filter(joinedCode => joinedCode !== code)));
   const messagePrefix = 'vusMessages_' + code + '_';
-  Object.keys(localStorage).filter(key => key.startsWith(messagePrefix)).forEach(key => localStorage.removeItem(key));
+  const hiddenMessagePrefix = 'vusHiddenMessages_' + safe(state.user.key) + '_' + safe(code) + '_';
+  Object.keys(localStorage)
+    .filter(key => key.startsWith(messagePrefix) || key.startsWith(hiddenMessagePrefix))
+    .forEach(key => localStorage.removeItem(key));
   await clearSubscriptions();
   state.servers = state.servers.filter(item => item.code !== code);
   state.server = null;

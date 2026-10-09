@@ -51,6 +51,10 @@
     else if (code.startsWith('\n')) code = code.slice(1);
     return code;
   }
+  function serverInviteCode(value) {
+    const match = String(value || '').match(/^\/code:\s*([A-Za-z0-9_-]{4,20})\s*$/);
+    return match ? match[1].toUpperCase() : null;
+  }
 
   function chatInitials(username) {
     const parts = String(username || '?').trim().split(/[\s_-]+/).filter(Boolean);
@@ -59,17 +63,80 @@
       : Array.from(parts[0] || '?').slice(0, 2).join('')).toUpperCase();
   }
 
+  function codeCardMarkup(code) {
+    return '<section class="nexus-code-card"><header><span>SEKTOR CODE</span><button class="nexus-code-copy" type="button" data-action="copy-code">Copy</button></header><pre><code>' +
+      escapeHtml(code) + '</code></pre></section>';
+  }
+
   function renderChatMessage(message) {
     const username = String(message.user || 'Unknown');
     const text = String(message.text || '');
     const code = codeFromMessage(text);
+    const inviteCode = serverInviteCode(text);
     const content = code === null
       ? '<div class="nexus-chat-text">' + escapeHtml(text) + '</div>'
-      : '<section class="nexus-code-card"><header><span>SEKTOR CODE</span><button class="nexus-code-copy" type="button" data-action="copy-code">Copy</button></header><pre><code>' +
-        escapeHtml(code) + '</code></pre></section>';
+      : inviteCode
+        ? '<div class="nexus-server-invite-loading" data-server-invite="' + escapeHtml(inviteCode) + '">Loading server invite…</div>'
+        : codeCardMarkup(code);
     return '<article class="nexus-chat-line"><span class="nexus-chat-avatar" aria-hidden="true">' +
       escapeHtml(chatInitials(username)) + '</span><div class="nexus-chat-message"><header><strong>' +
       escapeHtml(username) + '</strong></header>' + content + '</div></article>';
+  }
+
+  const inviteLookups = new Map();
+  function lookupServerInvite(code) {
+    if (!inviteLookups.has(code)) {
+      const lookup = (async () => {
+        try {
+          const localServers = JSON.parse(localStorage.getItem('vusServersLocal') || '[]');
+          const local = Array.isArray(localServers) && localServers.find(server =>
+            server && String(server.code || '').toUpperCase() === code
+          );
+          if (local) return local;
+        } catch (error) {
+          console.error('[Nexus] Could not read local server invites.', error);
+        }
+        if (!firebaseMode) return null;
+        try {
+          const snapshot = await firebaseApi.database().ref('serverMeta/' + code).get();
+          return snapshot.exists() ? {code,...snapshot.val()} : null;
+        } catch (error) {
+          console.error('[Nexus] Could not look up server invite ' + code + '.', error);
+          return null;
+        }
+      })();
+      inviteLookups.set(code, lookup);
+    }
+    return inviteLookups.get(code);
+  }
+
+  function renderServerInvite(server, code) {
+    const accent = /^#[0-9a-f]{6}$/i.test(server.accent || '') ? server.accent : '#65e6ad';
+    const name = String(server.name || 'Sektor server');
+    const icon = typeof server.icon === 'string' &&
+      (/^https:\/\/[^<>"']+$/i.test(server.icon) || /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(server.icon))
+      ? '<img src="' + escapeHtml(server.icon) + '" alt="">'
+      : escapeHtml(chatInitials(name));
+    const joinUrl = new URL('./VUS-Servers.html', location.href);
+    joinUrl.searchParams.set('join', code);
+    if (lanMode) joinUrl.searchParams.set('lan', '1');
+    return '<a class="nexus-server-invite" href="' + escapeHtml(joinUrl.href) + '" style="--server-accent:' + accent + '">' +
+      '<span class="nexus-server-invite-banner"></span><span class="nexus-server-invite-icon">' + icon +
+      '</span><strong>' + escapeHtml(name) + '</strong><span class="nexus-server-invite-join">Open in Sektor →</span></a>';
+  }
+
+  function hydrateServerInvites() {
+    content.querySelectorAll('.nexus-server-invite-loading').forEach(async placeholder => {
+      const code = placeholder.dataset.serverInvite;
+      if (!code) return;
+      const server = await lookupServerInvite(code);
+      if (!placeholder.isConnected) return;
+      if (server) {
+        placeholder.outerHTML = renderServerInvite(server, code);
+        return;
+      }
+      placeholder.outerHTML = codeCardMarkup(code);
+    });
   }
 
   function currency(amount) {
@@ -108,15 +175,49 @@
     return extension ? {mimeType, extension, encoded:match[3]} : null;
   }
 
-  function downloadBlob(blob, filename) {
+  async function downloadBlob(blob, filename) {
     let downloadWindow = window;
+    let parentAccessible = false;
     try {
-      if (window.parent !== window && window.parent.location.origin === window.location.origin) {
-        downloadWindow = window.parent;
+      if (window.parent !== window) {
+        parentAccessible = window.parent.location.origin === window.location.origin;
+        if (parentAccessible) downloadWindow = window.parent;
       }
     } catch (error) {
       if (error.name !== 'SecurityError') throw error;
     }
+
+    if (window.parent !== window && !parentAccessible) {
+      try {
+        const requestId = 'nexus-download-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        await new Promise((resolve, reject) => {
+          const timeout = window.setTimeout(() => {
+            window.removeEventListener('message', onResult);
+            reject(new Error('The launcher did not respond to the download request.'));
+          }, 3000);
+          function onResult(event) {
+            const result = event.data;
+            if (event.source !== window.parent || !result ||
+                result.type !== 'sektor-nexus-download-result' || result.requestId !== requestId) return;
+            window.clearTimeout(timeout);
+            window.removeEventListener('message', onResult);
+            if (result.ok) resolve();
+            else reject(new Error('The launcher could not start the download.'));
+          }
+          window.addEventListener('message', onResult);
+          window.parent.postMessage({
+            type: 'sektor-nexus-download',
+            requestId,
+            filename,
+            blob
+          }, '*');
+        });
+        return;
+      } catch (error) {
+        console.warn('[Nexus] Launcher download handoff failed; trying a direct download.', error);
+      }
+    }
+
     const url = downloadWindow.URL.createObjectURL(blob);
     const link = downloadWindow.document.createElement('a');
     link.href = url;
@@ -135,7 +236,7 @@
     }, 60000);
   }
 
-  function exportInventoryMedia(item) {
+  async function exportInventoryMedia(item) {
     const details = mediaExportDetails(item.media);
     if (!details) throw new Error('This inventory item does not contain a supported exportable file.');
     const filename = String(item.name || 'nexus-file')
@@ -145,10 +246,10 @@
       .slice(0, 80) || 'nexus-file';
     const binary = atob(details.encoded);
     const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-    downloadBlob(new Blob([bytes], {type:details.mimeType}), filename + '.' + details.extension);
+    await downloadBlob(new Blob([bytes], {type:details.mimeType}), filename + '.' + details.extension);
   }
 
-  function exportWorld() {
+  async function exportWorld() {
     if (!world) {
       setStatus('Connect to Nexus before exporting the world.', true);
       return;
@@ -156,7 +257,7 @@
     const exportData = normalize(world);
     exportData.users = exportData.users.map(({password, ...user}) => user);
     const payload = JSON.stringify(exportData, null, 2);
-    downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
+    await downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
     setStatus('World export started.');
   }
 
@@ -708,9 +809,12 @@
         ? '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
           '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
           (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
-        : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: to share a code block" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Tip: start with <code>/code:</code> to post a Sektor code card. Press Shift+Enter for a new line.</small></section>');
+        : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: for a code or server invite" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Use <code>/code:YOURSERVERCODE</code> to share a server invite card, or <code>/code:</code> followed by source to post a copyable code block. Press Shift+Enter for a new line.</small></section>');
     const chat = content.querySelector('.nexus-chat');
-    if (chat) chat.scrollTop = chat.scrollHeight;
+    if (chat) {
+      chat.scrollTop = chat.scrollHeight;
+      hydrateServerInvites();
+    }
     updateAuctionCountdowns();
   }
 
@@ -916,12 +1020,12 @@
         render();
         setStatus('You are logged out.');
       } else if (action === 'export-world') {
-        exportWorld();
+        await exportWorld();
       } else if (action === 'export-inventory') {
         if (!user) throw new Error('Sign in to export files from your inventory.');
         const item = inventoryFor(user).find(entry => entry.id === button.dataset.id);
         if (!item) throw new Error('That inventory item no longer exists.');
-        exportInventoryMedia(item);
+        await exportInventoryMedia(item);
         setStatus('Export started for ' + String(item.name || 'your file') + '.');
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
