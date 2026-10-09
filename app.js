@@ -588,6 +588,7 @@ function serverInviteMarkup(server) {
     const image = document.createElement('img');
     image.src = server.icon;
     image.alt = '';
+    image.onerror = () => { icon.textContent = initials; };
     icon.appendChild(image);
   } else icon.textContent = initials;
   const name = document.createElement('strong');
@@ -1671,20 +1672,45 @@ function openServerSettings() {
   descriptionInput.value = server.description || '';
   accentInput.value = server.accent || '#5865f2';
   let icon = server.icon || '';
+  let iconReadVersion = 0;
+  let iconReadPromise = Promise.resolve(true);
   document.getElementById('settingsIcon').onchange = event => {
     const file = event.target.files[0];
     if (!file) return;
+    const readVersion = ++iconReadVersion;
     if (file.size > 2 * 1024 * 1024) {
       document.getElementById('modalError').textContent = 'Choose an icon under 2 MB.';
+      iconReadPromise = Promise.resolve(false);
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => { icon = reader.result; };
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith('image/')) {
+      document.getElementById('modalError').textContent = 'Choose an image file for the server icon.';
+      iconReadPromise = Promise.resolve(false);
+      return;
+    }
+    const error = document.getElementById('modalError');
+    error.textContent = '';
+    iconReadPromise = new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('Could not read the server icon.'));
+      reader.onerror = () => reject(reader.error || new Error('Could not read the server icon.'));
+      reader.onabort = () => reject(new Error('Reading the server icon was cancelled.'));
+      reader.readAsDataURL(file);
+    }).then(result => {
+      if (readVersion !== iconReadVersion) return false;
+      icon = result;
+      return true;
+    }).catch(readError => {
+      if (readVersion === iconReadVersion) error.textContent = readError.message || 'Could not read the server icon.';
+      return false;
+    });
   };
   document.getElementById('saveServerSettings').onclick = async () => {
     const name = nameInput.value.trim();
     if (!name) { document.getElementById('modalError').textContent = 'Enter a server name.'; return; }
+    if (!(await iconReadPromise)) return;
     const updates = {name:name.slice(0,32),description:descriptionInput.value.trim().slice(0,80),accent:accentInput.value,icon};
     try {
       if (server.localOnly) {
