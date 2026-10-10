@@ -78,7 +78,7 @@
     {id:'central-warehouse',x:2250,y:690,w:270,h:190}
   ].map(building=>({...building,type:'building'}));
   const obstacles=[
-    {id:'north-home-a',x:650,y:220,w:130,h:110,type:'house',enterable:true,doorX:780,doorY:275},
+    {id:'north-home-a',x:650,y:220,w:130,h:110,type:'house',enterable:true,doorX:650,doorY:275},
     {id:'north-home-b',x:1080,y:300,w:150,h:120,type:'house',enterable:false},
     {id:'north-barrier-a',x:760,y:565,w:210,h:32,type:'barrier'},
     {id:'north-barrier-b',x:1030,y:185,w:180,h:32,type:'barrier'},
@@ -156,6 +156,8 @@
   let giveUpBusy=false;
   let keys = new Set();
   let aim = {x:500,y:280};
+  let aimOffset={x:0,y:0};
+  let aimActive=false;
   let traces = [];
   let pointerDown = false;
   let spectatorContainer=null;
@@ -738,15 +740,22 @@
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
-      const topSpeed=1700*(vehicle?vehicle.speed:1)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
+      const topSpeed=(vehicle?1700*vehicle.speed:1500)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
       if (pilot&&!dx&&!dy) localPosition={x:Number(transport.x),y:Number(transport.y)};
-      const length=Math.hypot(dx,dy)||1;
+      let moveX=dx;
+      let moveY=dy;
+      if (!vehicle&&aimActive&&Math.hypot(aimOffset.x,aimOffset.y)>1) {
+        const angle=Math.atan2(aimOffset.y,aimOffset.x);
+        moveX=-Math.sin(angle)*dx-Math.cos(angle)*dy;
+        moveY=Math.cos(angle)*dx-Math.sin(angle)*dy;
+      }
+      const length=Math.hypot(moveX,moveY)||1;
       const ease=1-Math.exp(-30*elapsed);
-      movementVelocity.x+=(dx/length*topSpeed-movementVelocity.x)*ease;
-      movementVelocity.y+=(dy/length*topSpeed-movementVelocity.y)*ease;
+      movementVelocity.x+=(moveX/length*topSpeed-movementVelocity.x)*ease;
+      movementVelocity.y+=(moveY/length*topSpeed-movementVelocity.y)*ease;
       const next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
         y:Math.max(110,Math.min(worldHeight-110,localPosition.y+movementVelocity.y*elapsed))};
       const house=houseInside&&obstacles.find(item=>item.id===houseInside);
@@ -781,6 +790,7 @@
     const viewPosition=player&&player.transportId&&warState.vehicles[player.transportId]
       ?warState.vehicles[player.transportId]:localPosition;
     if (viewPosition) cameraPosition={x:Number(viewPosition.x),y:Number(viewPosition.y)};
+    if (aimActive) aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
     if (activeDrone) updateDrone(timestamp);
     if (reloadEndsAt) {
       const remaining=Math.max(0,reloadEndsAt-Date.now());
@@ -1268,10 +1278,12 @@
 
   function onPointerMove(event) {
     const rect = ui.canvas.getBoundingClientRect();
-    aim = {
-      x:cameraPosition.x+(event.clientX-rect.left)*ui.canvas.width/rect.width-ui.canvas.width/2,
-      y:cameraPosition.y+(event.clientY-rect.top)*ui.canvas.height/rect.height-ui.canvas.height/2
+    aimOffset={
+      x:(event.clientX-rect.left)*ui.canvas.width/rect.width-ui.canvas.width/2,
+      y:(event.clientY-rect.top)*ui.canvas.height/rect.height-ui.canvas.height/2
     };
+    aimActive=true;
+    aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
   }
 
   function onPointerDown(event) {
@@ -1759,7 +1771,7 @@
     if (houseInside) {
       const house=obstacles.find(item=>item.id===houseInside);
       if (house) {
-        localPosition={x:house.doorX+32,y:house.doorY};
+        localPosition={x:house.doorX+(house.doorX<=house.x?-32:32),y:house.doorY};
         houseInside='';
         await mutatePlayer(current=>({...current,...localPosition,houseInside:''}));
         setStatus('Exited the building.');
@@ -2476,7 +2488,7 @@
     ui.attachment2.value=(player.attachments||[])[1]||'';
     ui.tactical.value=player.tactical||'smoke';
     ui.lethal.value=player.lethal||'grenade';
-    setStatus('Connected · '+teamLabel(playerTeam)+' · WASD move, mouse aim/fire, Z plate up, X tactical, C lethal, E capture, R reload.');
+    setStatus('Connected · '+teamLabel(playerTeam)+' · WASD move relative to cursor, mouse aim/fire, Z plate up, X tactical, C lethal, E capture, R reload.');
     refreshProgressUi();
     refreshEquipmentUi();
     draw();
@@ -2490,14 +2502,14 @@
 
   function buildUi() {
     container.innerHTML='<div class="nexus-war-heading"><div><span>'+(firebaseMode||lanMode?'LIVE MULTIPLAYER':'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-heading-actions"><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div><button class="nexus-button secondary" type="button" data-war-action="fullscreen" aria-pressed="false">Fullscreen</button></div></div>' +
-      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Move faster on foot, and use high-speed vehicles from your team base. Click Deploy / board / dismount or press V once. Tanks and anti-air have separate ammo; aim with the mouse, fire on the map, and press R to reload. Equip a stim in your tactical slot and use X for a strong temporary speed boost and healing. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
+      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Move on foot relative to the cursor, and use high-speed vehicles from your team base. Click Deploy / board / dismount or press V once. Tanks and anti-air have separate ammo; aim with the mouse, fire on the map, and press R to reload. Equip a stim in your tactical slot and use X for a strong temporary speed boost and healing. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
       '<a class="nexus-button nexus-war-home" href="'+nexusUrl()+'">Back to Nexus</a>' +
       '<div class="nexus-war-status" data-war-status role="status" aria-live="polite">Connecting to the frontline…</div>' +
       '<div class="nexus-war-progression" data-war-progression></div><div class="nexus-war-wallet" data-war-wallet></div>' +
       '<div class="nexus-war-stats" data-war-stats></div>' +
       '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
       '<div class="nexus-war-capture" data-war-capture-progress hidden><strong>Capturing relay</strong><div><span></span></div></div>' +
-      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
+      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move relative to cursor / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
       '<div class="nexus-war-controls"><strong>Base upgrades</strong><button class="nexus-button secondary" type="button" data-war-action="armor">Buy armor plate · 150</button><span>Press <kbd>Z</kbd> to plate up</span><button class="nexus-button secondary" type="button" data-war-action="self-revive-buy">Self-revive · 400</button><button class="nexus-button secondary" type="button" data-war-action="turret">Buy sentry turret · 350</button><button class="nexus-button secondary" type="button" data-war-action="drone-buy">Buy kamikaze drone · 250</button><button class="nexus-button secondary" type="button" data-war-action="drone-toggle">Toggle drone control</button><button class="nexus-button secondary" type="button" data-war-action="revive">Revive ally</button><button class="nexus-button secondary" type="button" data-war-action="self-revive">Use self-revive</button><button class="nexus-button secondary" type="button" data-war-action="give-up" hidden>Hold to give up</button></div>' +
       '<div class="nexus-war-touch"><div class="nexus-war-pad"><button type="button" data-war-move="up" aria-label="Move up">▲</button><button type="button" data-war-move="left" aria-label="Move left">◀</button><button type="button" data-war-move="down" aria-label="Move down">▼</button><button type="button" data-war-move="right" aria-label="Move right">▶</button></div><button type="button" class="nexus-war-fire" data-war-fire>Fire</button></div>' +
       '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Stims restore up to 45 health and boost movement speed for 8 seconds. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
