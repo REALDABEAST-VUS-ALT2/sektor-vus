@@ -411,9 +411,28 @@ window.addEventListener('unhandledrejection', event => { console.error('[Sektor]
 function renderServerRail() { els.serverList.innerHTML = ''; state.servers.forEach(server => { const button = document.createElement('button'); button.className = 'server-button' + (state.server && state.server.code === server.code ? ' active' : ''); button.style.setProperty('--server-accent', server.accent || '#5865f2'); button.innerHTML = server.icon ? '<img src="' + esc(server.icon) + '" alt="">' : esc((server.name || 'VS').slice(0,2).toUpperCase()); button.title = server.name + (server.description ? '\n' + server.description : ''); button.onclick = () => selectServer(server.code); els.serverList.appendChild(button); }); els.logout.innerHTML = state.user.avatar ? '<img src="' + esc(state.user.avatar) + '" alt="Profile">' : esc(state.user.username.slice(0,2).toUpperCase()); }
 function localServers() { try { return JSON.parse(localStorage.getItem('vusServersLocal') || '[]'); } catch (error) { return []; } }
 function saveLocalServers(servers) { localStorage.setItem('vusServersLocal', JSON.stringify(servers)); }
+function deletedServerCodes() {
+  try {
+    const codes = JSON.parse(localStorage.getItem('vusServersDeleted') || '[]');
+    return Array.isArray(codes) ? codes.filter(code => typeof code === 'string') : [];
+  } catch (error) {
+    console.error('[Sektor] Could not read deleted server records.', error);
+    return [];
+  }
+}
+function markServerDeleted(code) {
+  const normalizedCode = String(code).toUpperCase();
+  const deleted = deletedServerCodes();
+  if (!deleted.some(savedCode => savedCode.toUpperCase() === normalizedCode)) {
+    localStorage.setItem('vusServersDeleted', JSON.stringify([...deleted, normalizedCode]));
+  }
+}
 async function loadServers() {
-  const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]');
-  const visible = server => server.ownerKey === state.user.key || joined.includes(server.code);
+  const deleted = new Set(deletedServerCodes().map(code => code.toUpperCase()));
+  const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]')
+    .filter(code => !deleted.has(String(code).toUpperCase()));
+  const visible = server => !deleted.has(String(server.code || '').toUpperCase()) &&
+    (server.ownerKey === state.user.key || joined.includes(server.code));
   const savedLocally = localServers().filter(visible).filter(server => !/^TEST-/.test(server.code || ''));
   let useLocalTestServer = false;
   try {
@@ -429,8 +448,9 @@ async function loadServers() {
   }
   saveLocalServers(localServers().filter(server => !/^TEST-/.test(server.code || '')));
   const joinedWithoutTest = JSON.parse(localStorage.getItem('vusServersJoined') || '[]').filter(code => !/^TEST-/.test(code));
-  if (joinedWithoutTest.length !== JSON.parse(localStorage.getItem('vusServersJoined') || '[]').length) {
-    localStorage.setItem('vusServersJoined', JSON.stringify(joinedWithoutTest));
+  const validJoinedServers = joinedWithoutTest.filter(code => !deleted.has(String(code).toUpperCase()));
+  if (validJoinedServers.length !== JSON.parse(localStorage.getItem('vusServersJoined') || '[]').length) {
+    localStorage.setItem('vusServersJoined', JSON.stringify(validJoinedServers));
   }
   renderServerRail();
   if (state.activeView !== 'server') return;
@@ -1760,10 +1780,10 @@ function openDeleteServerConfirmation(server) {
 async function deleteServer(server) {
   if (!server || !isServerOwner() || state.server.code !== server.code) throw new Error('Only the server owner can delete this server.');
   const code = server.code;
-  if (server.localOnly) {
-    saveLocalServers(localServers().filter(item => item.code !== code));
-  } else {
-    if (!server.metadataMissing) await db.ref('serverMeta/' + code).remove();
+  if (!server.localOnly && !server.metadataMissing) await db.ref('serverMeta/' + code).remove();
+  markServerDeleted(code);
+  saveLocalServers(localServers().filter(item => String(item.code).toUpperCase() !== String(code).toUpperCase()));
+  if (!server.localOnly) {
     const cleanupPaths = ['serverMessages','serverPresence','serverVoice','voiceSignals','serverGames'];
     const cleanupResults = await Promise.allSettled(cleanupPaths.map(path => db.ref(path + '/' + code).remove()));
     const cleanupErrors = cleanupResults.filter(result => result.status === 'rejected');
