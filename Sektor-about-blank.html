@@ -16,7 +16,7 @@
     <script>
         const openButton = document.getElementById('open-sektor');
         const status = document.getElementById('status');
-        const appUrl = 'https://sektor-b5021.web.app/VUS-Servers.html';
+        const appUrl = new URL('https://sektor-b5021.web.app/VUS-Servers.html');
 
         openButton.addEventListener('click', () => {
             const popup = window.open('about:blank', '_blank');
@@ -24,11 +24,13 @@
                 status.textContent = 'Allow popups, or use “Open Sektor directly”.';
                 return;
             }
+            const freshAppUrl = new URL(appUrl);
+            freshAppUrl.searchParams.set('launcher-refresh', Date.now().toString());
             popup.document.open();
-            popup.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sektor</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}</style></head><body><iframe id="sektor-app" src="' + appUrl + '" title="Sektor" allow="microphone https://sektor-b5021.web.app; camera https://sektor-b5021.web.app; autoplay https://sektor-b5021.web.app; display-capture https://sektor-b5021.web.app"></iframe></body></html>');
+            popup.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sektor</title><style>html,body,iframe{width:100%;height:100%;margin:0;border:0;overflow:hidden}</style></head><body><iframe id="sektor-app" src="' + freshAppUrl.href + '" title="Sektor" allow="microphone https://sektor-b5021.web.app; camera https://sektor-b5021.web.app; autoplay https://sektor-b5021.web.app; display-capture https://sektor-b5021.web.app"></iframe></body></html>');
             popup.document.close();
             const frame = popup.document.getElementById('sektor-app');
-            const appOrigin = new URL(appUrl).origin;
+            const appOrigin = appUrl.origin;
             popup.addEventListener('message', event => {
                 const request = event.data;
                 if (event.origin !== appOrigin || event.source !== frame.contentWindow ||
