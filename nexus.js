@@ -129,7 +129,8 @@
     if (lanMode) joinUrl.searchParams.set('lan', '1');
     return '<a class="nexus-server-invite" href="' + escapeHtml(joinUrl.href) + '" style="--server-accent:' + accent + '">' +
       '<span class="nexus-server-invite-banner"></span><span class="nexus-server-invite-icon">' + icon +
-      '</span><strong>' + escapeHtml(name) + '</strong><span class="nexus-server-invite-join">Open in Sektor →</span></a>';
+      '</span><span class="nexus-server-invite-details"><strong>' + escapeHtml(name) +
+      '</strong><span class="nexus-server-invite-join">Open in Sektor →</span></span></a>';
   }
 
   function hydrateServerInvites() {

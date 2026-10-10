@@ -326,12 +326,13 @@ input::placeholder { color: #77877c; }
 .nexus-chat-form input, .nexus-chat-form textarea { flex: 1; }
 .nexus-chat-form .nexus-button { flex: 0 0 auto; min-width: 80px; }
 .nexus-server-invite-loading { padding:10px; border:1px solid #d9edda22; border-radius:9px; background:#101713; color:#a8b8ac; font-size:11px; }
-.nexus-server-invite { position:relative; display:flex; min-height:164px; flex-direction:column; overflow:hidden; border:1px solid #d9edda22; border-radius:12px; background:#101713; color:#edf5ef; text-decoration:none; }
+.nexus-server-invite { position:relative; display:flex; min-height:150px; flex-direction:column; overflow:hidden; border:1px solid #d9edda22; border-radius:12px; background:#101713; color:#edf5ef; text-decoration:none; }
 .nexus-server-invite-banner { display:block; height:64px; flex:0 0 64px; background:var(--server-accent,#65e6ad); }
 .nexus-server-invite-icon { position:absolute; top:39px; left:13px; display:grid; width:68px; height:68px; place-items:center; overflow:hidden; border:3px solid #101713; border-radius:13px; background:#24352b; color:#edf5ef; font-size:20px; font-weight:900; box-shadow:0 5px 16px #0008; }
 .nexus-server-invite-icon img { width:100%; height:100%; object-fit:cover; }
-.nexus-server-invite > strong { align-self:stretch; overflow:hidden; margin:14px 14px 0 92px; color:#edf5ef; font-size:clamp(14px,2.5vw,20px); text-align:center; text-overflow:ellipsis; white-space:nowrap; }
-.nexus-server-invite-join { align-self:flex-end; margin:10px 12px 10px; padding:7px 12px; border:1px solid #a5f06d; border-radius:7px; background:#a5f06d; color:#182016; font-size:11px; font-weight:900; }
+.nexus-server-invite-details { display:grid; min-height:86px; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; padding:10px 12px 10px 92px; }
+.nexus-server-invite-details > strong { min-width:0; overflow:hidden; color:#edf5ef; font-size:clamp(14px,2.5vw,20px); text-align:center; text-overflow:ellipsis; white-space:nowrap; }
+.nexus-server-invite-join { justify-self:end; padding:7px 12px; border:1px solid #a5f06d; border-radius:7px; background:#a5f06d; color:#182016; font-size:11px; font-weight:900; text-align:center; text-decoration:none; white-space:nowrap; }
 .nexus-server-invite:hover { border-color:#a5f06d66; box-shadow:0 6px 20px #0003; }
 .nexus-inventory-form { margin-top: 18px; padding-top: 18px; border-color: var(--nexus-border); }
 .nexus-inventory-form button { min-height: 44px; }
@@ -387,6 +388,9 @@ a.nexus-button { display: inline-flex; align-items: center; justify-content: cen
   .nexus-user { flex-direction: column; }
   .nexus-chat-form { flex-direction: column; }
   .nexus-chat-form .nexus-button { width: 100%; }
+  .nexus-server-invite-details { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-left: 90px; }
+  .nexus-server-invite-details > strong { text-align: left; }
+  .nexus-server-invite-join { justify-self: start; }
   .nexus-inventory-form { grid-template-columns: minmax(0, 1fr); }
   .nexus-inventory-form button { grid-column: auto; }
   .nexus-media-import { grid-template-columns: minmax(0, 1fr); }
