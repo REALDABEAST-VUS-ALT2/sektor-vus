@@ -389,6 +389,20 @@
       teamRows + '</div></section>';
   }
 
+  function renderShopTeamJoin(user) {
+    const assignedTeam=user&&(user.team==='vortex'||user.team==='krypton');
+    const teamContent=!user
+      ?'<p class="nexus-wheel-help">Sign in from Home to join Vortex or Krypton.</p>'
+      :assignedTeam
+        ?'<p class="nexus-stock-team-label">Your team: <strong class="nexus-team-'+user.team+'">'+
+          (user.team==='vortex'?'Vortex':'Krypton')+'</strong></p>'
+        :'<p class="nexus-wheel-help">Choose a team to join the frontline. This choice is permanent.</p>'+
+          '<div class="nexus-stock-trade-controls"><button class="nexus-button nexus-team-vortex" type="button" data-action="join-team" data-team="vortex">Join Vortex</button>'+
+          '<button class="nexus-button nexus-team-krypton" type="button" data-action="join-team" data-team="krypton">Join Krypton</button></div>';
+    return '<section class="nexus-card nexus-shop-team"><span class="nexus-shop-eyebrow">FRONTLINE ACCESS</span><h2>Join a team</h2>'+
+      teamContent+'</section>';
+  }
+
   function refreshStockMarketUi() {
     const panel=content.querySelector('.nexus-stock-panel');
     if (panel&&world) panel.outerHTML=renderStockMarket(currentUser());
@@ -799,7 +813,7 @@
       let changed=false;
       const result=await marketRef.transaction(current=>{
         changed=false;
-        if (now-Number(current&&current.lastFluctuationAt||0)<30_000) return current;
+        if (now-Number(current&&current.lastFluctuationAt||0)<1_000) return current;
         const market=current&&typeof current==='object'?current:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
         market.price=Math.max(1,Math.min(1_000_000,Math.round(Number(market.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
         market.lastFluctuationAt=now;
@@ -820,7 +834,7 @@
       const response=await fetch('/api/data?path='+encodeURIComponent(path));
       if (!response.ok) throw new Error((await response.text())||'Could not read Nexus stock data.');
       const market=await response.json();
-      if (now-Number(market&&market.lastFluctuationAt||0)<30_000) return;
+      if (now-Number(market&&market.lastFluctuationAt||0)<1_000) return;
       const next=market&&typeof market==='object'?market:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
       next.price=Math.max(1,Math.min(1_000_000,Math.round(Number(next.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
       next.lastFluctuationAt=now;
@@ -835,7 +849,7 @@
       refreshStockMarketUi();
       return;
     }
-    if (now-Number(world.stockMarket.lastFluctuationAt||0)<30_000) return;
+    if (now-Number(world.stockMarket.lastFluctuationAt||0)<1_000) return;
     world.stockMarket.price=Math.max(1,Math.min(1_000_000,Math.round(Number(world.stockMarket.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
     world.stockMarket.lastFluctuationAt=now;
     recordStockPrice(world.stockMarket);
@@ -967,22 +981,16 @@
       : '<div class="nexus-empty">No items are listed yet.</div>';
     const messages = world.chat.slice(-30).map(renderChatMessage).join('') || '<div class="nexus-empty">No messages yet.</div>';
     const shopTab = activeTab === 'shop';
-    const currentWarPanel = shopTab ? content.querySelector('[data-nexus-war]') : null;
     content.innerHTML = '<section class="nexus-welcome"><span>SEKTOR · SOCIAL WORLD</span><h1>' +
       (shopTab ? 'The Nexus shop.' : 'Welcome to Nexus.') + '</h1><p>' +
-      (shopTab ? 'Trade the Nexus stock, browse player listings, and bid on auctions.' : 'Trade, chat, and play in the shared world.') +
+      (shopTab ? 'Join a team and watch the frontline live.' : 'Trade, chat, and play in the shared world.') +
       '</p></section><nav class="nexus-tabs" role="tablist" aria-label="Nexus sections">' +
       '<button class="nexus-tab' + (shopTab ? '' : ' active') + '" type="button" role="tab" aria-selected="' + String(!shopTab) + '" data-nexus-tab="home"><span>⌂</span> Home</button>' +
-      '<button class="nexus-tab' + (shopTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(shopTab) + '" data-nexus-tab="shop"><span>◇</span> Shop <small>' + (world.listings.length + activeAuctions.length) + '</small></button>' +
+      '<button class="nexus-tab' + (shopTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(shopTab) + '" data-nexus-tab="shop"><span>◇</span> Shop</button>' +
       '</nav>' + (shopTab
-          ? '<a class="nexus-card nexus-dropzone-link" href="' + dropzoneUrl() + '"><span>ENTER THE FRONTLINE</span><strong>nexus:dropzone</strong><small>Open the dedicated 2D war-game page →</small></a>' +
-            '<section class="nexus-card nexus-war-panel" data-nexus-war></section>' + renderStockMarket(user) +
-            '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
-          '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
-          (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
+          ? renderShopTeamJoin(user) +
+            '<section class="nexus-card nexus-spectator-panel" data-nexus-war-spectator><div class="nexus-spectator-heading"><div><span>LIVE FRONTLINE</span><h2>Spectator view</h2></div><label>Watch<select data-war-spectator-select aria-label="Choose a live player to watch"><option value="">Loading players…</option></select></label></div><p class="nexus-spectator-status" data-war-spectator-status role="status" aria-live="polite">Connecting to the frontline…</p><canvas class="nexus-war-canvas nexus-spectator-canvas" width="1200" height="640" aria-label="Read-only live view of the Dropzone battlefield"></canvas></section>'
         : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: for a code or server invite" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Use <code>/code:YOURSERVERCODE</code> to share a server invite card, or <code>/code:</code> followed by source to post a copyable code block. Press Shift+Enter for a new line.</small></section>');
-    const nextWarPanel = content.querySelector('[data-nexus-war]');
-    if (currentWarPanel && nextWarPanel) nextWarPanel.replaceWith(currentWarPanel);
     const chat = content.querySelector('.nexus-chat');
     if (chat) {
       chat.scrollTop = chat.scrollHeight;
@@ -1225,8 +1233,6 @@
           user.balance = Number(user.balance || 0) - cost;
           holdings.stockShares += quantity;
           holdings.stockCostBasis += cost;
-          market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 + Math.min(0.1, quantity * 0.01)))));
-          recordStockPrice(market);
           await persist('Bought ' + quantity + ' shares at ' + price + ' Sektorium each.');
         } else {
           if (quantity > holdings.stockShares) throw new Error('You only own ' + holdings.stockShares + ' shares.');
@@ -1238,8 +1244,6 @@
           holdings.stockCostBasis = Math.max(0, Math.round((holdings.stockCostBasis - costBasis) * 100) / 100);
           if (!holdings.stockShares) holdings.stockCostBasis = 0;
           market.teamProfit[user.team] = Math.round((market.teamProfit[user.team] + profit) * 100) / 100;
-          market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 - Math.min(0.1, quantity * 0.01)))));
-          recordStockPrice(market);
           await persist('Sold ' + quantity + ' shares. Realized net ' + (profit >= 0 ? 'profit: ' : 'loss: ') + Math.abs(profit) + ' Sektorium.');
         }
       } else if (action === 'copy-code') {
@@ -1420,7 +1424,7 @@
       console.error('[Nexus] Could not update the stock price.',error);
       if (world) setStatus('The stock graph could not be updated.',true);
     });
-  },5000);
+  },1000);
   window.addEventListener('pagehide', () => {
     clearInterval(stockFluctuationTimer);
     if (liveEvents) liveEvents.close();

@@ -113,6 +113,16 @@
   let aim = {x:500,y:280};
   let traces = [];
   let pointerDown = false;
+  let spectatorContainer=null;
+  let spectatorUi=null;
+  let spectatorWarState=null;
+  let spectatorRef=null;
+  let spectatorEvents=null;
+  let spectatorTimer=0;
+  let spectatorAnimation=0;
+  let spectatorGeneration=0;
+  let spectatorSelectedKey='';
+  const spectatorPositions=new Map();
   let destroyed = false;
   let respawnBusy = false;
   let lastStatsMarkup = '';
@@ -2256,13 +2266,214 @@
     movementVelocity={x:0,y:0};
   }
 
+  function updateSpectatorState(value,generation) {
+    if (generation!==spectatorGeneration||!spectatorContainer||!spectatorContainer.isConnected) return;
+    spectatorWarState=normalizeWar(value);
+    updateSpectatorOptions();
+    drawSpectator();
+  }
+
+  function updateSpectatorOptions() {
+    if (!spectatorUi||!spectatorWarState) return;
+    const select=spectatorUi.select;
+    const previous=select.value||spectatorSelectedKey;
+    const active=Object.entries(spectatorWarState.players||{})
+      .filter(([,player])=>player&&player.online&&Date.now()-Number(player.lastSeen||0)<20000)
+      .sort((a,b)=>Number(b[1].lastSeen||0)-Number(a[1].lastSeen||0));
+    select.replaceChildren(new Option('Follow live action',''));
+    const teams={vortex:'Vortex',krypton:'Krypton'};
+    for (const team of ['vortex','krypton']) {
+      const options=active.filter(([,player])=>player.team===team);
+      if (!options.length) continue;
+      const group=document.createElement('optgroup');
+      group.label=teams[team];
+      for (const [key,player] of options) {
+        const option=new Option(player.name||'Player',key);
+        group.append(option);
+      }
+      select.append(group);
+    }
+    spectatorSelectedKey=active.some(([key])=>key===previous)?previous:'';
+    select.value=spectatorSelectedKey;
+    spectatorUi.status.textContent=active.length
+      ?spectatorSelectedKey
+        ?'Watching '+(spectatorWarState.players[spectatorSelectedKey].name||'player')+' · '+teamLabel(spectatorWarState.players[spectatorSelectedKey].team)+'. Live read-only view.'
+        :'Following live action · '+active.length+' player'+(active.length===1?'':'s')+' online.'
+      :'No players are currently live. The spectator view will follow the next player who joins.';
+  }
+
+  function drawSpectator() {
+    if (!spectatorUi||!spectatorWarState||!spectatorContainer?.isConnected) return;
+    const canvas=spectatorUi.canvas;
+    const context=canvas.getContext('2d');
+    const width=canvas.width,height=canvas.height;
+    const active=Object.entries(spectatorWarState.players||{})
+      .filter(([,player])=>player&&player.online&&Date.now()-Number(player.lastSeen||0)<20000);
+    const selected=active.find(([key])=>key===spectatorSelectedKey)||active[0];
+    let focus=selected?selected[1]:{x:worldWidth/2,y:worldHeight/2};
+    const transport=selected&&selected[1].transportId&&spectatorWarState.vehicles[selected[1].transportId];
+    if (transport) focus=transport;
+    const cameraX=Number(focus.x)||worldWidth/2,cameraY=Number(focus.y)||worldHeight/2;
+    context.clearRect(0,0,width,height);
+    context.fillStyle='#101915';
+    context.fillRect(0,0,width,height);
+    context.save();
+    context.translate(width/2-cameraX,height/2-cameraY);
+    context.fillStyle='#17231d';
+    context.fillRect(0,0,worldWidth,worldHeight);
+    const left=cameraX-width/2,top=cameraY-height/2;
+    context.strokeStyle='rgba(147,190,163,.055)';
+    context.lineWidth=1;
+    for (let x=Math.floor(left/720)*720;x<left+width+720;x+=720) {
+      context.beginPath();context.moveTo(x,top);context.lineTo(x,top+height);context.stroke();
+    }
+    for (let y=Math.floor(top/720)*720;y<top+height+720;y+=720) {
+      context.beginPath();context.moveTo(left,y);context.lineTo(left+width,y);context.stroke();
+    }
+    drawSafeZone(context,'vortex');
+    drawSafeZone(context,'krypton');
+    drawBase(context,'vortex',basePositions.vortex.x,basePositions.vortex.y,spectatorWarState.bases.vortex);
+    drawBase(context,'krypton',basePositions.krypton.x,basePositions.krypton.y,spectatorWarState.bases.krypton);
+    obstacles.forEach(item=>{
+      if (item.x+item.w>left-100&&item.x<left+width+100&&item.y+item.h>top-100&&item.y<top+height+100)
+        drawObstacle(context,item);
+    });
+    Object.entries(nodePositions).forEach(([id,node])=>drawNode(context,id,node,spectatorWarState.nodes[id]));
+    for (const [key,player] of active) {
+      if (player.transportId) continue;
+      const position=spectatorPositions.get(key)||{x:Number(player.x),y:Number(player.y)};
+      position.x+=(Number(player.x)-position.x)*.32;
+      position.y+=(Number(player.y)-position.y)*.32;
+      spectatorPositions.set(key,position);
+      drawPlayer(context,{...player,...position},key===spectatorSelectedKey);
+    }
+    Object.values(spectatorWarState.turrets||{}).forEach(turret=>drawTurret(context,turret));
+    Object.values(spectatorWarState.drones||{}).forEach(drone=>drawDrone(context,drone));
+    Object.values(spectatorWarState.vehicles||{}).forEach(vehicle=>drawTransport(context,vehicle));
+    Object.values(spectatorWarState.smokes||{}).forEach(smoke=>drawSmoke(context,smoke));
+    Object.values(spectatorWarState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
+    Object.values(spectatorWarState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
+    context.restore();
+    if (selected) {
+      const teamColor=selected[1].team==='vortex'?'#80b7ff':'#ff8792';
+      context.fillStyle='rgba(6,12,9,.82)';
+      context.fillRect(12,12,260,42);
+      context.fillStyle=teamColor;
+      context.font='bold 14px system-ui';
+      context.textAlign='left';
+      context.fillText((selected[1].team||'').toUpperCase()+' · '+String(selected[1].name||'Player').slice(0,24),24,38);
+    }
+  }
+
+  function spectatorFrame() {
+    if (!spectatorContainer||!spectatorContainer.isConnected) {
+      stopSpectator();
+      return;
+    }
+    drawSpectator();
+    spectatorAnimation=requestAnimationFrame(spectatorFrame);
+  }
+
+  async function mountSpectator(target) {
+    if (spectatorContainer===target) return;
+    stopSpectator();
+    spectatorContainer=target;
+    spectatorUi={
+      select:target.querySelector('[data-war-spectator-select]'),
+      status:target.querySelector('[data-war-spectator-status]'),
+      canvas:target.querySelector('.nexus-spectator-canvas')
+    };
+    const generation=spectatorGeneration;
+    const onChange=()=>{spectatorSelectedKey=spectatorUi.select.value;updateSpectatorOptions();drawSpectator();};
+    spectatorUi.select.addEventListener('change',onChange);
+    spectatorUi.onChange=onChange;
+    spectatorAnimation=requestAnimationFrame(spectatorFrame);
+    try {
+      if (firebaseMode) {
+        if (!firebaseApi.auth().currentUser) await firebaseApi.auth().signInAnonymously();
+        if (generation!==spectatorGeneration||!target.isConnected) return;
+        spectatorRef=firebaseApi.database().ref(gamePath);
+        spectatorRef.on('value',snapshot=>{
+          if (!snapshot.exists()) {
+            updateSpectatorState(null,generation);
+            return;
+          }
+          updateSpectatorState(snapshot.val(),generation);
+        },error=>{
+          if (generation===spectatorGeneration&&spectatorUi)
+            spectatorUi.status.textContent='Live spectator updates disconnected: '+error.message;
+        });
+      } else if (lanMode) {
+        updateSpectatorState(await lanGet(),generation);
+        spectatorEvents=new EventSource('/api/events?path='+encodeURIComponent(gamePath));
+        spectatorEvents.onmessage=event=>{
+          try { updateSpectatorState(JSON.parse(event.data),generation); }
+          catch(error) {
+            if (generation===spectatorGeneration&&spectatorUi)
+              spectatorUi.status.textContent='A live spectator update could not be read: '+error.message;
+          }
+        };
+        spectatorEvents.onerror=()=>{
+          if (generation===spectatorGeneration&&spectatorUi)
+            spectatorUi.status.textContent='Live spectator updates disconnected. Reconnecting…';
+        };
+        spectatorTimer=window.setInterval(async()=>{
+          try {
+            updateSpectatorState(await lanGet(),generation);
+          } catch(error) {
+            if (generation===spectatorGeneration&&spectatorUi)
+              spectatorUi.status.textContent=error.message||'Could not refresh the live frontline.';
+          }
+        },1000);
+      } else {
+        const refreshLocal=()=>{
+          try {
+            updateSpectatorState(JSON.parse(localStorage.getItem(localGameKey)||'null'),generation);
+          } catch(error) {
+            if (generation===spectatorGeneration&&spectatorUi)
+              spectatorUi.status.textContent='Could not read the local frontline: '+error.message;
+          }
+        };
+        refreshLocal();
+        spectatorTimer=window.setInterval(refreshLocal,1000);
+      }
+    } catch(error) {
+      if (generation===spectatorGeneration&&spectatorUi)
+        spectatorUi.status.textContent=error.message||'Could not connect to the live spectator view.';
+    }
+  }
+
+  function stopSpectator() {
+    spectatorGeneration++;
+    if (spectatorAnimation) cancelAnimationFrame(spectatorAnimation);
+    if (spectatorTimer) clearInterval(spectatorTimer);
+    if (spectatorRef&&typeof spectatorRef.off==='function') spectatorRef.off('value');
+    if (spectatorEvents) spectatorEvents.close();
+    if (spectatorUi&&spectatorUi.select&&spectatorUi.onChange)
+      spectatorUi.select.removeEventListener('change',spectatorUi.onChange);
+    spectatorContainer=null;
+    spectatorUi=null;
+    spectatorWarState=null;
+    spectatorRef=null;
+    spectatorEvents=null;
+    spectatorAnimation=0;
+    spectatorTimer=0;
+    spectatorSelectedKey='';
+    spectatorPositions.clear();
+  }
+
   const content=document.getElementById('content');
   const observer=new MutationObserver(()=>{
     const target=content.querySelector('[data-nexus-war]');
     if (target) mount(target);
     else if (container) cleanup();
+    const spectator=content.querySelector('[data-nexus-war-spectator]');
+    if (spectator) mountSpectator(spectator);
+    else if (spectatorContainer) stopSpectator();
   });
   observer.observe(content,{childList:true,subtree:true});
   const existing=content.querySelector('[data-nexus-war]');
   if (existing) mount(existing);
+  const existingSpectator=content.querySelector('[data-nexus-war-spectator]');
+  if (existingSpectator) mountSpectator(existingSpectator);
 })();

@@ -636,6 +636,17 @@ body::before {
 .nexus-tab small { display: inline-grid; min-width: 20px; height: 20px; place-items: center; padding: 0 5px; border: 1px solid rgba(101,230,173,.16); border-radius: 999px; background: rgba(101,230,173,.09); color: #9de9c2; font-size: 10px; }
 .nexus-shop-signin { grid-column: 1 / -1; }
 .nexus-stock-panel { grid-column: 1 / -1; }
+.nexus-shop-team { grid-column: 1 / -1; }
+.nexus-shop-eyebrow,.nexus-spectator-heading > div > span { color:#88d9a5; font-size:10px; font-weight:800; letter-spacing:.14em; }
+.nexus-shop-team h2 { margin:5px 0 0; }
+.nexus-shop-team .nexus-wheel-help { margin:12px 0; }
+.nexus-spectator-panel { grid-column:1 / -1; }
+.nexus-spectator-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.nexus-spectator-heading h2 { margin:5px 0 0; }
+.nexus-spectator-heading label { display:flex; align-items:center; gap:8px; color:#a8b8ac; font-size:11px; }
+.nexus-spectator-heading select { min-width:190px; padding:8px 10px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:11px; }
+.nexus-spectator-status { min-height:18px; margin:10px 0; color:#a8b8ac; font-size:11px; }
+.nexus-spectator-canvas { display:block; width:100%; height:auto; aspect-ratio:15 / 8; border:1px solid #d5e2d51b; border-radius:9px; background:#101915; }
 .nexus-stock-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .nexus-stock-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:800; letter-spacing:.14em; }
 .nexus-stock-heading h2 { margin:5px 0 0; }
