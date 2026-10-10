@@ -323,6 +323,7 @@ const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
 els.audioInput = $('audioInput');
 els.friendHome = $('friendHome');
+els.appView = $('appView');
 els.audioButton = $('audioButton');
 const sektorMusicInput = $('sektorMusicInput');
 const sektorMusicFolderInput = $('sektorMusicFolderInput');
@@ -660,6 +661,7 @@ function clearSubscriptions() { leaveVoice(); if (state.metaRef && state.metaHan
 async function selectServer(code) {
   const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.activeView = 'server';
+  els.appView.classList.remove('friends-view','friends-home-view');
   try {
     clearSubscriptions();
     closePrivateDm();
@@ -2232,6 +2234,7 @@ els.addChannel.onclick = openAddChannelModal;
   const originalOpenFriendsArea = openFriendsArea;
   openFriendsArea = function () {
     originalOpenFriendsArea();
+    els.appView.classList.add('friends-view','friends-home-view');
     state.navigationVersion = (state.navigationVersion || 0) + 1;
     leaveVoice();
     if (els.friendHome) els.friendHome.hidden = false;
@@ -2243,6 +2246,8 @@ els.addChannel.onclick = openAddChannelModal;
 
   const originalOpenPrivateDm = openPrivateDm;
   openPrivateDm = function (friend) {
+    els.appView.classList.add('friends-view');
+    els.appView.classList.remove('friends-home-view');
     if (els.friendHome) els.friendHome.hidden = true;
     if (els.messages) els.messages.hidden = false;
     if (els.messageForm) els.messageForm.hidden = false;
