@@ -190,65 +190,50 @@
   }
 
   async function downloadBlob(blob, filename) {
-    let downloadWindow = window;
-    let parentAccessible = false;
-    try {
-      if (window.parent !== window) {
-        parentAccessible = window.parent.location.origin === window.location.origin;
-        if (parentAccessible) downloadWindow = window.parent;
-      }
-    } catch (error) {
-      if (error.name !== 'SecurityError') throw error;
+    const exportTab = window.open('about:blank', '_blank');
+    if (!exportTab) throw new Error('Your browser blocked the export tab. Allow pop-ups for Nexus and try again.');
+    exportTab.opener = null;
+    const url = URL.createObjectURL(blob);
+    const safeFilename = String(filename || 'nexus-export').replace(/[&<>"']/g, character => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+    }[character]));
+    const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const mimeType = String(blob.type || 'application/octet-stream');
+    let preview = '<p class="note">Preview is not available for this file type. Use the download button to save it.</p>';
+    if (mimeType.startsWith('image/')) {
+      preview = '<img class="media image" src="' + safeUrl + '" alt="' + safeFilename + '">';
+    } else if (mimeType.startsWith('audio/')) {
+      preview = '<audio class="media" controls autoplay src="' + safeUrl + '"></audio>';
+    } else if (mimeType.startsWith('video/')) {
+      preview = '<video class="media" controls autoplay src="' + safeUrl + '"></video>';
+    } else if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+      preview = '<pre id="text-preview">Preparing preview…</pre>';
     }
 
-    if (window.parent !== window && !parentAccessible) {
+    const documentMarkup = '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1"><title>' + safeFilename +
+      ' · Nexus export</title><style>*{box-sizing:border-box}body{min-height:100vh;margin:0;padding:clamp(18px,5vw,56px);background:radial-gradient(ellipse at 50% 0,#1c3025,#101713 60%);color:#edf5ef;font:14px system-ui,sans-serif}.card{width:min(880px,100%);margin:0 auto;padding:clamp(18px,4vw,34px);border:1px solid #c2e2ca28;border-radius:18px;background:#151e19ed;box-shadow:0 22px 70px #0006}.eyebrow{color:#88d9a5;font-size:10px;font-weight:800;letter-spacing:.16em}.title{margin:10px 0 5px;overflow-wrap:anywhere;font-size:clamp(22px,5vw,34px)}.meta{margin:0 0 22px;color:#9cac9f;font-size:12px}.download{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin:0 0 18px;padding:0 18px;border:1px solid #c5fb89;border-radius:9px;background:linear-gradient(135deg,#a5f06d,#65e6ad);color:#182012;font-weight:800;text-decoration:none}.download:hover{filter:brightness(1.08)}.preview{display:grid;min-height:90px;place-items:center;padding:14px;border:1px solid #d5e2d51b;border-radius:12px;background:#0d1410}.media{display:block;max-width:100%;max-height:70vh}.image{object-fit:contain}.note{color:#a8b8ac;text-align:center}pre{width:100%;max-height:65vh;overflow:auto;margin:0;color:#d8eadc;font:12px/1.55 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}</style></head>' +
+      '<body><main class="card"><div class="eyebrow">NEXUS · FILE EXPORT</div><h1 class="title">' + safeFilename +
+      '</h1><p class="meta">' + mimeType.replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[character])) +
+      ' · ' + (blob.size / 1024).toFixed(1) + ' KB</p><a class="download" href="' + safeUrl +
+      '" download="' + safeFilename + '">Download file</a><section class="preview">' + preview +
+      '</section></main><script>const url=' + JSON.stringify(url) +
+      ';window.addEventListener("pagehide",()=>URL.revokeObjectURL(url),{once:true});</scr' + 'ipt></body></html>';
+    exportTab.document.open();
+    exportTab.document.write(documentMarkup);
+    exportTab.document.close();
+    if (mimeType.startsWith('text/') || mimeType === 'application/json') {
       try {
-        const requestId = 'nexus-download-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-        await new Promise((resolve, reject) => {
-          const timeout = window.setTimeout(() => {
-            window.removeEventListener('message', onResult);
-            reject(new Error('The launcher did not respond to the download request.'));
-          }, 3000);
-          function onResult(event) {
-            const result = event.data;
-            if (event.source !== window.parent || !result ||
-                result.type !== 'sektor-nexus-download-result' || result.requestId !== requestId) return;
-            window.clearTimeout(timeout);
-            window.removeEventListener('message', onResult);
-            if (result.ok) resolve();
-            else reject(new Error('The launcher could not start the download.'));
-          }
-          window.addEventListener('message', onResult);
-          window.parent.postMessage({
-            type: 'sektor-nexus-download',
-            requestId,
-            filename,
-            blob
-          }, '*');
-        });
-        return 'launcher';
+        const text = await blob.text();
+        const previewElement = exportTab.document.getElementById('text-preview');
+        if (previewElement) previewElement.textContent = text;
       } catch (error) {
-        console.warn('[Nexus] Launcher download handoff failed; trying a direct download.', error);
+        URL.revokeObjectURL(url);
+        exportTab.close();
+        throw new Error('Could not prepare a preview of this export.');
       }
     }
-
-    const url = downloadWindow.URL.createObjectURL(blob);
-    const link = downloadWindow.document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    downloadWindow.document.body.appendChild(link);
-    try {
-      link.click();
-    } catch (error) {
-      link.remove();
-      downloadWindow.URL.revokeObjectURL(url);
-      throw error;
-    }
-    downloadWindow.setTimeout(() => {
-      link.remove();
-      downloadWindow.URL.revokeObjectURL(url);
-    }, 60000);
-    return 'browser';
+    return 'tab';
   }
 
   async function exportInventoryMedia(item) {
@@ -273,8 +258,8 @@
     exportData.users = exportData.users.map(({password, ...user}) => user);
     const payload = JSON.stringify(exportData, null, 2);
     const method = await downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
-    setStatus(method === 'launcher'
-      ? 'Export ready. Click the download button in the launcher window.'
+    setStatus(method === 'tab'
+      ? 'Your world export is open in a new tab. Download it there.'
       : 'World export started.');
   }
 
@@ -1044,8 +1029,8 @@
         const item = inventoryFor(user).find(entry => entry.id === button.dataset.id);
         if (!item) throw new Error('That inventory item no longer exists.');
         const method = await exportInventoryMedia(item);
-        setStatus(method === 'launcher'
-          ? 'Export ready in the launcher window. Click its download button.'
+        setStatus(method === 'tab'
+          ? 'Your file is open in a new tab. Download it there.'
           : 'Export started for ' + String(item.name || 'your file') + '.');
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
