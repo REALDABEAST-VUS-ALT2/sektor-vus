@@ -987,6 +987,7 @@
       '</p></section><nav class="nexus-tabs" role="tablist" aria-label="Nexus sections">' +
       '<button class="nexus-tab' + (shopTab ? '' : ' active') + '" type="button" role="tab" aria-selected="' + String(!shopTab) + '" data-nexus-tab="home"><span>⌂</span> Home</button>' +
       '<button class="nexus-tab' + (shopTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(shopTab) + '" data-nexus-tab="shop"><span>◇</span> Shop</button>' +
+      '<a class="nexus-tab" href="' + escapeHtml(dropzoneUrl()) + '"><span>⚔</span> Dropzone</a>' +
       '</nav>' + (shopTab
           ? renderShopTeamJoin(user) +
             '<section class="nexus-card nexus-spectator-panel" data-nexus-war-spectator><div class="nexus-spectator-heading"><div><span>LIVE FRONTLINE</span><h2>Spectator view</h2></div><label>Watch<select data-war-spectator-select aria-label="Choose a live player to watch"><option value="">Loading players…</option></select></label></div><p class="nexus-spectator-status" data-war-spectator-status role="status" aria-live="polite">Connecting to the frontline…</p><canvas class="nexus-war-canvas nexus-spectator-canvas" width="1200" height="640" aria-label="Read-only live view of the Dropzone battlefield"></canvas></section>' +
