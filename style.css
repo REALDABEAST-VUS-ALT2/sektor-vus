@@ -483,26 +483,26 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-library-toggle:hover,.sektor-music-library header > button:hover:not(:disabled) { border-color:rgba(101,230,173,.48); background:rgba(101,230,173,.14); color:#e7fff1; }
 .sektor-music-library header > button:disabled { opacity:.4; cursor:default; }
 .sektor-music-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; padding-top:13px; }
-.sektor-library-open .sektor-music-layout { grid-template-columns:minmax(0,1fr) 250px; }
+.sektor-library-open .sektor-music-layout { grid-template-columns:minmax(190px,.45fr) minmax(0,1fr); }
 .sektor-music-deck,.sektor-music-library { min-width:0; border:1px solid rgba(101,230,173,.12); border-radius:11px; background:linear-gradient(155deg,rgba(22,38,39,.88),rgba(10,17,22,.96)); }
-.sektor-music-deck { display:flex; flex-direction:column; align-items:center; padding:20px 22px 14px; }
-.sektor-music-art { position:relative; display:flex; width:100%; height:116px; align-items:center; justify-content:center; gap:5px; overflow:hidden; border:1px solid rgba(101,230,173,.13); border-radius:9px; background:radial-gradient(ellipse at center,rgba(55,147,114,.28),transparent 62%),linear-gradient(135deg,#152a2b,#0c141b); }
+.sektor-music-deck { display:flex; flex-direction:column; align-items:center; padding:13px 12px 11px; }
+.sektor-music-art { position:relative; display:flex; width:100%; height:82px; align-items:center; justify-content:center; gap:5px; overflow:hidden; border:1px solid rgba(101,230,173,.13); border-radius:9px; background:radial-gradient(ellipse at center,rgba(55,147,114,.28),transparent 62%),linear-gradient(135deg,#152a2b,#0c141b); }
 .sektor-music-art::before,.sektor-music-art::after { position:absolute; width:135px; height:135px; border:1px solid rgba(101,230,173,.11); border-radius:50%; content:""; }
 .sektor-music-art::after { width:93px; height:93px; }
 .sektor-music-art > span { z-index:1; display:grid; width:52px; height:52px; place-items:center; border:1px solid rgba(101,230,173,.35); border-radius:16px; background:linear-gradient(145deg,#1b4b41,#132522); color:#8bf0bd; font-size:28px; box-shadow:0 8px 28px #0006,0 0 28px rgba(101,230,173,.16); }
 .sektor-music-art i { z-index:1; width:3px; height:12px; border-radius:4px; background:#65e6ad; opacity:.65; }
 .sektor-music-art i:nth-of-type(2),.sektor-music-art i:nth-of-type(6) { height:20px; }.sektor-music-art i:nth-of-type(3),.sektor-music-art i:nth-of-type(5) { height:29px; }.sektor-music-art i:nth-of-type(4) { height:17px; }
-.sektor-music-track { width:100%; min-width:0; margin:15px 0 11px; text-align:center; }
+.sektor-music-track { width:100%; min-width:0; margin:10px 0 8px; text-align:center; }
 .sektor-music-track strong,.sektor-music-track small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sektor-music-track strong { color:#edf7f2; font-size:14px; }
 .sektor-music-track small { margin-top:5px; color:#7d9b92; font-size:10px; }
 .sektor-music-timeline { display:grid; width:100%; grid-template-columns:34px minmax(0,1fr) 34px; align-items:center; gap:8px; color:#779087; font:10px ui-monospace,monospace; }
 .sektor-music-timeline input,.sektor-music-volume input { width:100%; height:4px; accent-color:#65e6ad; cursor:pointer; }
-.sektor-music-controls { display:flex; align-items:center; justify-content:center; gap:13px; width:100%; margin:13px 0 11px; }
+.sektor-music-controls { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; margin:8px 0; }
 .sektor-music-controls > button { display:grid; width:34px; height:34px; place-items:center; border:1px solid transparent; border-radius:50%; background:transparent; color:#b5cfc3; cursor:pointer; font-size:13px; }
 .sektor-music-controls > button:hover { border-color:rgba(101,230,173,.2); background:rgba(101,230,173,.08); color:#eafff1; }
 .sektor-music-controls > .sektor-music-play { width:43px; height:43px; border:0; background:linear-gradient(145deg,#72edb3,#35bb88); color:#092018; font-size:16px; box-shadow:0 5px 17px rgba(54,207,145,.22); }
-.sektor-music-volume { display:flex; width:92px; align-items:center; gap:8px; margin-left:13px; color:#83baa3; font-size:14px; }
+.sektor-music-volume { display:flex; width:65px; align-items:center; gap:6px; margin-left:2px; color:#83baa3; font-size:14px; }
 .sektor-music-options { display:flex; width:100%; align-items:center; justify-content:space-between; gap:8px; padding-top:11px; border-top:1px solid rgba(101,230,173,.1); }
 .sektor-music-imports { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .sektor-music-options > label:first-child { display:flex; align-items:center; gap:7px; color:#82988e; font-size:10px; }
@@ -529,8 +529,8 @@ html, body { min-height:0; overflow:hidden; }
   .sektor-music-tracks { max-height:150px; }
 }
 @media(max-width:420px) {
-  .sektor-music-deck { padding:15px 13px 12px; }
-  .sektor-music-volume { width:72px; margin-left:2px; }
+  .sektor-music-deck { padding:13px 12px 11px; }
+  .sektor-music-volume { width:65px; margin-left:2px; }
   .sektor-music-controls { gap:7px; }
   .sektor-music-library-toggle { padding:6px 7px; font-size:9px; }
 }
