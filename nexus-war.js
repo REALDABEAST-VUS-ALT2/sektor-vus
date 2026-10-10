@@ -47,6 +47,32 @@
   };
   const transportType='transport_helicopter';
   const transportName='Transport helicopter';
+  const largeBuildings=[
+    {id:'west-warehouse-a',x:330,y:300,w:240,h:190},
+    {id:'west-warehouse-b',x:455,y:515,w:285,h:180},
+    {id:'west-office-a',x:700,y:230,w:205,h:245},
+    {id:'west-office-b',x:970,y:220,w:280,h:185},
+    {id:'west-depot',x:1090,y:485,w:330,h:205},
+    {id:'north-district-a',x:1250,y:130,w:230,h:190},
+    {id:'north-district-b',x:1510,y:205,w:300,h:220},
+    {id:'north-district-c',x:1790,y:145,w:220,h:270},
+    {id:'north-district-d',x:2050,y:230,w:320,h:190},
+    {id:'north-district-e',x:2370,y:285,w:250,h:220},
+    {id:'east-yard-a',x:2440,y:580,w:315,h:190},
+    {id:'east-yard-b',x:2570,y:840,w:240,h:265},
+    {id:'east-yard-c',x:2250,y:1010,w:305,h:205},
+    {id:'south-district-a',x:1960,y:1200,w:275,h:205},
+    {id:'south-district-b',x:1650,y:1190,w:330,h:185},
+    {id:'south-district-c',x:1360,y:1280,w:250,h:175},
+    {id:'south-depot',x:1040,y:1050,w:320,h:220},
+    {id:'south-office-a',x:730,y:1190,w:235,h:220},
+    {id:'south-office-b',x:480,y:980,w:300,h:190},
+    {id:'central-yard-a',x:780,y:690,w:250,h:190},
+    {id:'central-yard-b',x:1080,y:780,w:295,h:190},
+    {id:'central-office-a',x:1640,y:650,w:260,h:190},
+    {id:'central-office-b',x:1930,y:710,w:310,h:200},
+    {id:'central-warehouse',x:2250,y:690,w:270,h:190}
+  ].map(building=>({...building,type:'building'}));
   const obstacles=[
     {id:'north-home-a',x:650,y:220,w:130,h:110,type:'house',enterable:true,doorX:780,doorY:275},
     {id:'north-home-b',x:1080,y:300,w:150,h:120,type:'house',enterable:false},
@@ -59,7 +85,8 @@
     {id:'south-home-a',x:1880,y:890,w:150,h:125,type:'house',enterable:true,doorX:2030,doorY:950},
     {id:'south-home-b',x:2240,y:1150,w:140,h:115,type:'house',enterable:false},
     {id:'south-barrier-a',x:1930,y:1260,w:230,h:34,type:'barrier'},
-    {id:'south-barrier-b',x:2280,y:860,w:205,h:34,type:'barrier'}
+    {id:'south-barrier-b',x:2280,y:860,w:205,h:34,type:'barrier'},
+    ...largeBuildings
   ].map(item=>({...item,x:item.x*mapScale,y:item.y*mapScale,
     ...(item.doorX==null?{}:{doorX:item.doorX*mapScale}),
     ...(item.doorY==null?{}:{doorY:item.doorY*mapScale})}));
@@ -69,6 +96,18 @@
     mid:{x:1500*mapScale,y:750*mapScale,label:'SCRAP YARD'},
     south:{x:2100*mapScale,y:1080*mapScale,label:'SOUTH RELAY'}
   };
+  const fixedLootLocations={
+    north_cache:{x:900,y:520},
+    refinery_cache:{x:1500,y:500},
+    central_cache:{x:1700,y:1000},
+    south_cache:{x:850,y:1000},
+    east_cache:{x:2400,y:1300},
+    ridge_cache:{x:1600,y:520}
+  };
+  const randomLootLocations=[
+    {x:900,y:520},{x:1500,y:500},{x:1700,y:1000},
+    {x:850,y:1000},{x:2400,y:1300},{x:1600,y:520}
+  ].map(location=>({x:location.x*mapScale,y:location.y*mapScale}));
   let container = null;
   let ui = null;
   let warRef = null;
@@ -80,6 +119,7 @@
   let teamLookup = null;
   let animation = 0;
   let incomeTimer = 0;
+  let lootTimer=0;
   let heartbeatTimer = 0;
   let refreshTimer = 0;
   let lastPositionWrite = 0;
@@ -171,7 +211,11 @@
       drones:{},
       smokes:{},
       claymores:{},
-      grenades:{}
+      grenades:{},
+      lootBoxes:Object.fromEntries(Object.entries(fixedLootLocations).map(([id,position])=>[id,{
+        id,type:'fixed',x:position.x*mapScale,y:position.y*mapScale,available:true,respawnAt:0
+      }])),
+      nextRandomLootAt:Date.now()+45_000
     };
   }
 
@@ -344,6 +388,8 @@
       nodes:{...base.nodes,...(value.nodes || {})},
       bases:{...base.bases,...(value.bases || {})},
       economy:{...base.economy,...(value.economy || {})},
+      lootBoxes:{...base.lootBoxes,...(value.lootBoxes||{})},
+      nextRandomLootAt:Number(value.nextRandomLootAt)||base.nextRandomLootAt,
       vehicles:scaleCollection(value.vehicles),
       turrets:scaleCollection(value.turrets),
       drones:scaleCollection(value.drones),
@@ -591,6 +637,7 @@
     if (animation) cancelAnimationFrame(animation);
     if (incomeTimer) clearInterval(incomeTimer);
     if (turretTimer) clearInterval(turretTimer);
+    if (lootTimer) clearInterval(lootTimer);
     if (reloadTimer) clearTimeout(reloadTimer);
     if (giveUpInterval) clearTimeout(giveUpInterval);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
@@ -601,6 +648,8 @@
     turretTimer=window.setInterval(()=>updateTurrets()
       .then(updateClaymores)
       .catch(error=>setStatus(error.message||'Field equipment update failed.',true)),500);
+    lootTimer=window.setInterval(()=>updateLootBoxes()
+      .catch(error=>setStatus(error.message||'Loot crates could not be refreshed.',true)),5000);
     heartbeatTimer = window.setInterval(()=>
       mutatePlayer(player=>player?{...player,online:true,lastSeen:Date.now()}:player)
         .catch(error=>setStatus(error.message,true)),5000);
@@ -660,13 +709,13 @@
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
-      const topSpeed=350*(vehicle?vehicle.speed:1)*(Number(player.speedBoostUntil||0)>Date.now()?1.55:1);
+      const topSpeed=650*(vehicle?vehicle.speed:1)*(Number(player.speedBoostUntil||0)>Date.now()?1.55:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
       if (pilot&&!dx&&!dy) localPosition={x:Number(transport.x),y:Number(transport.y)};
       const length=Math.hypot(dx,dy)||1;
-      const ease=1-Math.exp(-20*elapsed);
+      const ease=1-Math.exp(-30*elapsed);
       movementVelocity.x+=(dx/length*topSpeed-movementVelocity.x)*ease;
       movementVelocity.y+=(dy/length*topSpeed-movementVelocity.y)*ease;
       const next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
@@ -679,7 +728,8 @@
         movementVelocity={x:0,y:0};
         setStatus('That base is protected for the opposing team.');
       } else if (!pilot) {
-        const blocked=obstacles.some(item=>circleIntersectsRect(next.x,next.y,28,item));
+        const blocked=obstacles.some(item=>circleIntersectsRect(next.x,next.y,28,item))||
+          lootBoxIntersects(next.x,next.y,28);
         if (!blocked) localPosition=next;
       } else localPosition=next;
       if ((dx||dy) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
@@ -757,6 +807,7 @@
     Object.values(warState.smokes||{}).forEach(smoke=>drawSmoke(context,smoke));
     Object.values(warState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
     Object.values(warState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
+    Object.values(warState.lootBoxes||{}).forEach(crate=>drawLootBox(context,crate));
     traces = traces.filter(trace => Date.now() - trace.time < 110);
     traces.forEach(trace => {
       context.globalAlpha = Math.max(0,1 - (Date.now() - trace.time) / 110);
@@ -766,8 +817,80 @@
       context.globalAlpha = 1;
     });
     context.restore();
+    drawMinimap();
     updateStats(visiblePlayers);
     updateCaptureProgress();
+  }
+
+  function drawMinimap() {
+    if (!ui||!ui.minimap||!warState) return;
+    const context=ui.minimap.getContext('2d');
+    const width=ui.minimap.width,height=ui.minimap.height;
+    const scaleX=width/worldWidth,scaleY=height/worldHeight;
+    const point=(x,y)=>({x:Number(x)*scaleX,y:Number(y)*scaleY});
+    context.clearRect(0,0,width,height);
+    context.fillStyle='#111a15';
+    context.fillRect(0,0,width,height);
+    context.fillStyle='rgba(74,126,220,.14)';
+    const vortexZone=point(basePositions.vortex.x,basePositions.vortex.y);
+    context.beginPath();context.arc(vortexZone.x,vortexZone.y,safeZoneRadius*scaleX,0,Math.PI*2);context.fill();
+    context.fillStyle='rgba(220,75,91,.14)';
+    const kryptonZone=point(basePositions.krypton.x,basePositions.krypton.y);
+    context.beginPath();context.arc(kryptonZone.x,kryptonZone.y,safeZoneRadius*scaleX,0,Math.PI*2);context.fill();
+    for (const obstacle of obstacles) {
+      const topLeft=point(obstacle.x,obstacle.y);
+      context.fillStyle=obstacle.type==='building'?'#829187':obstacle.type==='house'?'#a6b4a8':'#b8a779';
+      context.fillRect(topLeft.x,topLeft.y,Math.max(1,obstacle.w*scaleX),Math.max(1,obstacle.h*scaleY));
+    }
+    for (const team of ['vortex','krypton']) {
+      const base=point(basePositions[team].x,basePositions[team].y);
+      context.fillStyle=team==='vortex'?'#6fa2f1':'#ed6876';
+      context.fillRect(base.x-4,base.y-4,8,8);
+    }
+    for (const [id,node] of Object.entries(nodePositions)) {
+      const location=point(node.x,node.y);
+      const owner=warState.nodes[id]?.team;
+      context.beginPath();context.arc(location.x,location.y,4,0,Math.PI*2);
+      context.fillStyle=owner==='vortex'?'#75a9ff':owner==='krypton'?'#fa7c89':'#e8e8cd';
+      context.fill();
+    }
+    for (const crate of Object.values(warState.lootBoxes||{})) {
+      if (!crate||!crate.available) continue;
+      const location=point(crate.x,crate.y);
+      context.fillStyle=crate.type==='random'?'#ffd36c':'#b7e6b8';
+      context.fillRect(location.x-2.5,location.y-2.5,5,5);
+      context.strokeStyle='#17231d';
+      context.lineWidth=1;
+      context.strokeRect(location.x-2.5,location.y-2.5,5,5);
+    }
+    const now=Date.now();
+    for (const player of Object.values(warState.players||{})) {
+      if (!player||!player.online||now-Number(player.lastSeen||0)>20000) continue;
+      const transport=player.transportId&&warState.vehicles[player.transportId];
+      const location=point(transport?transport.x:player.name===playerName&&localPosition?localPosition.x:player.x,
+        transport?transport.y:player.name===playerName&&localPosition?localPosition.y:player.y);
+      context.beginPath();context.arc(location.x,location.y,player.name===playerName?4:2.5,0,Math.PI*2);
+      context.fillStyle=player.team==='vortex'?'#83b3ff':'#ff8792';
+      context.fill();
+      if (player.name===playerName) {
+        context.strokeStyle='#fff';
+        context.lineWidth=1.5;
+        context.stroke();
+      }
+    }
+    const camera=point(cameraPosition.x,cameraPosition.y);
+    const viewWidth=ui.canvas.width*scaleX,viewHeight=ui.canvas.height*scaleY;
+    const viewLeft=Math.max(0,camera.x-viewWidth/2),viewTop=Math.max(0,camera.y-viewHeight/2);
+    const viewRight=Math.min(width,camera.x+viewWidth/2),viewBottom=Math.min(height,camera.y+viewHeight/2);
+    context.strokeStyle='rgba(242,250,244,.7)';
+    context.lineWidth=1;
+    context.strokeRect(viewLeft,viewTop,Math.max(0,viewRight-viewLeft),Math.max(0,viewBottom-viewTop));
+    context.fillStyle='rgba(5,10,7,.78)';
+    context.fillRect(5,5,104,19);
+    context.fillStyle='#e5efe7';
+    context.font='bold 10px system-ui';
+    context.textAlign='left';
+    context.fillText('TACTICAL MAP',11,19);
   }
 
   function drawSafeZone(context,team) {
@@ -841,12 +964,35 @@
   }
 
   function drawObstacle(context,item) {
-    context.fillStyle=item.type==='house'?'#59665d':'#807b68';
-    context.strokeStyle=item.type==='house'?'#b5c5b6':'#c6b57e';
-    context.lineWidth=4;
+    const building=item.type==='building';
+    context.fillStyle=building?'#48564f':item.type==='house'?'#59665d':'#807b68';
+    context.strokeStyle=building?'#9cad9f':item.type==='house'?'#b5c5b6':'#c6b57e';
+    context.lineWidth=building?5:4;
     context.fillRect(item.x,item.y,item.w,item.h);
     context.strokeRect(item.x,item.y,item.w,item.h);
-    if (item.type==='house') {
+    if (building) {
+      context.fillStyle='#344139';
+      context.fillRect(item.x+14,item.y+14,item.w-28,item.h-28);
+      context.strokeStyle='#748679';
+      context.lineWidth=3;
+      context.strokeRect(item.x+14,item.y+14,item.w-28,item.h-28);
+      context.fillStyle='#202c25';
+      context.fillRect(item.x+item.w*.38,item.y+item.h*.36,item.w*.24,item.h*.28);
+      context.strokeStyle='#849488';
+      context.lineWidth=2;
+      const windowSize=Math.max(10,Math.min(22,item.w*.07));
+      for (const side of [item.x+30,item.x+item.w-30-windowSize]) {
+        for (const row of [item.y+32,item.y+item.h-32-windowSize]) {
+          context.fillStyle='#718277';
+          context.fillRect(side,row,windowSize,windowSize);
+          context.strokeRect(side,row,windowSize,windowSize);
+        }
+      }
+      context.fillStyle='#d2c297';
+      context.font='bold 11px system-ui';
+      context.textAlign='center';
+      context.fillText('BLOCKED BUILDING',item.x+item.w/2,item.y+item.h/2+4);
+    } else if (item.type==='house') {
       context.fillStyle='#26352b';
       context.fillRect(item.x+12,item.y+12,item.w-24,item.h-24);
       if (item.enterable) {
@@ -870,6 +1016,11 @@
     const nearestX=Math.max(item.x,Math.min(x,item.x+item.w));
     const nearestY=Math.max(item.y,Math.min(y,item.y+item.h));
     return Math.hypot(x-nearestX,y-nearestY)<r;
+  }
+
+  function lootBoxIntersects(x,y,radius) {
+    return Object.values(warState&&warState.lootBoxes||{}).some(crate=>crate&&crate.available&&
+      circleIntersectsRect(x,y,radius,{x:Number(crate.x)-15,y:Number(crate.y)-15,w:30,h:30}));
   }
 
   function drawTurret(context,turret) {
@@ -966,6 +1117,28 @@
     const remaining=Math.max(0,Number(grenade.expiresAt)-Date.now());
     context.fillStyle='#e5bd55';
     context.beginPath();context.arc(Number(grenade.x),Number(grenade.y),8+Math.sin(remaining/45)*2,0,Math.PI*2);context.fill();
+  }
+
+  function drawLootBox(context,crate) {
+    if (!crate||!crate.available) return;
+    const size=30;
+    context.fillStyle=crate.type==='random'?'#9b7430':'#426c53';
+    context.strokeStyle=crate.type==='random'?'#ffd36c':'#b7e6b8';
+    context.lineWidth=4;
+    context.fillRect(Number(crate.x)-size/2,Number(crate.y)-size/2,size,size);
+    context.strokeRect(Number(crate.x)-size/2,Number(crate.y)-size/2,size,size);
+    context.strokeStyle='#17231d';
+    context.lineWidth=3;
+    context.beginPath();
+    context.moveTo(Number(crate.x)-size/2,Number(crate.y));
+    context.lineTo(Number(crate.x)+size/2,Number(crate.y));
+    context.moveTo(Number(crate.x),Number(crate.y)-size/2);
+    context.lineTo(Number(crate.x),Number(crate.y)+size/2);
+    context.stroke();
+    context.fillStyle='#edf5ef';
+    context.font='bold 12px system-ui';
+    context.textAlign='center';
+    context.fillText(crate.type==='random'?'DROP':'LOOT',Number(crate.x),Number(crate.y)-24);
   }
 
   function drawNode(context,id,node,state) {
@@ -1307,7 +1480,8 @@
   function lineBlocked(x1,y1,x2,y2) {
     for (let step=1;step<20;step++) {
       const t=step/20;
-      if (obstacles.some(item=>circleIntersectsRect(x1+(x2-x1)*t,y1+(y2-y1)*t,4,item))) return true;
+      const x=x1+(x2-x1)*t,y=y1+(y2-y1)*t;
+      if (obstacles.some(item=>circleIntersectsRect(x,y,4,item))||lootBoxIntersects(x,y,4)) return true;
     }
     if (warState&&Object.values(warState.smokes||{}).some(smoke=>
       Number(smoke.expiresAt)>Date.now()&&pointToSegment(smoke.x,smoke.y,x1,y1,x2,y2).distance<Number(smoke.radius||190))) return true;
@@ -1626,7 +1800,8 @@
     const distance=430*elapsed;
     const next={x:localDronePosition.x+Math.cos(localDronePosition.angle)*distance,
       y:localDronePosition.y+Math.sin(localDronePosition.angle)*distance};
-    const obstacle=obstacles.some(item=>circleIntersectsRect(next.x,next.y,10,item));
+    const obstacle=obstacles.some(item=>circleIntersectsRect(next.x,next.y,10,item))||
+      lootBoxIntersects(next.x,next.y,10);
     const hit=Object.values(warState.players||{}).find(enemy=>enemy&&enemy.team!==playerTeam&&enemy.online&&
       enemy.hp>0&&!enemy.downed&&Math.hypot(Number(enemy.x)-next.x,Number(enemy.y)-next.y)<35);
     const outOfBounds=next.x<70||next.x>worldWidth-70||next.y<110||next.y>worldHeight-110;
@@ -1751,6 +1926,12 @@
     if (!player) return;
     if (player.transportId) { setStatus('Disembark before capturing or raiding.');return; }
     const position=player.name===playerName&&localPosition?localPosition:player;
+    const nearestCrate=Object.values(warState.lootBoxes||{})
+      .filter(crate=>crate&&crate.available)
+      .map(crate=>({crate,distance:Math.hypot(Number(crate.x)-position.x,Number(crate.y)-position.y)}))
+      .filter(item=>item.distance<=105)
+      .sort((a,b)=>a.distance-b.distance)[0];
+    if (nearestCrate) { await lootNearby();return; }
     const nearest=Object.entries(nodePositions).map(([id,node])=>({id,node,distance:Math.hypot(node.x-position.x,node.y-position.y)}))
       .sort((a,b)=>a.distance-b.distance)[0];
     if (nearest && nearest.distance < 145) {
@@ -1765,7 +1946,7 @@
       catch(error) { setStatus(error.message,true); }
       return;
     }
-    setStatus('Move beside a relay to capture, or return to base to deploy a vehicle.');
+    setStatus('Press E beside a marked loot crate to open it, capture a relay, or return to base to deploy a vehicle.');
   }
 
   async function deployVehicle() {
@@ -1929,6 +2110,102 @@
     captureTarget='';
     if (ui&&ui.captureProgress) ui.captureProgress.hidden=true;
     if (message) setStatus(message);
+  }
+
+  async function updateLootBoxes() {
+    if (!warState||destroyed) return;
+    const now=Date.now();
+    for (const [id,crate] of Object.entries(warState.lootBoxes||{})) {
+      if (!crate) continue;
+      if (crate.type==='fixed'&&!crate.available&&Number(crate.respawnAt)<=now) {
+        await updateWar('lootBoxes/'+id,current=>current&&!current.available&&Number(current.respawnAt)<=now
+          ?{...current,available:true,respawnAt:0,claimedBy:''}:current);
+      } else if (crate.type==='random'&&Number(crate.expiresAt)<=now) {
+        await updateWar('lootBoxes/'+id,current=>current&&Number(current.expiresAt)<=now?null:current);
+      }
+    }
+
+    const randomActive=Object.values(warState.lootBoxes||{})
+      .some(crate=>crate&&crate.type==='random'&&crate.available);
+    if (randomActive||Number(warState.nextRandomLootAt||0)>now) return;
+    const candidate=randomLootLocations[Math.floor(Math.random()*randomLootLocations.length)];
+    const occupied=Object.values(warState.lootBoxes||{}).some(crate=>crate&&crate.available&&
+      Math.hypot(Number(crate.x)-candidate.x,Number(crate.y)-candidate.y)<420);
+    let shouldSpawn=false;
+    const nextSpawnAt=occupied?now+15_000:now+45_000+Math.floor(Math.random()*31_000);
+    await updateWar('nextRandomLootAt',current=>{
+      if (Number(current||0)>now) return current;
+      shouldSpawn=!occupied;
+      return nextSpawnAt;
+    });
+    if (shouldSpawn) {
+      const id='airdrop_'+now;
+      await updateWar('lootBoxes/'+id,current=>current||{
+        id,type:'random',x:candidate.x,y:candidate.y,available:true,respawnAt:0,expiresAt:now+180_000
+      });
+    }
+  }
+
+  async function lootNearby() {
+    const player=warState&&warState.players[playerKey];
+    if (!player||player.downed||player.hp<=0) return;
+    if (player.transportId) {
+      setStatus('Disembark before opening a loot crate.');
+      return;
+    }
+    const position=localPosition||player;
+    const nearest=Object.entries(warState.lootBoxes||{})
+      .filter(([,crate])=>crate&&crate.available)
+      .map(([id,crate])=>({id,crate,distance:Math.hypot(Number(crate.x)-position.x,Number(crate.y)-position.y)}))
+      .filter(item=>item.distance<=105)
+      .sort((a,b)=>a.distance-b.distance)[0];
+    if (!nearest) {
+      setStatus('Move within 105 units of a marked loot crate and press E.');
+      return;
+    }
+    const armorTotal=Number(player.armorPlates||0)+Math.ceil(Number(player.armorHp||0)/50);
+    const drops=[
+      {kind:'tactical',item:'smoke',field:'smokeCharges',amount:2,label:'2 smoke charges'},
+      {kind:'tactical',item:'stim',field:'stimCharges',amount:2,label:'2 stim charges'},
+      {kind:'lethal',item:'grenade',field:'grenadeCharges',amount:2,label:'2 frag grenades'},
+      {kind:'lethal',item:'claymore',field:'claymoreCharges',amount:1,label:'1 claymore'},
+      ...(armorTotal<3?[{kind:'plate',field:'armorPlates',amount:1,label:'1 armor plate'}]:[]),
+      {kind:'resources',amount:40+Math.floor(Math.random()*41),label:'team resources'}
+    ];
+    const drop=drops[Math.floor(Math.random()*drops.length)];
+    let claimed=false;
+    try {
+      await updateWar('lootBoxes/'+nearest.id,crate=>{
+        claimed=!!crate&&crate.available;
+        if (!claimed) return crate;
+        return {...crate,available:false,claimedBy:playerKey,claimedAt:Date.now(),
+          respawnAt:crate.type==='fixed'?Date.now()+90_000:0,expiresAt:crate.type==='random'?Date.now()+180_000:0};
+      });
+      if (!claimed) {
+        setStatus('Someone else reached that loot crate first.');
+        return;
+      }
+      if (drop.kind==='resources') {
+        await updateWar('economy/'+playerTeam,economy=>({...economy,
+          resources:Number(economy&&economy.resources||0)+drop.amount}));
+      } else {
+        let rewardLabel=drop.label;
+        await mutatePlayer(current=>{
+          if (!current) return current;
+          if (drop.kind==='plate'&&Number(current.armorPlates||0)+Math.ceil(Number(current.armorHp||0)/50)>=3) {
+            rewardLabel='1 smoke charge (armor capacity full)';
+            return {...current,smokeCharges:Number(current.smokeCharges||0)+1};
+          }
+          return {...current,[drop.field]:Number(current[drop.field]||0)+drop.amount};
+        });
+        setStatus('Loot crate: '+rewardLabel+' added to your loadout.');
+      }
+      if (drop.kind==='resources') setStatus('Loot crate: +'+drop.amount+' resources for '+teamLabel(playerTeam)+'.');
+      refreshEquipmentUi();
+      draw();
+    } catch(error) {
+      setStatus(error.message||'Could not open the loot crate.',true);
+    }
   }
 
   function teamLabel(team) { return team==='vortex'?'Vortex':'Krypton'; }
@@ -2160,14 +2437,14 @@
 
   function buildUi() {
     container.innerHTML='<div class="nexus-war-heading"><div><span>'+(firebaseMode||lanMode?'LIVE MULTIPLAYER':'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div></div>' +
-      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
+      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
       '<a class="nexus-button nexus-war-home" href="'+nexusUrl()+'">Back to Nexus</a>' +
       '<div class="nexus-war-status" data-war-status role="status" aria-live="polite">Connecting to the frontline…</div>' +
       '<div class="nexus-war-progression" data-war-progression></div><div class="nexus-war-wallet" data-war-wallet></div>' +
       '<div class="nexus-war-stats" data-war-stats></div>' +
-      '<canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas>' +
+      '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
       '<div class="nexus-war-capture" data-war-capture-progress hidden><strong>Capturing relay</strong><div><span></span></div></div>' +
-      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Spawn at pad / board / exit</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · faster</option><option value="assault_rover">Assault rover · steady</option><option value="tank">Battle tank · armored</option><option value="anti_air">Anti-air · helicopter defense</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Spawn / board / dismount</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
+      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Spawn at pad / board / exit</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · faster</option><option value="assault_rover">Assault rover · steady</option><option value="tank">Battle tank · armored</option><option value="anti_air">Anti-air · helicopter defense</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Spawn / board / dismount</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
       '<div class="nexus-war-controls"><strong>Base upgrades</strong><button class="nexus-button secondary" type="button" data-war-action="armor">Buy armor plate · 150</button><span>Press <kbd>Z</kbd> to plate up</span><button class="nexus-button secondary" type="button" data-war-action="self-revive-buy">Self-revive · 400</button><button class="nexus-button secondary" type="button" data-war-action="turret">Buy sentry turret · 350</button><button class="nexus-button secondary" type="button" data-war-action="drone-buy">Buy kamikaze drone · 250</button><button class="nexus-button secondary" type="button" data-war-action="drone-toggle">Toggle drone control</button><button class="nexus-button secondary" type="button" data-war-action="revive">Revive ally</button><button class="nexus-button secondary" type="button" data-war-action="self-revive">Use self-revive</button><button class="nexus-button secondary" type="button" data-war-action="give-up" hidden>Hold to give up</button></div>' +
       '<div class="nexus-war-touch"><div class="nexus-war-pad"><button type="button" data-war-move="up" aria-label="Move up">▲</button><button type="button" data-war-move="left" aria-label="Move left">◀</button><button type="button" data-war-move="down" aria-label="Move down">▼</button><button type="button" data-war-move="right" aria-label="Move right">▶</button></div><button type="button" class="nexus-war-fire" data-war-fire>Fire</button></div>' +
       '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
@@ -2175,6 +2452,7 @@
       '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Two assault rifles · two SMGs · two snipers · RPG-4 · Xenophage</span><small>Weapons unlock at levels 1–55. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
     ui={
       canvas:container.querySelector('.nexus-war-canvas'),
+      minimap:container.querySelector('[data-war-minimap]'),
       status:container.querySelector('[data-war-status]'),
       stats:container.querySelector('[data-war-stats]'),
       reset:container.querySelector('[data-war-reset]'),
@@ -2227,6 +2505,8 @@
     destroyed=true;
     if (animation) cancelAnimationFrame(animation);
     if (incomeTimer) clearInterval(incomeTimer);
+    if (turretTimer) clearInterval(turretTimer);
+    if (lootTimer) clearInterval(lootTimer);
     if (captureTimer) clearInterval(captureTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (refreshTimer) clearInterval(refreshTimer);
@@ -2247,6 +2527,7 @@
     animation=0;
     incomeTimer=0;
     turretTimer=0;
+    lootTimer=0;
     reloadTimer=0;
     reloadEndsAt=0;
     giveUpInterval=0;
@@ -2353,6 +2634,7 @@
     Object.values(spectatorWarState.smokes||{}).forEach(smoke=>drawSmoke(context,smoke));
     Object.values(spectatorWarState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
     Object.values(spectatorWarState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
+    Object.values(spectatorWarState.lootBoxes||{}).forEach(crate=>drawLootBox(context,crate));
     context.restore();
     if (selected) {
       const teamColor=selected[1].team==='vortex'?'#80b7ff':'#ff8792';
