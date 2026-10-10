@@ -39,11 +39,15 @@
     mag_fast:{name:'Fast magazine',effect:'Faster reload',reload:.68,cost:450}
   };
   const vehicles = {
-    scout_bike:{name:'Scout bike',speed:2.35,color:'#d8c76f'},
-    assault_rover:{name:'Assault rover',speed:1.75,color:'#b8836e'},
-    tank:{name:'Battle tank',speed:1.05,color:'#71836e'},
-    anti_air:{name:'Anti-air',speed:1.25,color:'#8da1a4'},
-    transport_helicopter:{name:'Transport helicopter',speed:1.45,color:'#8da1a4'}
+    scout_bike:{name:'Scout bike',speed:2.4,color:'#d8c76f'},
+    assault_rover:{name:'Assault rover',speed:3.3,color:'#b8836e'},
+    tank:{name:'Battle tank',speed:2.6,color:'#71836e'},
+    anti_air:{name:'Anti-air',speed:2.9,color:'#8da1a4'},
+    transport_helicopter:{name:'Transport helicopter',speed:3.2,color:'#8da1a4'}
+  };
+  const vehicleWeapons={
+    tank:{name:'Tank cannon',mag:8,damage:125,rate:1100,range:1250,spread:.012,reload:3200},
+    anti_air:{name:'Anti-air cannon',mag:16,damage:28,rate:260,range:1350,spread:.02,reload:2600,aircraftDamage:125}
   };
   const transportType='transport_helicopter';
   const transportName='Transport helicopter';
@@ -130,6 +134,7 @@
   let captureTarget = '';
   let captureStartedAt = 0;
   let captureDuration = 0;
+  let vehicleActionBusy=false;
   let localPosition = null;
   let positionWriteBusy = false;
   let movementVelocity={x:0,y:0};
@@ -175,6 +180,24 @@
     const yearStart = new Date(Date.UTC(target.getUTCFullYear(),0,1));
     const week = Math.ceil(((target - yearStart) / 86400000 + 1) / 7);
     return target.getUTCFullYear() + '-W' + String(week).padStart(2,'0');
+  }
+
+  async function toggleFullscreen() {
+    if (!container||!ui?.fullscreen) return;
+    try {
+      if (document.fullscreenElement===container) await document.exitFullscreen();
+      else if (container.requestFullscreen) await container.requestFullscreen();
+      else setStatus('Fullscreen is not supported by this browser.',true);
+    } catch(error) {
+      setStatus(error.message||'Could not change fullscreen mode.',true);
+    }
+  }
+
+  function updateFullscreenButton() {
+    if (!ui?.fullscreen) return;
+    const isFullscreen=document.fullscreenElement===container;
+    ui.fullscreen.textContent=isFullscreen?'Exit fullscreen':'Fullscreen';
+    ui.fullscreen.setAttribute('aria-pressed',String(isFullscreen));
   }
 
   async function hitTurret(id,damage) {
@@ -380,8 +403,11 @@
       players:Object.fromEntries(Object.entries(players).map(([key,player])=>[key,player?{
         armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
         smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
-        tactical:'smoke',lethal:'grenade',downed:false,downedAt:0,vehiclePad:'',
+        tactical:'smoke',lethal:'grenade',downed:false,downedAt:0,vehiclePad:'',vehicleAmmo:0,
         ...player,...(legacyMap?scaleRecord(player):{}),
+        vehicleAmmo:vehicleWeapons[player.vehicle]
+          ?Math.max(0,Math.min(vehicleWeapons[player.vehicle].mag,
+            Math.floor(Number(player.vehicleAmmo??vehicleWeapons[player.vehicle].mag)||0))):0,
         vehiclePad:player.vehiclePad||(!player.transportId&&vehiclePadOffsets[player.vehicle]
           ?(player.team||'vortex')+'_'+player.vehicle:'')
       }:player])),
@@ -390,7 +416,9 @@
       economy:{...base.economy,...(value.economy || {})},
       lootBoxes:{...base.lootBoxes,...(value.lootBoxes||{})},
       nextRandomLootAt:Number(value.nextRandomLootAt)||base.nextRandomLootAt,
-      vehicles:scaleCollection(value.vehicles),
+      vehicles:Object.fromEntries(Object.entries(scaleCollection(value.vehicles))
+        .map(([id,vehicle])=>[id,vehicle&&vehicle.type===transportType
+          ?{...vehicle,passengers:Array.isArray(vehicle.passengers)?vehicle.passengers:[]}:vehicle])),
       turrets:scaleCollection(value.turrets),
       drones:scaleCollection(value.drones),
       smokes:scaleCollection(value.smokes),
@@ -463,7 +491,7 @@
     return {
       name:playerName,team:playerTeam,x:playerTeam==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y,
       hp:100,ammo:effectiveWeapon(initial).mag,kills:0,deaths:0,...initial,loadoutSet:false,
-      vehiclePad:'',
+      vehiclePad:'',vehicleAmmo:0,
       armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
       smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
       downed:false,downedAt:0,
@@ -667,6 +695,7 @@
     ui.form.addEventListener('submit',equipLoadout);
     ui.reload.addEventListener('click',reloadWeapon);
     document.addEventListener('click',onActionClick);
+    document.addEventListener('fullscreenchange',updateFullscreenButton);
     window.addEventListener('pagehide',markOffline,{once:true});
   }
 
@@ -709,7 +738,7 @@
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
-      const topSpeed=650*(vehicle?vehicle.speed:1)*(Number(player.speedBoostUntil||0)>Date.now()?1.55:1);
+      const topSpeed=1700*(vehicle?vehicle.speed:1)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
@@ -728,9 +757,15 @@
         movementVelocity={x:0,y:0};
         setStatus('That base is protected for the opposing team.');
       } else if (!pilot) {
-        const blocked=obstacles.some(item=>circleIntersectsRect(next.x,next.y,28,item))||
-          lootBoxIntersects(next.x,next.y,28);
-        if (!blocked) localPosition=next;
+        const distance=Math.hypot(next.x-localPosition.x,next.y-localPosition.y);
+        const steps=Math.max(1,Math.ceil(distance/24));
+        const start={...localPosition};
+        for (let step=1;step<=steps;step++) {
+          const candidate={x:start.x+(next.x-start.x)*step/steps,y:start.y+(next.y-start.y)*step/steps};
+          if (obstacles.some(item=>circleIntersectsRect(candidate.x,candidate.y,28,item))||
+              lootBoxIntersects(candidate.x,candidate.y,28)) break;
+          localPosition=candidate;
+        }
       } else localPosition=next;
       if ((dx||dy) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
         lastPositionWrite=timestamp;
@@ -1210,7 +1245,8 @@
   function updateStats(players) {
     const player = warState.players[playerKey];
     if (!player) return;
-    const weapon = effectiveWeapon(player);
+    const weapon=vehicleWeapons[player.vehicle]||effectiveWeapon(player);
+    const ammo=vehicleWeapons[player.vehicle]?Number(player.vehicleAmmo||0):Number(player.ammo||0);
     const progress=accountData && accountData.dropzone?normalizeProgress(accountData.dropzone):normalizeProgress(null);
     const markup = '<span class="nexus-war-vortex">Vortex resources: ' +
       Number(warState.economy.vortex.resources || 0) + '</span><span class="nexus-war-krypton">Krypton resources: ' +
@@ -1218,8 +1254,8 @@
       '</span><span>K / D: ' + Number(player.kills || 0) + ' / ' + Number(player.deaths || 0) +
       '</span><span>Health: ' + Math.ceil(Number(player.hp)) + '</span><span>Armor: '+
       Math.ceil(Number(player.armorHp||0))+' / 150 · '+Number(player.armorPlates||0)+' plates ready'+
-      (player.downed?' · DOWNED':'')+'</span><span>Ammo: ' +
-      Number(player.ammo) + ' / ' + weapon.mag + '</span><span>Level ' + progress.level +
+      (player.downed?' · DOWNED':'')+'</span><span>'+(vehicleWeapons[player.vehicle]?weapon.name+' ammo':'Ammo')+': ' +
+      ammo + ' / ' + weapon.mag + '</span><span>Level ' + progress.level +
       ' · XP ' + progress.xp + ' / ' + (progress.level===55?progress.xp:(progress.level*xpPerLevel)) + '</span>';
     if (markup!==lastStatsMarkup) { ui.stats.innerHTML=markup;lastStatsMarkup=markup; }
     if (ui.giveUp) ui.giveUp.hidden=!player.downed;
@@ -1280,8 +1316,11 @@
 
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
-    if (event.target.closest('input,select,textarea,button')) return;
+    const target=event.target instanceof Element?event.target:null;
+    if (target&&target.closest('input,textarea,[contenteditable="true"]')) return;
+    if (target instanceof HTMLSelectElement&&key!=='v') return;
     if (['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright','r','e','v','q','f','g','x','c','z'].includes(key)) event.preventDefault();
+    if (event.repeat&&!['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(key)) return;
     if (key==='g'&&warState&&warState.players[playerKey]?.downed&&!giveUpInterval) {
       giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},1500);
     }
@@ -1317,18 +1356,20 @@
       setStatus('Weapons are disabled inside your team safe zone.');
       return;
     }
-    const weapon = effectiveWeapon(shooter);
+    const weapon=vehicleWeapons[shooter.vehicle]||effectiveWeapon(shooter);
+    const ammoField=vehicleWeapons[shooter.vehicle]?'vehicleAmmo':'ammo';
     if (now - lastShot < weapon.rate) return;
-    if (shooter.ammo <= 0) { setStatus('Magazine empty. Press R to reload.'); return; }
+    if (Number(shooter[ammoField]||0) <= 0) { setStatus('Magazine empty. Press R to reload.'); return; }
     lastShot = now;
     let fired;
     try {
       fired = await mutatePlayer(current => {
-        if (!current || current.ammo <= 0 || Date.now() - Number(current.lastShotAt || 0) < weapon.rate - 20) return current;
-        return {...current,ammo:current.ammo-1,lastShotAt:Date.now(),lastSeen:Date.now()};
+        if (!current||current.vehicle!==shooter.vehicle||Number(current[ammoField]||0)<=0||
+            Date.now()-Number(current.lastShotAt||0)<weapon.rate-20) return current;
+        return {...current,[ammoField]:Number(current[ammoField])-1,lastShotAt:Date.now(),lastSeen:Date.now()};
       });
     } catch (error) { setStatus(error.message,true); return; }
-    if (!fired || fired.ammo !== shooter.ammo - 1) return;
+    if (!fired||fired[ammoField]!==Number(shooter[ammoField])-1) return;
     const transport=shooter.transportId&&warState.vehicles[shooter.transportId];
     const origin = {...shooter,...(transport?{x:transport.x,y:transport.y}:localPosition||{})};
     const angle = Math.atan2(aim.y-origin.y,aim.x-origin.x) + (Math.random()-.5)*weapon.spread;
@@ -1354,7 +1395,7 @@
       } else if (impact&&impact.turret) {
         await hitTurret(impact.turretId,weapon.damage);
       } else if (impact&&impact.transport) {
-        await hitTransport(impact.transportId,125);
+        await hitTransport(impact.transportId,weapon.aircraftDamage||125);
       } else if (baseHit) {
         await raidBase(baseHit.team,weapon.damage,shooter.team);
       }
@@ -1905,15 +1946,21 @@
   async function reloadWeapon() {
     const player = warState && warState.players[playerKey];
     if (!player || reloading) return;
-    const weapon = effectiveWeapon(player);
-    if (player.ammo >= weapon.mag) return;
+    const vehicleWeapon=vehicleWeapons[player.vehicle];
+    const weapon=vehicleWeapon||effectiveWeapon(player);
+    const ammoField=vehicleWeapon?'vehicleAmmo':'ammo';
+    if (Number(player[ammoField]||0)>=weapon.mag) return;
     reloading = true;
     ui.reload.disabled = true;
-    ui.reload.textContent = 'Reloading…';
+    ui.reload.textContent = 'Reloading '+(vehicleWeapon?weapon.name:'')+'…';
     reloadEndsAt=Date.now()+weapon.reload;
     reloadTimer=window.setTimeout(async () => {
       try {
-        await mutatePlayer(current => current ? {...current,ammo:effectiveWeapon(current).mag,lastSeen:Date.now()} : current);
+        await mutatePlayer(current=>current?{
+          ...current,[ammoField]:vehicleWeapons[current.vehicle]&&ammoField==='vehicleAmmo'
+            ?vehicleWeapons[current.vehicle].mag:ammoField==='ammo'?effectiveWeapon(current).mag:current[ammoField],
+          lastSeen:Date.now()
+        }:current);
       } catch (error) { setStatus(error.message,true); }
       reloading=false;reloadEndsAt=0;reloadTimer=0;
       if (!destroyed) { ui.reload.disabled=false;ui.reload.textContent='Reload (R)';ui.reloadTimer.textContent=''; }
@@ -1950,7 +1997,10 @@
   }
 
   async function deployVehicle() {
-    const player=warState&&warState.players[playerKey];
+    if (!warState||vehicleActionBusy) return;
+    vehicleActionBusy=true;
+    try {
+    const player=warState.players[playerKey];
     if (!player) return;
     const position=localPosition||player;
     if (player.transportId) {
@@ -2015,15 +2065,17 @@
         setStatus('Transport helicopter deployed. W A S D to fly; up to 10 occupants. Press V to exit.');
         return;
       }
-      const occupied=Object.values(warState.players||{}).some(other=>other&&other.name!==playerName&&
+      const occupied=Object.entries(warState.players||{}).some(([key,other])=>key!==playerKey&&other&&
         other.team===playerTeam&&other.vehicle===type&&other.vehiclePad===padId&&other.online&&
         Date.now()-Number(other.lastSeen||0)<20000);
       if (occupied) throw new Error('The '+vehicles[type].name+' pad is occupied by a teammate.');
-      await mutatePlayer(current=>current?{...current,x:pad.x,y:pad.y,vehicle:type,vehiclePad:padId,lastSeen:Date.now()}:current);
+      await mutatePlayer(current=>current?{...current,x:pad.x,y:pad.y,vehicle:type,vehiclePad:padId,
+        vehicleAmmo:vehicleWeapons[type]?.mag||0,lastSeen:Date.now()}:current);
       localPosition={x:pad.x,y:pad.y};
       movementVelocity={x:0,y:0};
       setStatus('Spawned '+vehicles[type].name+' at its marked base pad. Press V to dismount.');
     } catch(error) { setStatus(error.message,true); }
+    } finally { vehicleActionBusy=false; }
   }
 
   async function leaveTransport(player) {
@@ -2386,6 +2438,7 @@
       if (purchase && container && container.contains(purchase)) buyAttachment(purchase.dataset.warBuyAttachment);
       return;
     }
+    if (button.dataset.warAction==='fullscreen') toggleFullscreen();
     if (button.dataset.warAction==='capture') captureOrRaid();
     if (button.dataset.warAction==='vehicle') deployVehicle();
     if (button.dataset.warAction==='reload') reloadWeapon();
@@ -2436,18 +2489,18 @@
   }
 
   function buildUi() {
-    container.innerHTML='<div class="nexus-war-heading"><div><span>'+(firebaseMode||lanMode?'LIVE MULTIPLAYER':'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div></div>' +
-      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
+    container.innerHTML='<div class="nexus-war-heading"><div><span>'+(firebaseMode||lanMode?'LIVE MULTIPLAYER':'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-heading-actions"><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div><button class="nexus-button secondary" type="button" data-war-action="fullscreen" aria-pressed="false">Fullscreen</button></div></div>' +
+      '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Move faster on foot, and use high-speed vehicles from your team base. Click Deploy / board / dismount or press V once. Tanks and anti-air have separate ammo; aim with the mouse, fire on the map, and press R to reload. Equip a stim in your tactical slot and use X for a strong temporary speed boost and healing. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
       '<a class="nexus-button nexus-war-home" href="'+nexusUrl()+'">Back to Nexus</a>' +
       '<div class="nexus-war-status" data-war-status role="status" aria-live="polite">Connecting to the frontline…</div>' +
       '<div class="nexus-war-progression" data-war-progression></div><div class="nexus-war-wallet" data-war-wallet></div>' +
       '<div class="nexus-war-stats" data-war-stats></div>' +
       '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
       '<div class="nexus-war-capture" data-war-capture-progress hidden><strong>Capturing relay</strong><div><span></span></div></div>' +
-      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Spawn at pad / board / exit</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · faster</option><option value="assault_rover">Assault rover · steady</option><option value="tank">Battle tank · armored</option><option value="anti_air">Anti-air · helicopter defense</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Spawn / board / dismount</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
+      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
       '<div class="nexus-war-controls"><strong>Base upgrades</strong><button class="nexus-button secondary" type="button" data-war-action="armor">Buy armor plate · 150</button><span>Press <kbd>Z</kbd> to plate up</span><button class="nexus-button secondary" type="button" data-war-action="self-revive-buy">Self-revive · 400</button><button class="nexus-button secondary" type="button" data-war-action="turret">Buy sentry turret · 350</button><button class="nexus-button secondary" type="button" data-war-action="drone-buy">Buy kamikaze drone · 250</button><button class="nexus-button secondary" type="button" data-war-action="drone-toggle">Toggle drone control</button><button class="nexus-button secondary" type="button" data-war-action="revive">Revive ally</button><button class="nexus-button secondary" type="button" data-war-action="self-revive">Use self-revive</button><button class="nexus-button secondary" type="button" data-war-action="give-up" hidden>Hold to give up</button></div>' +
       '<div class="nexus-war-touch"><div class="nexus-war-pad"><button type="button" data-war-move="up" aria-label="Move up">▲</button><button type="button" data-war-move="left" aria-label="Move left">◀</button><button type="button" data-war-move="down" aria-label="Move down">▼</button><button type="button" data-war-move="right" aria-label="Move right">▶</button></div><button type="button" class="nexus-war-fire" data-war-fire>Fire</button></div>' +
-      '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
+      '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Stims restore up to 45 health and boost movement speed for 8 seconds. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
       '<section class="nexus-war-attachment-shop"><h3>Attachment shop</h3><p>Buy permanent upgrades with your Nexus Sektorium.</p><div data-war-attachment-shop></div></section>' +
       '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Two assault rifles · two SMGs · two snipers · RPG-4 · Xenophage</span><small>Weapons unlock at levels 1–55. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
     ui={
@@ -2469,6 +2522,7 @@
       vehicle:container.querySelector('[data-war-vehicle]'),
       reload:container.querySelector('[data-war-action="reload"]')
     };
+    ui.fullscreen=container.querySelector('[data-war-action="fullscreen"]');
     ui.giveUp=container.querySelector('[data-war-action="give-up"]');
     ui.reloadTimer=container.querySelector('[data-war-reload-timer]');
     ui.weapon.innerHTML=Object.entries(weapons).map(([id,weapon])=>'<option value="'+id+'">'+weapon.type+' · '+weapon.name+'</option>').join('');
@@ -2518,6 +2572,7 @@
     window.removeEventListener('blur',onBlur);
     window.removeEventListener('pagehide',markOffline);
     document.removeEventListener('click',onActionClick);
+    document.removeEventListener('fullscreenchange',updateFullscreenButton);
     if (container) {
       container.removeEventListener('pointerdown',onControlPointerDown);
       container.removeEventListener('pointerup',onControlPointerUp);

@@ -21,6 +21,7 @@
   let cloudWorldHandler = null;
   let connecting = false;
   let activeTab = 'home';
+  let renderPending = false;
   let wheelRotation = 0;
   let wheelSpinning = false;
   let artHistory = [];
@@ -662,7 +663,7 @@
         if (value && typeof value === 'object') {
           world = normalize(value);
           lastSavedWorld = copyWorld(world);
-          render();
+          renderLiveUpdate();
         }
       } catch (error) {
         console.error('[Nexus] Could not apply a live world update.', error);
@@ -682,7 +683,7 @@
       if (value && typeof value === 'object') {
         world = normalize(value);
         lastSavedWorld = copyWorld(world);
-        render();
+        renderLiveUpdate();
       }
     };
     cloudWorldRef.on('value', cloudWorldHandler, error => {
@@ -700,7 +701,7 @@
       }
       world = normalize(value);
       lastSavedWorld = copyWorld(world);
-      render();
+      renderLiveUpdate();
     } catch (error) {
       console.error('[Nexus] Could not apply a saved update from another page.', error);
       setStatus('An update from another Nexus page could not be loaded.', true);
@@ -1003,6 +1004,25 @@
     }
     updateAuctionCountdowns();
   }
+
+  function renderLiveUpdate() {
+    const activeElement=document.activeElement;
+    if (content.contains(activeElement)&&activeElement.matches('input,textarea,select,[contenteditable="true"]')) {
+      renderPending=true;
+      return;
+    }
+    render();
+  }
+
+  content.addEventListener('focusout', () => {
+    if (!renderPending) return;
+    window.setTimeout(() => {
+      const activeElement=document.activeElement;
+      if (content.contains(activeElement)&&activeElement.matches('input,textarea,select,[contenteditable="true"]')) return;
+      renderPending=false;
+      render();
+    },0);
+  });
 
   content.addEventListener('submit', async event => {
     const form = event.target.closest('form[data-form]');

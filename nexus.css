@@ -693,6 +693,11 @@ body::before {
 .nexus-dropzone-link > small { color:#a8b8ac; font-size:12px; }
 .nexus-war-panel { grid-column:1 / -1; padding:18px; border-color:rgba(101,230,173,.24); background:linear-gradient(145deg,#15231d,#101713 72%); }
 .nexus-war-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.nexus-war-heading-actions { display:flex; align-items:center; gap:8px; }
+.nexus-war-panel:fullscreen { box-sizing:border-box; width:100vw; height:100vh; height:100dvh; overflow:auto; padding:clamp(12px,2vw,28px); border:0; border-radius:0; background:#0b120f; }
+.nexus-war-panel:fullscreen .nexus-war-map-wrap { display:grid; min-height:0; max-height:62vh; place-items:center; }
+.nexus-war-panel:fullscreen .nexus-war-canvas { width:auto; max-width:100%; height:auto; max-height:62vh; object-fit:contain; }
+.nexus-war-panel:fullscreen .nexus-war-minimap { width:min(18%,220px); }
 .nexus-war-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:850; letter-spacing:.15em; }
 .nexus-war-heading h2 { margin:5px 0 0; font-size:20px; }
 .nexus-war-reset { padding:7px 10px; border:1px solid #d5e2d522; border-radius:8px; color:#b6c5ba; font-size:10px; white-space:nowrap; }
@@ -748,6 +753,10 @@ body::before {
   .nexus-shop-signin { grid-column: auto; }
   .nexus-war-panel { grid-column:auto; padding:14px; }
   .nexus-war-heading { align-items:flex-start; flex-direction:column; }
+  .nexus-war-heading-actions { width:100%; flex-wrap:wrap; justify-content:space-between; }
+  .nexus-war-panel:fullscreen { padding:10px; }
+  .nexus-war-panel:fullscreen .nexus-war-map-wrap { max-height:52vh; }
+  .nexus-war-panel:fullscreen .nexus-war-canvas { max-height:52vh; }
   .nexus-war-reset { white-space:normal; }
   .nexus-war-loadout { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .nexus-war-loadout > button { grid-column:1/-1; }
