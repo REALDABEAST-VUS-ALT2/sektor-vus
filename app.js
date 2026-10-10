@@ -340,10 +340,12 @@ const sektorMusicDuration = $('sektorMusicDuration');
 const sektorMusicPlay = $('sektorMusicPlay');
 const sektorMusicPrevious = $('sektorMusicPrevious');
 const sektorMusicNext = $('sektorMusicNext');
+const sektorMusicRepeat = $('sektorMusicRepeat');
 const sektorMusicVolume = $('sektorMusicVolume');
 const sektorMusicSpeed = $('sektorMusicSpeed');
 let sektorMusicTracks = [];
 let sektorMusicIndex = -1;
+let sektorMusicRepeatMode = 'all';
 let signupMode = false;
 const safe = value => String(value || '').replace(/[.#$\[\]/]/g, '_');
 const esc = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
@@ -438,6 +440,27 @@ function setMusicTrack(index, autoplay) {
 }
 function playNextMusicTrack() {
   if (sektorMusicTracks.length) setMusicTrack((sektorMusicIndex + 1) % sektorMusicTracks.length, true);
+}
+function updateMusicRepeatButton() {
+  const labels = {all:'Repeat all',one:'Repeat one',off:'Repeat off'};
+  sektorMusicRepeat.textContent = sektorMusicRepeatMode === 'one' ? '↻¹' : '↻';
+  sektorMusicRepeat.title = labels[sektorMusicRepeatMode];
+  sektorMusicRepeat.setAttribute('aria-label', labels[sektorMusicRepeatMode]);
+  sektorMusicRepeat.setAttribute('aria-pressed', String(sektorMusicRepeatMode !== 'off'));
+  sektorMusicRepeat.classList.toggle('active', sektorMusicRepeatMode !== 'off');
+}
+function handleMusicEnded() {
+  if (sektorMusicRepeatMode === 'one') {
+    sektorMusicAudio.currentTime = 0;
+    sektorMusicAudio.play().catch(error => {
+      sektorMusicStatus.textContent = error.message || 'Could not repeat this track.';
+      updateMusicPlayButton();
+    });
+  } else if (sektorMusicIndex < sektorMusicTracks.length - 1 || sektorMusicRepeatMode === 'all') {
+    playNextMusicTrack();
+  } else {
+    updateMusicPlayButton();
+  }
 }
 function removeMusicTrack(index) {
   const [removed] = sektorMusicTracks.splice(index, 1);
@@ -2005,9 +2028,15 @@ sektorMusicPrevious.onclick = () => {
   }
 };
 sektorMusicNext.onclick = playNextMusicTrack;
+sektorMusicRepeat.onclick = () => {
+  sektorMusicRepeatMode = sektorMusicRepeatMode === 'all' ? 'one' :
+    sektorMusicRepeatMode === 'one' ? 'off' : 'all';
+  updateMusicRepeatButton();
+};
+updateMusicRepeatButton();
 sektorMusicAudio.addEventListener('play', updateMusicPlayButton);
 sektorMusicAudio.addEventListener('pause', updateMusicPlayButton);
-sektorMusicAudio.addEventListener('ended', playNextMusicTrack);
+sektorMusicAudio.addEventListener('ended', handleMusicEnded);
 sektorMusicAudio.addEventListener('loadedmetadata', () => {
   sektorMusicDuration.textContent = formatMusicTime(sektorMusicAudio.duration);
 });

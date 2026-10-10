@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090f0d">
+  <title>nexus:dropzone</title>
+  <link rel="stylesheet" href="./nexus.css?v=20261010-5">
+</head>
+<body>
+  <main class="nexus-app">
+    <header class="nexus-header">
+      <a class="nexus-back" href="./nexus.html" id="dropzone-back">← Back to Nexus</a>
+      <div class="nexus-brand"><span class="nexus-mark">N</span><div><strong>nexus:dropzone</strong><small>Vortex vs Krypton · Weekly frontline</small></div></div>
+      <a class="nexus-header-link" href="./VUS-Servers.html" id="dropzone-sektor">Sektor</a>
+      <a class="nexus-header-link" href="./nexus.html" id="dropzone-login">Nexus account</a>
+    </header>
+    <section id="content" class="nexus-content">
+      <section class="nexus-card nexus-war-panel" data-nexus-war></section>
+    </section>
+  </main>
+  <script>
+    for (const id of ['dropzone-back','dropzone-sektor','dropzone-login']) {
+      const link=document.getElementById(id);
+      const url=new URL(link.href);
+      if (new URLSearchParams(location.search).get('lan')==='1') url.searchParams.set('lan','1');
+      link.href=url.href;
+    }
+  </script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="./nexus-war.js?v=20261010-3"></script>
+</body>
+</html>

@@ -635,8 +635,100 @@ body::before {
 .nexus-tab.active > span { color: #65e6ad; }
 .nexus-tab small { display: inline-grid; min-width: 20px; height: 20px; place-items: center; padding: 0 5px; border: 1px solid rgba(101,230,173,.16); border-radius: 999px; background: rgba(101,230,173,.09); color: #9de9c2; font-size: 10px; }
 .nexus-shop-signin { grid-column: 1 / -1; }
+.nexus-stock-panel { grid-column: 1 / -1; }
+.nexus-stock-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.nexus-stock-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:800; letter-spacing:.14em; }
+.nexus-stock-heading h2 { margin:5px 0 0; }
+.nexus-stock-price { color:#dfffee; font-size:24px; font-weight:850; text-align:right; white-space:nowrap; }
+.nexus-stock-price small { display:block; margin-top:3px; color:#8d99a8; font-size:10px; font-weight:500; }
+.nexus-stock-team-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; padding:12px; border:1px solid #d5e2d51b; border-radius:10px; background:#ffffff05; }
+.nexus-stock-team-picker > strong { width:100%; }
+.nexus-stock-team-picker p { width:100%; margin:0; color:#a8b8ac; font-size:12px; }
+.nexus-team-vortex { border-color:#385c91; background:#14223a; color:#c5d9ff; }
+.nexus-team-vortex:hover { background:#1b3151; }
+.nexus-team-krypton { border-color:#8e3946; background:#35191f; color:#ffc4ca; }
+.nexus-team-krypton:hover { background:#4a202a; }
+.nexus-stock-team-label { margin:13px 0 6px; color:#a8b8ac; font-size:12px; }
+.nexus-stock-team-label strong { display:inline-block; margin-left:4px; padding:4px 9px; border:1px solid currentColor; border-radius:999px; }
+.nexus-stock-holdings { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; margin:12px 0; color:#dbe9df; font-size:12px; }
+.nexus-stock-holdings small { color:#a8b8ac; }
+.nexus-stock-trade-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.nexus-stock-quantity { display:flex; align-items:center; gap:8px; color:#a8b8ac; font-size:12px; }
+.nexus-stock-quantity input { width:90px; padding:9px 10px; border:1px solid #d5e2d522; border-radius:8px; background:#0d1410; color:#edf5ef; }
+.nexus-stock-buy { border-color:#65e6ad80; background:#65e6ad22; }
+.nexus-stock-sell { border-color:#d5e2d544; }
+.nexus-team-scoreboard { margin-top:18px; padding-top:14px; border-top:1px solid #d5e2d51b; }
+.nexus-team-scoreboard h3 { margin:0; font-size:13px; }
+.nexus-team-scoreboard > p { margin:5px 0 12px; color:#8d99a8; font-size:11px; }
+.nexus-team-score { margin-top:10px; }
+.nexus-team-score-heading { display:flex; align-items:center; justify-content:space-between; font-size:12px; }
+.nexus-team-score-heading span { color:#dce9df; font-variant-numeric:tabular-nums; }
+.nexus-team-score-bar { height:7px; overflow:hidden; margin:6px 0 4px; border-radius:999px; background:#ffffff12; }
+.nexus-team-score-bar > span { display:block; height:100%; border-radius:inherit; transition:width .2s ease; }
+.nexus-team-score.nexus-team-vortex strong,.nexus-team-score.nexus-team-vortex small { color:#a9c8ff; }
+.nexus-team-score.nexus-team-vortex .nexus-team-score-bar > span { background:#3d6eaf; }
+.nexus-team-score.nexus-team-krypton strong,.nexus-team-score.nexus-team-krypton small { color:#f2a3ad; }
+.nexus-team-score.nexus-team-krypton .nexus-team-score-bar > span { background:#a83d4d; }
+.nexus-team-score > small { font-size:10px; }
+.nexus-dropzone-link { display:grid; gap:6px; grid-column:1/-1; padding:16px 20px; border-color:#65e6ad55; color:#edf5ef; text-decoration:none; transition:border-color .2s,background .2s; }
+.nexus-dropzone-link:hover { border-color:#65e6ad; background:#1b2b22; }
+.nexus-dropzone-link > span { color:#88d9a5; font-size:10px; font-weight:850; letter-spacing:.14em; }
+.nexus-dropzone-link > strong { font-size:20px; }
+.nexus-dropzone-link > small { color:#a8b8ac; font-size:12px; }
+.nexus-war-panel { grid-column:1 / -1; padding:18px; border-color:rgba(101,230,173,.24); background:linear-gradient(145deg,#15231d,#101713 72%); }
+.nexus-war-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.nexus-war-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:850; letter-spacing:.15em; }
+.nexus-war-heading h2 { margin:5px 0 0; font-size:20px; }
+.nexus-war-reset { padding:7px 10px; border:1px solid #d5e2d522; border-radius:8px; color:#b6c5ba; font-size:10px; white-space:nowrap; }
+.nexus-war-description { margin:10px 0; color:#a8b8ac; font-size:12px; line-height:1.5; }
+.nexus-war-home { display:inline-flex; margin:0 0 6px; text-decoration:none; }
+.nexus-war-progression { margin:10px 0 5px; padding:12px; border:1px solid #65e6ad2e; border-radius:9px; background:#0d141088; }
+.nexus-war-progress-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 12px; color:#dce9df; font-size:12px; }
+.nexus-war-progress-heading span,.nexus-war-progression > small { color:#9cac9f; font-size:10px; }
+.nexus-war-progress-bar { height:8px; overflow:hidden; margin:8px 0 6px; border-radius:99px; background:#ffffff12; }
+.nexus-war-progress-bar > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#3c9c71,#a5f06d); transition:width .2s ease; }
+.nexus-war-wallet { margin:7px 0; color:#b9d9c1; font-size:11px; font-weight:750; }
+.nexus-war-status { min-height:19px; margin:8px 0; color:#9de9c2; font-size:11px; }
+.nexus-war-status.error { color:#ffaaaa; }
+.nexus-war-canvas { display:block; width:100%; height:auto; border:1px solid #65e6ad33; border-radius:10px; background:#101915; touch-action:none; cursor:crosshair; }
+.nexus-war-stats { display:flex; flex-wrap:wrap; gap:7px; margin:9px 0; }
+.nexus-war-stats span { padding:6px 8px; border:1px solid #d5e2d51b; border-radius:7px; background:#ffffff05; color:#c7d7ca; font-size:10px; }
+.nexus-war-stats .nexus-war-vortex { border-color:#385c9166; color:#a9c8ff; }
+.nexus-war-stats .nexus-war-krypton { border-color:#8e394666; color:#f2a3ad; }
+.nexus-war-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0; }
+.nexus-war-controls > span { color:#a8b8ac; font-size:10px; }
+.nexus-war-controls kbd { padding:3px 5px; border:1px solid #d5e2d533; border-radius:5px; background:#0d1410; color:#e5f0e7; font:inherit; }
+.nexus-war-touch { display:none; }
+.nexus-war-unavailable .nexus-war-canvas,.nexus-war-unavailable .nexus-war-loadout,.nexus-war-unavailable .nexus-war-controls,.nexus-war-unavailable .nexus-war-touch { display:none; }
+.nexus-war-loadout { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; align-items:end; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid #d5e2d51b; }
+.nexus-war-loadout label { display:grid; gap:5px; color:#a8b8ac; font-size:10px; }
+.nexus-war-loadout select { width:100%; min-width:0; padding:8px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:11px; }
+.nexus-war-attachment-shop { margin-top:14px; padding-top:13px; border-top:1px solid #d5e2d51b; }
+.nexus-war-attachment-shop h3 { margin:0; color:#dce9df; font-size:13px; }
+.nexus-war-attachment-shop > p { margin:5px 0 9px; color:#87998d; font-size:10px; }
+.nexus-war-attachment-shop [data-war-attachment-shop] { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+.nexus-war-attachment { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px; border:1px solid #d5e2d51b; border-radius:8px; background:#ffffff05; }
+.nexus-war-attachment strong,.nexus-war-attachment small { display:block; }
+.nexus-war-attachment strong { color:#dce9df; font-size:11px; }
+.nexus-war-attachment small { margin-top:4px; color:#9cac9f; font-size:9px; }
+.nexus-war-attachment button { flex-shrink:0; padding:6px 8px; border:1px solid #65e6ad55; border-radius:7px; background:#65e6ad14; color:#dfffee; font-size:10px; font-weight:750; cursor:pointer; }
+.nexus-war-attachment button:disabled { border-color:#d5e2d51b; color:#8a9d8e; cursor:default; }
+.nexus-war-arsenal { display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:12px; color:#a8b8ac; font-size:10px; }
+.nexus-war-arsenal strong { color:#dce9df; }
+.nexus-war-arsenal small { flex-basis:100%; color:#87998d; line-height:1.5; }
 @media (max-width: 650px) {
   .nexus-tabs { position: sticky; z-index: 3; bottom: 10px; grid-column: auto; justify-self: center; width: min(100%, 360px); margin: 0; padding: 4px; box-shadow: 0 10px 30px rgba(0,0,0,.38); backdrop-filter: blur(14px); }
   .nexus-tab { flex: 1; }
   .nexus-shop-signin { grid-column: auto; }
+  .nexus-war-panel { grid-column:auto; padding:14px; }
+  .nexus-war-heading { align-items:flex-start; flex-direction:column; }
+  .nexus-war-reset { white-space:normal; }
+  .nexus-war-loadout { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .nexus-war-loadout > button { grid-column:1/-1; }
+  .nexus-war-attachment-shop [data-war-attachment-shop] { grid-template-columns:1fr; }
+  .nexus-war-touch { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:12px 0; touch-action:none; }
+  .nexus-war-pad { display:grid; grid-template-columns:repeat(3,48px); grid-template-rows:repeat(2,48px); gap:5px; }
+  .nexus-war-touch button { min-width:48px; min-height:48px; border:1px solid #65e6ad55; border-radius:10px; background:#17231d; color:#edf5ef; font-size:18px; font-weight:800; touch-action:none; user-select:none; }
+  .nexus-war-pad button:first-child { grid-column:2; }
+  .nexus-war-fire { min-width:88px !important; min-height:88px !important; border-radius:50% !important; background:#5b2530 !important; border-color:#ff788755 !important; }
 }

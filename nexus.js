@@ -34,7 +34,8 @@
     listings: [{id:'sample-1',name:'Neon alley poster',type:'art',price:120,owner:'Market'}],
     auctions: [],
     chat: [{user:'System',text:'Welcome to Nexus. Trade, chat, and spin the daily wheel.'}],
-    wheelClaims: {}
+    wheelClaims: {},
+    stockMarket: {price:100,teamProfit:{vortex:0,krypton:0}}
   });
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -274,7 +275,17 @@
       auctions: records(value && value.auctions, base.auctions, 100)
         .filter(item => item.status === 'sold' || item.status === 'unsold' || Number.isFinite(item.endsAt)),
       chat: records(value && value.chat, base.chat, 100),
-      wheelClaims: value && value.wheelClaims && typeof value.wheelClaims === 'object' ? value.wheelClaims : {}
+      wheelClaims: value && value.wheelClaims && typeof value.wheelClaims === 'object' ? value.wheelClaims : {},
+      stockMarket: {
+        price:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.price))
+          ? Math.max(1, Math.min(1_000_000, Math.round(Number(value.stockMarket.price)))) : base.stockMarket.price,
+        teamProfit:{
+          vortex:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.teamProfit && value.stockMarket.teamProfit.vortex))
+            ? Number(value.stockMarket.teamProfit.vortex) : 0,
+          krypton:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.teamProfit && value.stockMarket.teamProfit.krypton))
+            ? Number(value.stockMarket.teamProfit.krypton) : 0
+        }
+      }
     };
   }
 
@@ -300,6 +311,60 @@
   function inventoryFor(user) {
     if (!Array.isArray(user.inventory)) user.inventory = [];
     return user.inventory;
+  }
+
+  function stockHoldingsFor(user) {
+    user.stockShares = Number.isInteger(user.stockShares) && user.stockShares > 0 ? user.stockShares : 0;
+    user.stockCostBasis = Number.isFinite(Number(user.stockCostBasis)) && Number(user.stockCostBasis) > 0
+      ? Number(user.stockCostBasis) : 0;
+    return user;
+  }
+
+  function stockTeamSummary() {
+    const teams = world.stockMarket.teamProfit;
+    const positiveTotal = Math.max(0, teams.vortex) + Math.max(0, teams.krypton);
+    return ['vortex','krypton'].map(team => ({
+      id:team,
+      name:team === 'vortex' ? 'Vortex' : 'Krypton',
+      profit:teams[team],
+      percentage:positiveTotal > 0 ? Math.max(0, teams[team]) / positiveTotal * 100 : 0
+    }));
+  }
+
+  function renderStockMarket(user) {
+    const market = world.stockMarket;
+    const teams = stockTeamSummary();
+    const teamRows = teams.map(team => '<div class="nexus-team-score nexus-team-' + team.id + '">' +
+      '<div class="nexus-team-score-heading"><strong>' + team.name + '</strong><span>' + team.percentage.toFixed(1) + '%</span></div>' +
+      '<div class="nexus-team-score-bar"><span style="width:' + team.percentage.toFixed(1) + '%"></span></div>' +
+      '<small>Net profit ' + currency(team.profit) + '</small></div>').join('');
+    const holdingUser = user ? stockHoldingsFor(user) : null;
+    const holdingValue = holdingUser ? holdingUser.stockShares * market.price : 0;
+    const unrealizedProfit = holdingUser ? holdingValue - holdingUser.stockCostBasis : 0;
+    const assignedTeam = user && (user.team === 'vortex' || user.team === 'krypton');
+    const teamPicker = user && !assignedTeam
+      ? '<div class="nexus-stock-team-picker"><strong>Choose your team once</strong><p>Team membership cannot be changed after you choose.</p>' +
+        '<button class="nexus-button nexus-team-vortex" type="button" data-action="join-team" data-team="vortex">Join Vortex</button>' +
+        '<button class="nexus-button nexus-team-krypton" type="button" data-action="join-team" data-team="krypton">Join Krypton</button></div>'
+      : user
+        ? '<p class="nexus-stock-team-label">Your team: <strong class="nexus-team-' + user.team + '">' +
+          (user.team === 'vortex' ? 'Vortex' : 'Krypton') + '</strong></p>'
+        : '<p class="nexus-wheel-help">Sign in to choose a team and trade shares.</p>';
+    const tradeControls = user && assignedTeam
+      ? '<label class="nexus-stock-quantity">Shares <input type="number" min="1" max="1000" value="1" data-stock-quantity></label>' +
+        '<button class="nexus-button nexus-stock-buy" type="button" data-action="stock-buy">Buy shares</button>' +
+        '<button class="nexus-button secondary nexus-stock-sell" type="button" data-action="stock-sell" ' +
+        (holdingUser.stockShares ? '' : 'disabled') + '>Sell shares</button>'
+      : '';
+    return '<section class="nexus-card nexus-stock-panel"><div class="nexus-stock-heading"><div><span>LIVE MARKET</span><h2>Nexus stock</h2></div>' +
+      '<div class="nexus-stock-price">' + currency(market.price) + '<small>per share</small></div></div>' +
+      '<p class="nexus-wheel-help">Each share costs the current price. Buying nudges the price up; selling nudges it down.</p>' +
+      teamPicker + (user && assignedTeam
+        ? '<div class="nexus-stock-holdings"><span>' + holdingUser.stockShares + ' shares · value ' + currency(holdingValue) +
+          '</span><small>Unrealized P/L ' + currency(unrealizedProfit) + '</small></div><div class="nexus-stock-trade-controls">' + tradeControls + '</div>'
+        : '') +
+      '<div class="nexus-team-scoreboard"><h3>Team net trading profit</h3><p>Percentages show each team’s share of positive realized profit.</p>' +
+      teamRows + '</div></section>';
   }
 
   function quantityCost(quantity) {
@@ -585,6 +650,22 @@
     });
   }
 
+  window.addEventListener('storage', event => {
+    if (lanMode || firebaseMode || event.storageArea !== localStorage || event.key !== localDataKey || !event.newValue || !world) return;
+    try {
+      const value = JSON.parse(event.newValue);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Saved Nexus data has an invalid format.');
+      }
+      world = normalize(value);
+      lastSavedWorld = copyWorld(world);
+      render();
+    } catch (error) {
+      console.error('[Nexus] Could not apply a saved update from another page.', error);
+      setStatus('An update from another Nexus page could not be loaded.', true);
+    }
+  });
+
   async function persist(successMessage) {
     const next = normalize(world);
     const previous = lastSavedWorld;
@@ -685,6 +766,10 @@
 
   function inventoryUrl() {
     return './inventory.html' + (lanMode ? '?lan=1' : '');
+  }
+
+  function dropzoneUrl() {
+    return './dropzone.html' + (lanMode ? '?lan=1' : '');
   }
 
   function renderInventory(user) {
@@ -802,17 +887,22 @@
       : '<div class="nexus-empty">No items are listed yet.</div>';
     const messages = world.chat.slice(-30).map(renderChatMessage).join('') || '<div class="nexus-empty">No messages yet.</div>';
     const shopTab = activeTab === 'shop';
+    const currentWarPanel = shopTab ? content.querySelector('[data-nexus-war]') : null;
     content.innerHTML = '<section class="nexus-welcome"><span>SEKTOR · SOCIAL WORLD</span><h1>' +
       (shopTab ? 'The Nexus shop.' : 'Welcome to Nexus.') + '</h1><p>' +
-      (shopTab ? 'Browse player listings, bid on auctions, and put your own items up for sale.' : 'Trade, chat, and play in the shared world.') +
+      (shopTab ? 'Trade the Nexus stock, browse player listings, and bid on auctions.' : 'Trade, chat, and play in the shared world.') +
       '</p></section><nav class="nexus-tabs" role="tablist" aria-label="Nexus sections">' +
       '<button class="nexus-tab' + (shopTab ? '' : ' active') + '" type="button" role="tab" aria-selected="' + String(!shopTab) + '" data-nexus-tab="home"><span>⌂</span> Home</button>' +
       '<button class="nexus-tab' + (shopTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(shopTab) + '" data-nexus-tab="shop"><span>◇</span> Shop <small>' + (world.listings.length + activeAuctions.length) + '</small></button>' +
       '</nav>' + (shopTab
-        ? '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
+          ? '<a class="nexus-card nexus-dropzone-link" href="' + dropzoneUrl() + '"><span>ENTER THE FRONTLINE</span><strong>nexus:dropzone</strong><small>Open the dedicated 2D war-game page →</small></a>' +
+            '<section class="nexus-card nexus-war-panel" data-nexus-war></section>' + renderStockMarket(user) +
+            '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
           '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
           (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
         : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: for a code or server invite" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Use <code>/code:YOURSERVERCODE</code> to share a server invite card, or <code>/code:</code> followed by source to post a copyable code block. Press Shift+Enter for a new line.</small></section>');
+    const nextWarPanel = content.querySelector('[data-nexus-war]');
+    if (currentWarPanel && nextWarPanel) nextWarPanel.replaceWith(currentWarPanel);
     const chat = content.querySelector('.nexus-chat');
     if (chat) {
       chat.scrollTop = chat.scrollHeight;
@@ -1032,6 +1122,44 @@
         setStatus(method === 'tab'
           ? 'Your file is open in a new tab. Download it there.'
           : 'Export started for ' + String(item.name || 'your file') + '.');
+      } else if (action === 'join-team') {
+        if (!user) throw new Error('Sign in before choosing a team.');
+        const team = button.dataset.team;
+        if (user.team === 'vortex' || user.team === 'krypton') throw new Error('Your team is already set and cannot be changed.');
+        if (team !== 'vortex' && team !== 'krypton') throw new Error('Choose Vortex or Krypton.');
+        user.team = team;
+        await persist('You joined ' + (team === 'vortex' ? 'Vortex' : 'Krypton') + '. Your team choice is permanent.');
+      } else if (action === 'stock-buy' || action === 'stock-sell') {
+        if (!user) throw new Error('Sign in before trading stock.');
+        if (user.team !== 'vortex' && user.team !== 'krypton') throw new Error('Choose Vortex or Krypton before trading stock.');
+        const stockPanel = button.closest('.nexus-stock-panel');
+        const quantity = Number(stockPanel && stockPanel.querySelector('[data-stock-quantity]')?.value);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Choose a whole number of shares from 1 to 1000.');
+        const market = world.stockMarket;
+        const price = market.price;
+        const holdings = stockHoldingsFor(user);
+        if (action === 'stock-buy') {
+          const cost = price * quantity;
+          if (Number(user.balance || 0) < cost) throw new Error('You need ' + cost + ' Sektorium to buy ' + quantity + ' shares.');
+          if (holdings.stockShares + quantity > 1_000_000) throw new Error('Your stock holdings cannot exceed 1,000,000 shares.');
+          user.balance = Number(user.balance || 0) - cost;
+          holdings.stockShares += quantity;
+          holdings.stockCostBasis += cost;
+          market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 + Math.min(0.1, quantity * 0.01)))));
+          await persist('Bought ' + quantity + ' shares at ' + price + ' Sektorium each.');
+        } else {
+          if (quantity > holdings.stockShares) throw new Error('You only own ' + holdings.stockShares + ' shares.');
+          const proceeds = price * quantity;
+          const costBasis = holdings.stockCostBasis * quantity / holdings.stockShares;
+          const profit = Math.round((proceeds - costBasis) * 100) / 100;
+          user.balance = Number(user.balance || 0) + proceeds;
+          holdings.stockShares -= quantity;
+          holdings.stockCostBasis = Math.max(0, Math.round((holdings.stockCostBasis - costBasis) * 100) / 100);
+          if (!holdings.stockShares) holdings.stockCostBasis = 0;
+          market.teamProfit[user.team] = Math.round((market.teamProfit[user.team] + profit) * 100) / 100;
+          market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 - Math.min(0.1, quantity * 0.01)))));
+          await persist('Sold ' + quantity + ' shares. Realized net ' + (profit >= 0 ? 'profit: ' : 'loss: ') + Math.abs(profit) + ' Sektorium.');
+        }
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
         if (!code) throw new Error('The code block could not be found.');

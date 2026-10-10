@@ -383,6 +383,8 @@ body { background-image:radial-gradient(circle at 18% 0%,rgba(101,230,173,.08),t
 .server-rail .friends-server-btn:hover,.server-rail .friends-server-btn.active { background:var(--accent); color:#06100d; }
 .server-rail .blobtown-server-btn { color:#a7f078; background:rgba(101,230,173,.08); font-size:20px; }
 .server-rail .blobtown-server-btn:hover,.server-rail .blobtown-server-btn.active { background:rgba(101,230,173,.2); box-shadow:0 0 0 3px rgba(101,230,173,.12); }
+.server-rail .dropzone-server-btn { color:#edf5ef; background:linear-gradient(145deg,rgba(72,124,92,.28),rgba(28,48,37,.4)); font-size:20px; }
+.server-rail .dropzone-server-btn:hover,.server-rail .dropzone-server-btn.active { background:rgba(101,230,173,.2); box-shadow:0 0 0 3px rgba(101,230,173,.12); }
 .server-rail .friends-list { width:54px; max-height:180px; padding:4px 0; border:0; overflow-y:auto; }
 .server-rail .friend-nav-row { width:45px; height:45px; justify-content:center; padding:0; border-radius:15px; }
 .server-rail .friend-nav-name { display:none; }
@@ -475,7 +477,7 @@ html, body { min-height:0; overflow:hidden; }
 .announcement-error { margin-top:8px; color:#ffc0ca; font-size:12px; }
 
 .youtube-popup { width:min(280px,calc(100vw - 24px)); transition:width .2s ease; }
-.youtube-popup.sektor-library-open { width:min(560px,calc(100vw - 24px)); }
+.youtube-popup.sektor-library-open { width:min(440px,calc(100vw - 24px)); }
 .sektor-music-card { padding:15px; overflow:hidden; border-color:rgba(101,230,173,.2); background:linear-gradient(145deg,#17232a,#0b1117); }
 .sektor-music-card .youtube-popup-header { align-items:center; padding-bottom:12px; border-bottom:1px solid rgba(101,230,173,.12); }
 .sektor-music-card .youtube-popup-header > div { min-width:0; flex:1; }
@@ -501,6 +503,9 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-music-controls { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; margin:11px 0 10px; }
 .sektor-music-controls > button { display:grid; width:34px; height:34px; place-items:center; border:1px solid transparent; border-radius:50%; background:transparent; color:#b5cfc3; cursor:pointer; font-size:13px; }
 .sektor-music-controls > button:hover { border-color:rgba(101,230,173,.2); background:rgba(101,230,173,.08); color:#eafff1; }
+.sektor-music-controls > .sektor-music-repeat { width:27px; height:27px; flex:0 0 27px; font-size:17px; }
+.sektor-music-controls > .sektor-music-repeat.active { border-color:rgba(101,230,173,.22); background:rgba(101,230,173,.1); color:#8bf0bd; }
+.sektor-music-controls > .sektor-music-repeat[aria-label="Repeat one"] { font-size:12px; font-weight:800; }
 .sektor-music-controls > .sektor-music-play { width:43px; height:43px; border:0; background:linear-gradient(145deg,#72edb3,#35bb88); color:#092018; font-size:16px; box-shadow:0 5px 17px rgba(54,207,145,.22); }
 .sektor-music-volume { display:flex; width:65px; align-items:center; gap:6px; margin-left:2px; color:#83baa3; font-size:14px; }
 .sektor-music-options { display:flex; width:100%; align-items:center; justify-content:space-between; gap:8px; padding-top:11px; border-top:1px solid rgba(101,230,173,.1); }
@@ -509,7 +514,8 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-music-options select { padding:6px 8px; border:1px solid rgba(101,230,173,.2); border-radius:7px; background:#101a19; color:#d6eee1; font-size:11px; }
 .sektor-music-options .sektor-file-button { align-self:auto; padding:8px 10px; font-size:10px; }
 .sektor-music-library { min-height:0; overflow:hidden; }
-.sektor-music-library > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:11px 12px; border-bottom:1px solid rgba(101,230,173,.11); }
+.sektor-music-library > header { display:flex; align-items:center; justify-content:flex-start; gap:9px; padding:11px 12px; border-bottom:1px solid rgba(101,230,173,.11); }
+.sektor-music-library > header > button { order:-1; }
 .sektor-music-library > header strong,.sektor-music-library > header small { display:block; }
 .sektor-music-library > header strong { color:#dceee3; font-size:11px; }
 .sektor-music-library > header small { margin-top:3px; color:#789188; font-size:9px; }
@@ -523,7 +529,7 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-music-row-remove:hover { background:rgba(255,105,125,.1); color:#ffb2bf; }
 .sektor-music-card > audio { display:none; }
 @media(max-width:700px) {
-  .youtube-popup.sektor-library-open { width:min(280px,calc(100vw - 24px)); }
+  .youtube-popup.sektor-library-open { width:min(440px,calc(100vw - 24px)); }
   .sektor-library-open .sektor-music-layout { grid-template-columns:minmax(0,1fr); }
   .sektor-music-art { height:132px; }
   .sektor-music-library { max-height:210px; }
