@@ -325,6 +325,7 @@ els.audioInput = $('audioInput');
 els.friendHome = $('friendHome');
 els.audioButton = $('audioButton');
 const sektorMusicInput = $('sektorMusicInput');
+const sektorMusicFolderInput = $('sektorMusicFolderInput');
 const sektorMusicAudio = $('sektorMusicAudio');
 const sektorMusicName = $('sektorMusicName');
 const sektorMusicStatus = $('sektorMusicStatus');
@@ -497,7 +498,11 @@ function addMusicFiles(files) {
     return;
   }
   const firstNewTrack = sektorMusicTracks.length;
-  validFiles.forEach(file => sektorMusicTracks.push({name:file.name, url:URL.createObjectURL(file)}));
+  validFiles.forEach(file => {
+    const relativePath = file.webkitRelativePath || '';
+    const name = relativePath.split('/').slice(1).join('/') || file.name;
+    sektorMusicTracks.push({name, url:URL.createObjectURL(file)});
+  });
   renderMusicLibrary();
   if (sektorMusicIndex < 0) {
     setMusicTrack(firstNewTrack, true);
@@ -1969,6 +1974,10 @@ sektorMusicInput.onchange = () => {
   addMusicFiles(sektorMusicInput.files || []);
   sektorMusicInput.value = '';
 };
+sektorMusicFolderInput.onchange = () => {
+  addMusicFiles(sektorMusicFolderInput.files || []);
+  sektorMusicFolderInput.value = '';
+};
 sektorMusicLibraryToggle.onclick = () => {
   const expanded = sektorMusicLibrary.hidden;
   sektorMusicLibrary.hidden = !expanded;
@@ -2031,7 +2040,7 @@ let youtubeDrag = null;
 youtubePopupHeader.addEventListener('pointerdown', event => {
   if (event.target.closest('button')) return;
   const rect = youtubePopupCard.getBoundingClientRect();
-  youtubeDrag = {offsetX:event.clientX - rect.left, offsetY:event.clientY - rect.top};
+  youtubeDrag = {offsetX:event.clientX - (rect.left + rect.width / 2), offsetY:event.clientY - rect.top};
   youtubePopupCard.setPointerCapture(event.pointerId);
   youtubePopupCard.classList.add('dragging');
   event.preventDefault();
@@ -2039,11 +2048,11 @@ youtubePopupHeader.addEventListener('pointerdown', event => {
 youtubePopupCard.addEventListener('pointermove', event => {
   if (!youtubeDrag) return;
   const rect = youtubePopupCard.getBoundingClientRect();
-  const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - youtubeDrag.offsetX));
+  const centerX = Math.max(rect.width / 2 + 8, Math.min(window.innerWidth - rect.width / 2 - 8, event.clientX - youtubeDrag.offsetX));
   const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - youtubeDrag.offsetY));
-  youtubePopup.style.left = left + 'px';
+  youtubePopup.style.left = centerX + 'px';
   youtubePopup.style.top = top + 'px';
-  youtubePopup.style.transform = 'none';
+  youtubePopup.style.transform = 'translateX(-50%)';
 });
 const stopYoutubeDrag = () => { youtubeDrag = null; youtubePopupCard.classList.remove('dragging'); };
 youtubePopupCard.addEventListener('pointerup', stopYoutubeDrag);

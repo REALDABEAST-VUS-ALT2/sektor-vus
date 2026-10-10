@@ -482,7 +482,8 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-library-toggle,.sektor-music-library header > button { padding:7px 9px; border:1px solid rgba(101,230,173,.2); border-radius:7px; background:rgba(101,230,173,.07); color:#a8d4c2; cursor:pointer; font-size:10px; font-weight:700; white-space:nowrap; }
 .sektor-library-toggle:hover,.sektor-music-library header > button:hover:not(:disabled) { border-color:rgba(101,230,173,.48); background:rgba(101,230,173,.14); color:#e7fff1; }
 .sektor-music-library header > button:disabled { opacity:.4; cursor:default; }
-.sektor-music-layout { display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:12px; padding-top:13px; }
+.sektor-music-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; padding-top:13px; }
+.sektor-library-open .sektor-music-layout { grid-template-columns:minmax(0,1fr) 250px; }
 .sektor-music-deck,.sektor-music-library { min-width:0; border:1px solid rgba(101,230,173,.12); border-radius:11px; background:linear-gradient(155deg,rgba(22,38,39,.88),rgba(10,17,22,.96)); }
 .sektor-music-deck { display:flex; flex-direction:column; align-items:center; padding:20px 22px 14px; }
 .sektor-music-art { position:relative; display:flex; width:100%; height:116px; align-items:center; justify-content:center; gap:5px; overflow:hidden; border:1px solid rgba(101,230,173,.13); border-radius:9px; background:radial-gradient(ellipse at center,rgba(55,147,114,.28),transparent 62%),linear-gradient(135deg,#152a2b,#0c141b); }
@@ -503,6 +504,7 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-music-controls > .sektor-music-play { width:43px; height:43px; border:0; background:linear-gradient(145deg,#72edb3,#35bb88); color:#092018; font-size:16px; box-shadow:0 5px 17px rgba(54,207,145,.22); }
 .sektor-music-volume { display:flex; width:92px; align-items:center; gap:8px; margin-left:13px; color:#83baa3; font-size:14px; }
 .sektor-music-options { display:flex; width:100%; align-items:center; justify-content:space-between; gap:8px; padding-top:11px; border-top:1px solid rgba(101,230,173,.1); }
+.sektor-music-imports { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .sektor-music-options > label:first-child { display:flex; align-items:center; gap:7px; color:#82988e; font-size:10px; }
 .sektor-music-options select { padding:6px 8px; border:1px solid rgba(101,230,173,.2); border-radius:7px; background:#101a19; color:#d6eee1; font-size:11px; }
 .sektor-music-options .sektor-file-button { align-self:auto; padding:8px 10px; font-size:10px; }
@@ -522,7 +524,7 @@ html, body { min-height:0; overflow:hidden; }
 .sektor-music-card > audio { display:none; }
 @media(max-width:700px) {
   .youtube-popup.sektor-library-open { width:min(460px,calc(100vw - 24px)); }
-  .sektor-music-layout { grid-template-columns:minmax(0,1fr); }
+  .sektor-library-open .sektor-music-layout { grid-template-columns:minmax(0,1fr); }
   .sektor-music-library { max-height:210px; }
   .sektor-music-tracks { max-height:150px; }
 }

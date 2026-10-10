@@ -193,7 +193,7 @@
     const exportTab = window.open('about:blank', '_blank');
     if (!exportTab) throw new Error('Your browser blocked the export tab. Allow pop-ups for Nexus and try again.');
     exportTab.opener = null;
-    const url = URL.createObjectURL(blob);
+    const url = exportTab.URL.createObjectURL(blob);
     const safeFilename = String(filename || 'nexus-export').replace(/[&<>"']/g, character => ({
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
     }[character]));
@@ -228,7 +228,7 @@
         const previewElement = exportTab.document.getElementById('text-preview');
         if (previewElement) previewElement.textContent = text;
       } catch (error) {
-        URL.revokeObjectURL(url);
+        exportTab.URL.revokeObjectURL(url);
         exportTab.close();
         throw new Error('Could not prepare a preview of this export.');
       }
