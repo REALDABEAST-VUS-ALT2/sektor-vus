@@ -7,6 +7,7 @@
   const sessionKey = 'blobtownSession';
   const maxChatLength = 180;
   const maxCodeLength = 4000;
+  const stockHistoryLimit = 40;
   const cloudAuth = firebaseMode ? firebaseApi.auth() : null;
   const cloudWorldRef = firebaseMode ? firebaseApi.database().ref(sharedPath) : null;
   const content = document.getElementById('content');
@@ -35,7 +36,7 @@
     auctions: [],
     chat: [{user:'System',text:'Welcome to Nexus. Trade, chat, and spin the daily wheel.'}],
     wheelClaims: {},
-    stockMarket: {price:100,teamProfit:{vortex:0,krypton:0}}
+    stockMarket: {price:100,history:[{price:100,at:Date.now()}],lastFluctuationAt:0,teamProfit:{vortex:0,krypton:0}}
   });
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -279,6 +280,11 @@
       stockMarket: {
         price:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.price))
           ? Math.max(1, Math.min(1_000_000, Math.round(Number(value.stockMarket.price)))) : base.stockMarket.price,
+        history:Array.isArray(value&&value.stockMarket&&value.stockMarket.history)
+          ? value.stockMarket.history.filter(point=>point&&Number.isFinite(Number(point.price)))
+            .slice(-stockHistoryLimit).map(point=>({price:Number(point.price),at:Number(point.at)||0}))
+          : [{price:Number(value&&value.stockMarket&&value.stockMarket.price)||base.stockMarket.price,at:Date.now()}],
+        lastFluctuationAt:Number(value&&value.stockMarket&&value.stockMarket.lastFluctuationAt)||0,
         teamProfit:{
           vortex:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.teamProfit && value.stockMarket.teamProfit.vortex))
             ? Number(value.stockMarket.teamProfit.vortex) : 0,
@@ -331,6 +337,12 @@
     }));
   }
 
+  function recordStockPrice(market) {
+    if (!Array.isArray(market.history)) market.history=[];
+    market.history.push({price:Number(market.price),at:Date.now()});
+    market.history=market.history.slice(-stockHistoryLimit);
+  }
+
   function renderStockMarket(user) {
     const market = world.stockMarket;
     const teams = stockTeamSummary();
@@ -356,15 +368,30 @@
         '<button class="nexus-button secondary nexus-stock-sell" type="button" data-action="stock-sell" ' +
         (holdingUser.stockShares ? '' : 'disabled') + '>Sell shares</button>'
       : '';
+    const graphPoints=Array.isArray(market.history)&&market.history.length?market.history:[{price:market.price,at:Date.now()}];
+    const prices=graphPoints.map(point=>point.price);
+    const low=Math.min(...prices),high=Math.max(...prices);
+    const points=graphPoints.map((point,index)=>{
+      const x=8+index*284/Math.max(1,graphPoints.length-1);
+      const y=78-(point.price-low)/(high-low||1)*66;
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    const trend=prices[prices.length-1]>=prices[0]?'up':'down';
     return '<section class="nexus-card nexus-stock-panel"><div class="nexus-stock-heading"><div><span>LIVE MARKET</span><h2>Nexus stock</h2></div>' +
       '<div class="nexus-stock-price">' + currency(market.price) + '<small>per share</small></div></div>' +
-      '<p class="nexus-wheel-help">Each share costs the current price. Buying nudges the price up; selling nudges it down.</p>' +
+      '<div class="nexus-stock-chart-wrap"><svg class="nexus-stock-chart nexus-stock-'+trend+'" viewBox="0 0 300 88" role="img" aria-label="Randomly fluctuating Nexus stock price history"><polyline points="'+points+'"></polyline></svg><div class="nexus-stock-chart-range"><span>Recent price history</span><span>Updates about every 30 seconds</span></div></div>' +
+      '<p class="nexus-wheel-help">Each share costs the current price. Buying nudges the price up; selling nudges it down. The market also moves randomly about every 30 seconds.</p>' +
       teamPicker + (user && assignedTeam
         ? '<div class="nexus-stock-holdings"><span>' + holdingUser.stockShares + ' shares · value ' + currency(holdingValue) +
           '</span><small>Unrealized P/L ' + currency(unrealizedProfit) + '</small></div><div class="nexus-stock-trade-controls">' + tradeControls + '</div>'
         : '') +
       '<div class="nexus-team-scoreboard"><h3>Team net trading profit</h3><p>Percentages show each team’s share of positive realized profit.</p>' +
       teamRows + '</div></section>';
+  }
+
+  function refreshStockMarketUi() {
+    const panel=content.querySelector('.nexus-stock-panel');
+    if (panel&&world) panel.outerHTML=renderStockMarket(currentUser());
   }
 
   function quantityCost(quantity) {
@@ -764,6 +791,59 @@
     settleExpiredAuctions();
   }
 
+  async function fluctuateStockPrice() {
+    if (!world) return;
+    const now=Date.now();
+    if (firebaseMode) {
+      const marketRef=cloudWorldRef.child('stockMarket');
+      let changed=false;
+      const result=await marketRef.transaction(current=>{
+        changed=false;
+        if (now-Number(current&&current.lastFluctuationAt||0)<30_000) return current;
+        const market=current&&typeof current==='object'?current:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
+        market.price=Math.max(1,Math.min(1_000_000,Math.round(Number(market.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
+        market.lastFluctuationAt=now;
+        if (!Array.isArray(market.history)) market.history=[];
+        market.history.push({price:market.price,at:now});
+        market.history=market.history.slice(-stockHistoryLimit);
+        changed=true;
+        return market;
+      });
+      if (changed&&result.committed) {
+        world.stockMarket=result.snapshot.val();
+        refreshStockMarketUi();
+      }
+      return;
+    }
+    if (lanMode) {
+      const path=sharedPath+'/stockMarket';
+      const response=await fetch('/api/data?path='+encodeURIComponent(path));
+      if (!response.ok) throw new Error((await response.text())||'Could not read Nexus stock data.');
+      const market=await response.json();
+      if (now-Number(market&&market.lastFluctuationAt||0)<30_000) return;
+      const next=market&&typeof market==='object'?market:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
+      next.price=Math.max(1,Math.min(1_000_000,Math.round(Number(next.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
+      next.lastFluctuationAt=now;
+      if (!Array.isArray(next.history)) next.history=[];
+      next.history.push({price:next.price,at:now});
+      next.history=next.history.slice(-stockHistoryLimit);
+      const save=await fetch('/api/data?path='+encodeURIComponent(path),{
+        method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)
+      });
+      if (!save.ok) throw new Error((await save.text())||'Could not save the Nexus stock change.');
+      world.stockMarket=next;
+      refreshStockMarketUi();
+      return;
+    }
+    if (now-Number(world.stockMarket.lastFluctuationAt||0)<30_000) return;
+    world.stockMarket.price=Math.max(1,Math.min(1_000_000,Math.round(Number(world.stockMarket.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
+    world.stockMarket.lastFluctuationAt=now;
+    recordStockPrice(world.stockMarket);
+    localStorage.setItem(localDataKey,JSON.stringify(world));
+    lastSavedWorld=copyWorld(world);
+    refreshStockMarketUi();
+  }
+
   function inventoryUrl() {
     return './inventory.html' + (lanMode ? '?lan=1' : '');
   }
@@ -1146,6 +1226,7 @@
           holdings.stockShares += quantity;
           holdings.stockCostBasis += cost;
           market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 + Math.min(0.1, quantity * 0.01)))));
+          recordStockPrice(market);
           await persist('Bought ' + quantity + ' shares at ' + price + ' Sektorium each.');
         } else {
           if (quantity > holdings.stockShares) throw new Error('You only own ' + holdings.stockShares + ' shares.');
@@ -1158,6 +1239,7 @@
           if (!holdings.stockShares) holdings.stockCostBasis = 0;
           market.teamProfit[user.team] = Math.round((market.teamProfit[user.team] + profit) * 100) / 100;
           market.price = Math.max(1, Math.min(1_000_000, Math.round(price * (1 - Math.min(0.1, quantity * 0.01)))));
+          recordStockPrice(market);
           await persist('Sold ' + quantity + ' shares. Realized net ' + (profit >= 0 ? 'profit: ' : 'loss: ') + Math.abs(profit) + ' Sektorium.');
         }
       } else if (action === 'copy-code') {
@@ -1333,7 +1415,14 @@
     if (fullscreenButton && editor) fullscreenButton.textContent = document.fullscreenElement === editor ? 'Exit fullscreen' : 'Fullscreen';
   });
   setInterval(updateAuctionCountdowns, 1000);
+  const stockFluctuationTimer=setInterval(()=>{
+    fluctuateStockPrice().catch(error=>{
+      console.error('[Nexus] Could not update the stock price.',error);
+      if (world) setStatus('The stock graph could not be updated.',true);
+    });
+  },5000);
   window.addEventListener('pagehide', () => {
+    clearInterval(stockFluctuationTimer);
     if (liveEvents) liveEvents.close();
     if (cloudWorldHandler) cloudWorldRef.off('value', cloudWorldHandler);
   });

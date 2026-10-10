@@ -653,6 +653,11 @@ body::before {
 .nexus-stock-holdings { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; margin:12px 0; color:#dbe9df; font-size:12px; }
 .nexus-stock-holdings small { color:#a8b8ac; }
 .nexus-stock-trade-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.nexus-stock-chart-wrap { margin:13px 0 11px; padding:8px 10px 6px; border:1px solid #d5e2d51b; border-radius:9px; background:#0d141088; }
+.nexus-stock-chart { display:block; width:100%; height:100px; overflow:visible; }
+.nexus-stock-chart polyline { fill:none; stroke:#a5f06d; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+.nexus-stock-chart.nexus-stock-down polyline { stroke:#ff7887; }
+.nexus-stock-chart-range { display:flex; justify-content:space-between; gap:8px; color:#87998d; font-size:9px; }
 .nexus-stock-quantity { display:flex; align-items:center; gap:8px; color:#a8b8ac; font-size:12px; }
 .nexus-stock-quantity input { width:90px; padding:9px 10px; border:1px solid #d5e2d522; border-radius:8px; background:#0d1410; color:#edf5ef; }
 .nexus-stock-buy { border-color:#65e6ad80; background:#65e6ad22; }
@@ -697,12 +702,20 @@ body::before {
 .nexus-war-stats .nexus-war-krypton { border-color:#8e394666; color:#f2a3ad; }
 .nexus-war-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0; }
 .nexus-war-controls > span { color:#a8b8ac; font-size:10px; }
+.nexus-war-controls [data-war-reload-timer] { color:#e9c967; font-variant-numeric:tabular-nums; font-weight:800; }
 .nexus-war-controls kbd { padding:3px 5px; border:1px solid #d5e2d533; border-radius:5px; background:#0d1410; color:#e5f0e7; font:inherit; }
+.nexus-war-controls label { display:flex; align-items:center; gap:5px; color:#a8b8ac; font-size:10px; }
+.nexus-war-controls select { max-width:155px; padding:6px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:10px; }
+.nexus-war-capture { margin:10px 0; padding:9px 11px; border:1px solid #65e6ad55; border-radius:8px; background:#102219; }
+.nexus-war-capture strong { display:block; margin-bottom:6px; color:#dfffee; font-size:11px; }
+.nexus-war-capture > div { height:9px; overflow:hidden; border-radius:99px; background:#ffffff18; }
+.nexus-war-capture > div > span { display:block; width:0; height:100%; border-radius:inherit; background:#65e6ad; transition:width .1s linear; }
 .nexus-war-touch { display:none; }
-.nexus-war-unavailable .nexus-war-canvas,.nexus-war-unavailable .nexus-war-loadout,.nexus-war-unavailable .nexus-war-controls,.nexus-war-unavailable .nexus-war-touch { display:none; }
-.nexus-war-loadout { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; align-items:end; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid #d5e2d51b; }
+.nexus-war-unavailable .nexus-war-canvas,.nexus-war-unavailable .nexus-war-loadout,.nexus-war-unavailable .nexus-war-controls,.nexus-war-unavailable .nexus-war-touch,.nexus-war-unavailable .nexus-war-capture,.nexus-war-unavailable .nexus-war-attachment-shop { display:none; }
+.nexus-war-loadout { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); align-items:end; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid #d5e2d51b; }
 .nexus-war-loadout label { display:grid; gap:5px; color:#a8b8ac; font-size:10px; }
 .nexus-war-loadout select { width:100%; min-width:0; padding:8px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:11px; }
+.nexus-war-equipment-help { grid-column:1/-1; color:#87998d; font-size:10px; line-height:1.5; }
 .nexus-war-attachment-shop { margin-top:14px; padding-top:13px; border-top:1px solid #d5e2d51b; }
 .nexus-war-attachment-shop h3 { margin:0; color:#dce9df; font-size:13px; }
 .nexus-war-attachment-shop > p { margin:5px 0 9px; color:#87998d; font-size:10px; }
