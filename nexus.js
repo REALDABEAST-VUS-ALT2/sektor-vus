@@ -226,7 +226,7 @@
             blob
           }, '*');
         });
-        return;
+        return 'launcher';
       } catch (error) {
         console.warn('[Nexus] Launcher download handoff failed; trying a direct download.', error);
       }
@@ -248,6 +248,7 @@
       link.remove();
       downloadWindow.URL.revokeObjectURL(url);
     }, 60000);
+    return 'browser';
   }
 
   async function exportInventoryMedia(item) {
@@ -260,7 +261,7 @@
       .slice(0, 80) || 'nexus-file';
     const binary = atob(details.encoded);
     const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-    await downloadBlob(new Blob([bytes], {type:details.mimeType}), filename + '.' + details.extension);
+    return downloadBlob(new Blob([bytes], {type:details.mimeType}), filename + '.' + details.extension);
   }
 
   async function exportWorld() {
@@ -271,8 +272,10 @@
     const exportData = normalize(world);
     exportData.users = exportData.users.map(({password, ...user}) => user);
     const payload = JSON.stringify(exportData, null, 2);
-    await downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
-    setStatus('World export started.');
+    const method = await downloadBlob(new Blob([payload], {type:'application/json'}), 'nexus-world-' + new Date().toISOString().slice(0,10) + '.json');
+    setStatus(method === 'launcher'
+      ? 'Export ready. Click the download button in the launcher window.'
+      : 'World export started.');
   }
 
   function normalize(value) {
@@ -1039,8 +1042,10 @@
         if (!user) throw new Error('Sign in to export files from your inventory.');
         const item = inventoryFor(user).find(entry => entry.id === button.dataset.id);
         if (!item) throw new Error('That inventory item no longer exists.');
-        await exportInventoryMedia(item);
-        setStatus('Export started for ' + String(item.name || 'your file') + '.');
+        const method = await exportInventoryMedia(item);
+        setStatus(method === 'launcher'
+          ? 'Export ready in the launcher window. Click its download button.'
+          : 'Export started for ' + String(item.name || 'your file') + '.');
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
         if (!code) throw new Error('The code block could not be found.');
