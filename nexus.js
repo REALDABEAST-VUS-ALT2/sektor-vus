@@ -716,7 +716,8 @@
         (item.description ? ' · ' + escapeHtml(item.description) : '') +
         '</small>' + preview + '</div><div class="nexus-item-actions">' + exportButton +
         '<button class="nexus-button secondary" type="button" data-action="edit-inventory" data-id="' +
-        escapeHtml(item.id) + '">Edit</button></div></div>';
+        escapeHtml(item.id) + '">Edit</button><button class="nexus-button secondary" type="button" data-action="remove-inventory" data-id="' +
+        escapeHtml(item.id) + '" aria-label="Remove ' + escapeHtml(item.name) + ' from inventory">Remove</button></div></div>';
     }).join('');
     const auctionOptions = items.filter(item => Number(item.quantity || 0) > 0).map(item =>
       '<option value="' + escapeHtml(item.id) + '">' + escapeHtml(item.name) + ' · ' + Number(item.quantity) + ' available</option>').join('');
@@ -1084,6 +1085,13 @@
           '<input name="description" maxlength="120" value="' + escapeHtml(item.description || '') + '" placeholder="Description (optional)"><div class="nexus-form-actions"><button class="nexus-button">Save changes</button><button class="nexus-button secondary" type="button" data-action="cancel-inventory-edit">Cancel</button></div></form></section>';
         button.closest('.nexus-card').insertAdjacentHTML('afterend', itemMarkup);
         button.closest('.nexus-card').nextElementSibling.scrollIntoView({behavior:'smooth',block:'center'});
+      } else if (action === 'remove-inventory') {
+        if (!user) throw new Error('Sign in to manage your inventory.');
+        const items = inventoryFor(user);
+        const item = items.find(entry => entry.id === button.dataset.id);
+        if (!item) throw new Error('That inventory item no longer exists.');
+        user.inventory = items.filter(entry => entry.id !== item.id);
+        await persist('Removed ' + String(item.name || 'item') + ' from your inventory.');
       } else if (action === 'cancel-inventory-edit') {
         button.closest('.nexus-inventory-editor').remove();
       } else if (action === 'undo-art') {

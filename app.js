@@ -327,6 +327,22 @@ els.audioButton = $('audioButton');
 const sektorMusicInput = $('sektorMusicInput');
 const sektorMusicAudio = $('sektorMusicAudio');
 const sektorMusicName = $('sektorMusicName');
+const sektorMusicStatus = $('sektorMusicStatus');
+const sektorMusicTracksElement = $('sektorMusicTracks');
+const sektorMusicCount = $('sektorMusicCount');
+const sektorMusicLibrary = $('sektorMusicLibrary');
+const sektorMusicLibraryToggle = $('sektorMusicLibraryToggle');
+const sektorMusicClear = $('sektorMusicClear');
+const sektorMusicSeek = $('sektorMusicSeek');
+const sektorMusicElapsed = $('sektorMusicElapsed');
+const sektorMusicDuration = $('sektorMusicDuration');
+const sektorMusicPlay = $('sektorMusicPlay');
+const sektorMusicPrevious = $('sektorMusicPrevious');
+const sektorMusicNext = $('sektorMusicNext');
+const sektorMusicVolume = $('sektorMusicVolume');
+const sektorMusicSpeed = $('sektorMusicSpeed');
+let sektorMusicTracks = [];
+let sektorMusicIndex = -1;
 let signupMode = false;
 const safe = value => String(value || '').replace(/[.#$\[\]/]/g, '_');
 const esc = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
@@ -358,6 +374,137 @@ let replyTo = null;
 const REACTION_EMOJIS = ['👍','❤️','😂','😮','😢','🎉','🔥','👏','✅','💯'];
 const messageCache = {};
 function closeYoutubePopup() { els.youtubePopup.hidden = true; }
+function formatMusicTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  return Math.floor(seconds / 60) + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
+}
+function renderMusicLibrary() {
+  if (!sektorMusicTracksElement) return;
+  sektorMusicTracksElement.replaceChildren();
+  sektorMusicCount.textContent = sektorMusicTracks.length + (sektorMusicTracks.length === 1 ? ' track' : ' tracks');
+  sektorMusicClear.disabled = sektorMusicTracks.length === 0;
+  if (!sektorMusicTracks.length) {
+    const empty = document.createElement('p');
+    empty.className = 'sektor-music-empty';
+    empty.textContent = 'Your added tracks will appear here.';
+    sektorMusicTracksElement.appendChild(empty);
+    return;
+  }
+  sektorMusicTracks.forEach((track, index) => {
+    const row = document.createElement('div');
+    row.className = 'sektor-music-row' + (index === sektorMusicIndex ? ' active' : '');
+    const select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'sektor-music-row-select';
+    select.textContent = track.name;
+    select.title = track.name;
+    select.setAttribute('aria-current', index === sektorMusicIndex ? 'true' : 'false');
+    select.onclick = () => setMusicTrack(index, true);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'sektor-music-row-remove';
+    remove.textContent = '×';
+    remove.title = 'Remove ' + track.name;
+    remove.setAttribute('aria-label', 'Remove ' + track.name);
+    remove.onclick = () => removeMusicTrack(index);
+    row.append(select, remove);
+    sektorMusicTracksElement.appendChild(row);
+  });
+}
+function updateMusicPlayButton() {
+  const playing = !!(sektorMusicAudio && !sektorMusicAudio.paused);
+  sektorMusicPlay.textContent = playing ? 'Ⅱ' : '▶';
+  sektorMusicPlay.title = playing ? 'Pause' : 'Play';
+  sektorMusicPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  $('youtubeTopStatus').textContent = playing ? 'Now playing' : sektorMusicIndex >= 0 ? 'Ready to play' : 'Open player';
+}
+function setMusicTrack(index, autoplay) {
+  if (!sektorMusicTracks.length || index < 0 || index >= sektorMusicTracks.length) return;
+  sektorMusicIndex = index;
+  const track = sektorMusicTracks[index];
+  sektorMusicAudio.src = track.url;
+  sektorMusicAudio.load();
+  sektorMusicName.textContent = track.name;
+  sektorMusicStatus.textContent = (index + 1) + ' of ' + sektorMusicTracks.length + ' · Local file';
+  sektorMusicElapsed.textContent = '0:00';
+  sektorMusicDuration.textContent = '0:00';
+  sektorMusicSeek.value = '0';
+  renderMusicLibrary();
+  if (autoplay) sektorMusicAudio.play().catch(error => {
+    sektorMusicStatus.textContent = error.message || 'Playback was blocked. Press Play to try again.';
+    updateMusicPlayButton();
+  });
+}
+function playNextMusicTrack() {
+  if (sektorMusicTracks.length) setMusicTrack((sektorMusicIndex + 1) % sektorMusicTracks.length, true);
+}
+function removeMusicTrack(index) {
+  const [removed] = sektorMusicTracks.splice(index, 1);
+  if (!removed) return;
+  const wasCurrent = index === sektorMusicIndex;
+  if (wasCurrent) {
+    sektorMusicAudio.pause();
+    sektorMusicAudio.removeAttribute('src');
+    sektorMusicAudio.load();
+    URL.revokeObjectURL(removed.url);
+    if (sektorMusicTracks.length) {
+      sektorMusicIndex = Math.min(index, sektorMusicTracks.length - 1);
+      setMusicTrack(sektorMusicIndex, false);
+      sektorMusicStatus.textContent = 'Track removed. Press Play when ready.';
+    } else {
+      sektorMusicIndex = -1;
+      sektorMusicName.textContent = 'Nothing playing';
+      sektorMusicStatus.textContent = 'Add audio files from your device to begin.';
+      sektorMusicElapsed.textContent = '0:00';
+      sektorMusicDuration.textContent = '0:00';
+      sektorMusicSeek.value = '0';
+    }
+  } else {
+    URL.revokeObjectURL(removed.url);
+    if (index < sektorMusicIndex) sektorMusicIndex -= 1;
+  }
+  renderMusicLibrary();
+  updateMusicPlayButton();
+}
+function clearMusicLibrary() {
+  sektorMusicAudio.pause();
+  sektorMusicAudio.removeAttribute('src');
+  sektorMusicAudio.load();
+  sektorMusicTracks.forEach(track => URL.revokeObjectURL(track.url));
+  sektorMusicTracks = [];
+  sektorMusicIndex = -1;
+  sektorMusicName.textContent = 'Nothing playing';
+  sektorMusicStatus.textContent = 'Add audio files from your device to begin.';
+  sektorMusicElapsed.textContent = '0:00';
+  sektorMusicDuration.textContent = '0:00';
+  sektorMusicSeek.value = '0';
+  renderMusicLibrary();
+  updateMusicPlayButton();
+}
+function addMusicFiles(files) {
+  const selectedFiles = Array.from(files);
+  const validFiles = selectedFiles.filter(file => {
+    const extension = file.name.split('.').pop().toLowerCase();
+    return file.type.startsWith('audio/') ||
+      ((!file.type || file.type === 'application/octet-stream') &&
+        ['aac','aif','aiff','flac','m4a','mid','midi','mp3','oga','ogg','opus','wav','weba','webm'].includes(extension));
+  });
+  const rejectedCount = selectedFiles.length - validFiles.length;
+  if (rejectedCount) sektorMusicStatus.textContent = rejectedCount + ' file' + (rejectedCount === 1 ? ' was' : 's were') + ' skipped because it is not recognized as audio.';
+  if (!validFiles.length) {
+    if (rejectedCount) return;
+    sektorMusicStatus.textContent = 'Choose one or more audio files.';
+    return;
+  }
+  const firstNewTrack = sektorMusicTracks.length;
+  validFiles.forEach(file => sektorMusicTracks.push({name:file.name, url:URL.createObjectURL(file)}));
+  renderMusicLibrary();
+  if (sektorMusicIndex < 0) {
+    setMusicTrack(firstNewTrack, true);
+  } else if (!rejectedCount) {
+    sektorMusicStatus.textContent = validFiles.length + ' track' + (validFiles.length === 1 ? '' : 's') + ' added to your library.';
+  }
+}
 
 async function accountKey(identifier) {
   const clean = identifier.trim();
@@ -1818,7 +1965,63 @@ function clearServer() { els.serverName.textContent = 'Select a server'; els.ser
 els.loginTab.onclick = () => { signupMode = false; els.loginTab.classList.add('active'); els.signupTab.classList.remove('active'); els.authSubmit.textContent = 'Log in'; };
 els.logout.addEventListener('click', openProfileModal);
 els.youtubeOpenBtn.onclick = () => { els.youtubePopup.hidden = false; };
-if (sektorMusicInput && sektorMusicAudio && sektorMusicName) sektorMusicInput.onchange = () => { const file = sektorMusicInput.files[0]; if (!file) return; if (!file.type.startsWith('audio/')) { showError('Choose an audio file.'); return; } sektorMusicAudio.src = URL.createObjectURL(file); sektorMusicName.textContent = file.name; sektorMusicAudio.play().catch(() => {}); };
+sektorMusicInput.onchange = () => {
+  addMusicFiles(sektorMusicInput.files || []);
+  sektorMusicInput.value = '';
+};
+sektorMusicLibraryToggle.onclick = () => {
+  const expanded = sektorMusicLibrary.hidden;
+  sektorMusicLibrary.hidden = !expanded;
+  els.youtubePopup.classList.toggle('sektor-library-open', expanded);
+  sektorMusicLibraryToggle.setAttribute('aria-expanded', String(expanded));
+  sektorMusicLibraryToggle.textContent = expanded ? 'Hide library' : 'Show library';
+};
+sektorMusicClear.onclick = clearMusicLibrary;
+sektorMusicPlay.onclick = () => {
+  if (sektorMusicIndex < 0) {
+    if (sektorMusicTracks.length) setMusicTrack(0, true);
+    else sektorMusicInput.click();
+  } else if (sektorMusicAudio.paused) {
+    sektorMusicAudio.play().catch(error => {
+      sektorMusicStatus.textContent = error.message || 'Could not start playback.';
+    });
+  } else sektorMusicAudio.pause();
+};
+sektorMusicPrevious.onclick = () => {
+  if (sektorMusicIndex < 0) return;
+  if (sektorMusicAudio.currentTime > 3) {
+    sektorMusicAudio.currentTime = 0;
+  } else {
+    setMusicTrack((sektorMusicIndex - 1 + sektorMusicTracks.length) % sektorMusicTracks.length, true);
+  }
+};
+sektorMusicNext.onclick = playNextMusicTrack;
+sektorMusicAudio.addEventListener('play', updateMusicPlayButton);
+sektorMusicAudio.addEventListener('pause', updateMusicPlayButton);
+sektorMusicAudio.addEventListener('ended', playNextMusicTrack);
+sektorMusicAudio.addEventListener('loadedmetadata', () => {
+  sektorMusicDuration.textContent = formatMusicTime(sektorMusicAudio.duration);
+});
+sektorMusicAudio.addEventListener('timeupdate', () => {
+  const duration = sektorMusicAudio.duration;
+  sektorMusicElapsed.textContent = formatMusicTime(sektorMusicAudio.currentTime);
+  if (Number.isFinite(duration) && duration > 0) {
+    sektorMusicSeek.value = String(Math.round(sektorMusicAudio.currentTime / duration * 1000));
+    sektorMusicDuration.textContent = formatMusicTime(duration);
+  }
+});
+sektorMusicAudio.addEventListener('error', () => {
+  if (sektorMusicIndex >= 0) sektorMusicStatus.textContent = 'This audio file could not be played by your browser.';
+});
+sektorMusicSeek.oninput = () => {
+  const duration = sektorMusicAudio.duration;
+  if (Number.isFinite(duration) && duration > 0) {
+    sektorMusicAudio.currentTime = Number(sektorMusicSeek.value) / 1000 * duration;
+  }
+};
+sektorMusicVolume.oninput = () => { sektorMusicAudio.volume = Number(sektorMusicVolume.value); };
+sektorMusicAudio.volume = Number(sektorMusicVolume.value);
+sektorMusicSpeed.onchange = () => { sektorMusicAudio.playbackRate = Number(sektorMusicSpeed.value); };
 els.youtubePopupClose.onclick = closeYoutubePopup;
 document.addEventListener('click', event => { if (!els.youtubePopup.hidden && !els.youtubePopup.contains(event.target) && !els.youtubeOpenBtn.contains(event.target)) closeYoutubePopup(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !els.youtubePopup.hidden) closeYoutubePopup(); });
