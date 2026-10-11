@@ -32,6 +32,7 @@
   let paintSnapshot = null;
   let settlingAuctions = false;
   let chatSending = false;
+  let authDraft={username:'',password:''};
   const pendingChatMessages=new Map();
 
   const defaults = () => ({
@@ -1000,7 +1001,7 @@
         (inventoryPage ? '' : '<button class="nexus-button" data-action="spin" ' +
           (hasWheelClaim(user) ? 'disabled' : '') + '>Spin daily wheel</button>') +
         '<button class="nexus-button secondary" data-action="logout">Log out</button></div></div></section>'
-      : '<section class="nexus-card"><h2>Nexus account</h2><form class="nexus-form" data-form="auth"><input name="username" maxlength="20" placeholder="Username" autocomplete="username" required><input name="password" type="password" maxlength="32" placeholder="Password" autocomplete="current-password" required><div class="nexus-form-actions"><button class="nexus-button secondary" name="mode" value="login">Log in</button><button class="nexus-button" name="mode" value="signup">Create account</button></div></form></section>';
+      : '<section class="nexus-card"><h2>Nexus account</h2><form class="nexus-form" data-form="auth"><input name="username" maxlength="20" placeholder="Username" autocomplete="username" value="' + escapeHtml(authDraft.username) + '" required><input name="password" type="password" maxlength="32" placeholder="Password" autocomplete="current-password" value="' + escapeHtml(authDraft.password) + '" required><div class="nexus-form-actions"><button class="nexus-button secondary" name="mode" value="login">Log in</button><button class="nexus-button" name="mode" value="signup">Create account</button></div></form></section>';
     if (inventoryPage) {
       content.innerHTML = '<section class="nexus-welcome"><span>SEKTOR · NEXUS INVENTORY</span><h1>Your inventory.</h1><p>Manage your items, create artwork, import audio, and start auctions.</p></section>' +
         auth + (user ? renderInventory(user) : '');
@@ -1083,7 +1084,20 @@
     render();
   }
 
-  content.addEventListener('focusout', () => {
+  function captureAuthDraft(form) {
+    if (!form||form.dataset.form!=='auth') return;
+    const values=new FormData(form);
+    authDraft={username:String(values.get('username')||''),password:String(values.get('password')||'')};
+  }
+
+  content.addEventListener('input',event=>{
+    const form=event.target.closest('form[data-form="auth"]');
+    if (form) captureAuthDraft(form);
+  });
+
+  content.addEventListener('focusout', event => {
+    const authForm=event.target.closest('form[data-form="auth"]');
+    if (authForm) captureAuthDraft(authForm);
     if (!renderPending) return;
     window.setTimeout(() => {
       const activeElement=document.activeElement;
@@ -1119,6 +1133,7 @@
     let pendingChatMessageId='';
     try {
       if (form.dataset.form === 'auth') {
+        captureAuthDraft(form);
         const username = String(formData.get('username') || '').trim().replace(/[^a-zA-Z0-9_]/g, '').slice(0,20);
         const password = String(formData.get('password') || '');
         const mode = event.submitter&&event.submitter.value||formData.get('mode')||'login';
@@ -1141,16 +1156,17 @@
             world.users=Array.isArray(savedUsers)?savedUsers:Object.values(savedUsers||{});
             if (lastSavedWorld) lastSavedWorld.users=copyWorld(world.users);
             setStatus('Welcome to Nexus. Your starter wallet is 500 Sektorium.');
-            render();
           } else {
             world.users.push(newUser);
             await persist('Welcome to Nexus. Your starter wallet is 500 Sektorium.');
           }
           localStorage.setItem(sessionKey, JSON.stringify({username}));
+          authDraft={username:'',password:''};
           render();
         } else {
           if (!user || user.password !== password) throw new Error('No matching account was found.');
           localStorage.setItem(sessionKey, JSON.stringify({username:user.username}));
+          authDraft={username:'',password:''};
           render();
           setStatus('Logged in to Nexus.');
         }
