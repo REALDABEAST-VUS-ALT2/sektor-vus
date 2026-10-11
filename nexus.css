@@ -719,6 +719,21 @@ body::before {
 .nexus-war-status { min-height:19px; margin:8px 0; color:#9de9c2; font-size:11px; }
 .nexus-war-status.error { color:#ffaaaa; }
 .nexus-war-map-wrap { position:relative; }
+.nexus-war-match-timer { position:absolute; z-index:3; top:12px; right:50%; transform:translateX(50%); padding:7px 11px; border:1px solid #e9c96788; border-radius:6px; background:rgba(7,13,9,.92); color:#f2d77e; font-size:11px; font-weight:850; font-variant-numeric:tabular-nums; pointer-events:none; }
+.nexus-war-resource-hud { position:absolute; z-index:3; top:12px; right:12px; padding:7px 9px; border:1px solid #65e6ad66; border-radius:6px; background:rgba(7,13,9,.92); color:#c8f5d4; font-size:9px; font-weight:850; font-variant-numeric:tabular-nums; pointer-events:none; }
+.nexus-war-notice { position:absolute; z-index:5; top:54px; left:50%; width:min(520px,calc(100% - 24px)); transform:translateX(-50%); padding:11px 14px; border:1px solid #e6c96899; border-radius:6px; background:rgba(14,21,15,.96); color:#f5e6aa; box-shadow:0 8px 24px #0009; font-size:12px; font-weight:800; text-align:center; pointer-events:none; }
+.nexus-war-notice[data-kind="loot"] { border-color:#83dca9aa; color:#d8ffe7; }
+.nexus-war-notice[data-kind="error"] { border-color:#ff788799; color:#ffc0c3; }
+.nexus-war-notice[hidden] { display:none; }
+.nexus-war-chat { position:absolute; z-index:4; right:12px; bottom:12px; display:grid; width:min(310px,42%); gap:6px; pointer-events:auto; }
+.nexus-war-chat form { display:flex; gap:5px; padding:5px; border:1px solid #d5e2d544; border-radius:6px; background:rgba(7,13,9,.92); }
+.nexus-war-chat input { min-width:0; flex:1; padding:7px 8px; border:1px solid #d5e2d522; border-radius:4px; background:#0d1410; color:#edf5ef; font:inherit; font-size:11px; }
+.nexus-war-chat button { padding:6px 9px; border:1px solid #65e6ad77; border-radius:4px; background:#183b2a; color:#e7fff0; font-size:10px; font-weight:800; cursor:pointer; }
+.nexus-war-chat [data-war-chat-log] { max-height:150px; overflow:auto; padding:7px 9px; border:1px solid #d5e2d533; border-radius:6px; background:rgba(7,13,9,.86); color:#e5eee6; font-size:10px; }
+.nexus-war-chat [data-war-chat-log] p { display:flex; gap:6px; margin:3px 0; overflow-wrap:anywhere; }
+.nexus-war-chat [data-war-chat-log] strong { flex:0 0 auto; color:#9de9c2; }
+.nexus-war-chat [data-war-chat-log][hidden] { display:none; }
+.nexus-war-voice-audio { display:none; }
 .nexus-war-canvas { display:block; width:100%; height:auto; border:1px solid #65e6ad33; border-radius:10px; background:#101915; touch-action:none; cursor:crosshair; }
 .nexus-war-reload-hud { position:absolute; z-index:3; right:14px; bottom:14px; display:grid; min-width:158px; padding:9px 12px 11px; overflow:hidden; border:1px solid #e5bd5570; border-radius:7px; background:rgba(9,14,11,.9); color:#f4dda1; box-shadow:0 6px 20px #0007; font-size:10px; font-weight:850; font-variant-numeric:tabular-nums; letter-spacing:.08em; pointer-events:none; }
 .nexus-war-reload-hud[hidden] { display:none; }
@@ -750,10 +765,27 @@ body::before {
 .nexus-war-spawn-menu p { margin:12px 0; color:#a8b8ac; font-size:11px; line-height:1.4; }
 .nexus-war-spawn-menu label { display:grid; gap:6px; color:#bdcbbf; font-size:10px; }
 .nexus-war-spawn-menu select { width:100%; padding:10px; border:1px solid #d5e2d533; border-radius:6px; background:#0d1410; color:#edf5ef; }
+.nexus-war-shop-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin:12px 0; }
+.nexus-war-shop-tabs button { padding:8px 5px; border:1px solid #d5e2d533; border-radius:5px; background:#111a15; color:#aebeb1; font-size:10px; font-weight:800; cursor:pointer; }
+.nexus-war-shop-tabs button[aria-pressed="true"] { border-color:#65e6ad99; background:#193b2a; color:#e3ffec; }
+.nexus-war-streak-shop { display:grid; gap:7px; }
+.nexus-war-streak-shop button { width:100%; }
+.nexus-war-spawn-menu [data-war-vehicle-price] { margin:8px 0; color:#e8d27d; font-size:10px; font-weight:750; }
+.nexus-war-spawn-menu [data-shop-panel="loadout"] { max-height:min(62vh,620px); overflow:auto; }
+.nexus-war-spawn-menu [data-shop-panel="loadout"] .nexus-war-loadout { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.nexus-war-seat-menu { position:absolute; z-index:7; top:50%; left:50%; width:min(300px,calc(100% - 24px)); transform:translate(-50%,-50%); }
+.nexus-war-seat-menu[hidden] { display:none; }
+.nexus-war-seat-menu > section { display:grid; gap:7px; padding:14px; border:1px solid #8aa28d77; border-radius:7px; background:rgba(10,17,12,.97); box-shadow:0 16px 44px #000a; }
+.nexus-war-seat-menu header { display:flex; align-items:center; justify-content:space-between; margin-bottom:3px; color:#dfffee; font-size:11px; }
+.nexus-war-seat-menu button { padding:8px 10px; border:1px solid #d5e2d533; border-radius:5px; background:#17231b; color:#edf5ef; font-size:11px; font-weight:750; cursor:pointer; }
+.nexus-war-seat-menu header button { padding:4px 8px; }
+.nexus-war-seat-menu button:disabled { color:#77847a; cursor:default; }
 .nexus-war-spawn-actions { display:flex; justify-content:flex-end; margin-top:12px; }
 .nexus-war-minimap { position:absolute; z-index:2; top:12px; left:12px; display:block; width:min(22%,220px); height:auto; border:1px solid #c4d8ca99; border-radius:8px; background:#101915; box-shadow:0 4px 18px #0009; pointer-events:none; }
 .nexus-war-hud { position:absolute; z-index:3; bottom:14px; left:14px; display:flex; align-items:flex-end; gap:18px; max-width:calc(100% - 28px); padding:10px 13px; border:1px solid rgba(210,225,211,.24); border-radius:8px; background:rgba(7,13,9,.9); box-shadow:0 8px 24px rgba(0,0,0,.38); color:#edf5ef; backdrop-filter:blur(8px); pointer-events:none; }
 .nexus-war-hud-vitals,.nexus-war-hud-armor,.nexus-war-hud-ammo { display:grid; gap:6px; }
+.nexus-war-hud-underbarrel { display:grid; min-width:105px; gap:6px; padding-left:10px; border-left:1px solid #d5e2d533; }
+.nexus-war-hud-underbarrel .nexus-war-hud-heading > span { color:#e6ca79; }
 .nexus-war-hud-ammo { min-width:112px; }
 .nexus-war-ammo-track { width:112px; height:5px; overflow:hidden; border-radius:4px; background:#ffffff20; }
 .nexus-war-ammo-track > i { display:block; height:100%; border-radius:inherit; background:#e9c967; transition:width .12s ease; }
@@ -781,13 +813,14 @@ body::before {
 .nexus-war-stats span { padding:6px 8px; border:1px solid #d5e2d51b; border-radius:7px; background:#ffffff05; color:#c7d7ca; font-size:10px; }
 .nexus-war-stats .nexus-war-vortex { border-color:#385c9166; color:#a9c8ff; }
 .nexus-war-stats .nexus-war-krypton { border-color:#8e394666; color:#f2a3ad; }
+.nexus-war-stats .nexus-war-own-resources { border-color:#65e6ad66; color:#b5ffd0; font-weight:850; }
 .nexus-war-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0; }
 .nexus-war-controls > span { color:#a8b8ac; font-size:10px; }
 .nexus-war-controls [data-war-reload-timer] { color:#e9c967; font-variant-numeric:tabular-nums; font-weight:800; }
 .nexus-war-controls kbd { padding:3px 5px; border:1px solid #d5e2d533; border-radius:5px; background:#0d1410; color:#e5f0e7; font:inherit; }
 .nexus-war-controls label { display:flex; align-items:center; gap:5px; color:#a8b8ac; font-size:10px; }
 .nexus-war-controls select { max-width:155px; padding:6px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:10px; }
-.nexus-war-capture { margin:10px 0; padding:9px 11px; border:1px solid #65e6ad55; border-radius:8px; background:#102219; }
+.nexus-war-capture { position:absolute; z-index:3; bottom:75px; left:14px; width:min(260px,calc(100% - 28px)); margin:0; padding:9px 11px; border:1px solid #65e6ad77; border-radius:6px; background:rgba(7,20,13,.94); box-shadow:0 5px 18px #0008; pointer-events:none; }
 .nexus-war-capture strong { display:block; margin-bottom:6px; color:#dfffee; font-size:11px; }
 .nexus-war-capture > div { height:9px; overflow:hidden; border-radius:99px; background:#ffffff18; }
 .nexus-war-capture > div > span { display:block; width:0; height:100%; border-radius:inherit; background:#65e6ad; transition:width .1s linear; }
@@ -846,7 +879,14 @@ body::before {
   .nexus-war-heading-actions { width:100%; flex-wrap:wrap; justify-content:space-between; }
   .nexus-war-reset { white-space:normal; }
   .nexus-war-hud { bottom:8px; left:8px; flex-wrap:wrap; gap:12px; max-width:calc(100% - 16px); padding:8px 10px; }
+  .nexus-war-match-timer { top:8px; font-size:9px; }
+  .nexus-war-resource-hud { top:36px; right:8px; max-width:48%; font-size:8px; text-align:right; }
+  .nexus-war-notice { top:62px; font-size:10px; }
+  .nexus-war-chat { right:8px; bottom:8px; width:min(240px,55%); }
+  .nexus-war-capture { bottom:138px; left:8px; width:min(210px,calc(100% - 16px)); }
+  .nexus-war-chat [data-war-chat-log] { max-height:100px; }
   .nexus-war-hud-ammo { flex-basis:100%; }
+  .nexus-war-hud-underbarrel { flex-basis:100%; padding:7px 0 0; border-top:1px solid #d5e2d533; border-left:0; }
   .nexus-war-ammo-track { width:100%; }
   .nexus-war-hud-heading { min-width:92px; }
   .nexus-war-health-track { width:100px; }
