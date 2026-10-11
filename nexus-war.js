@@ -4,7 +4,7 @@
   const sessionKey = 'blobtownSession';
   const localWorldKey = 'blobtownEconomy';
   const localGameKey = 'nexusWarGame';
-  const arenaVersion=3;
+  const arenaVersion=4;
   const mapScale=6;
   const worldWidth=3000*mapScale;
   const worldHeight=1500*mapScale;
@@ -88,7 +88,21 @@
     {id:'shot_doomsday',name:'Doomsday 12',type:'Shotgun',level:51},
     {id:'ar_kingfisher',name:'Kingfisher 6',type:'Assault rifle',level:52},
     {id:'sniper_eventide',name:'Eventide Rail',type:'Sniper rifle',level:53},
-    {id:'smg_undertow',name:'Undertow-45',type:'Submachine gun',level:54}
+    {id:'smg_undertow',name:'Undertow-45',type:'Submachine gun',level:54},
+    {id:'ar_sovereign',name:'Sovereign .300',type:'Assault rifle',level:56},
+    {id:'smg_razorline',name:'Razorline 9',type:'Submachine gun',level:60},
+    {id:'shot_breacher',name:'Breacher 16',type:'Shotgun',level:64},
+    {id:'dmr_vantage',name:'Vantage DMR',type:'Marksman rifle',level:68},
+    {id:'lmg_titan',name:'Titan 120',type:'Light machine gun',level:72},
+    {id:'sniper_ghostwake',name:'Ghostwake .50',type:'Sniper rifle',level:76},
+    {id:'special_ion',name:'Ion Lance',type:'Special',level:80},
+    {id:'ar_halcyon',name:'Halcyon 8.6',type:'Assault rifle',level:84},
+    {id:'smg_needlepoint',name:'Needlepoint 12',type:'Submachine gun',level:88},
+    {id:'shot_vulcan',name:'Vulcan 12',type:'Shotgun',level:92},
+    {id:'dmr_longview',name:'Longview 10',type:'Marksman rifle',level:96},
+    {id:'shot_leviathan',name:'Leviathan 12G',type:'Shotgun',level:98},
+    {id:'smg_wraith',name:'Wraith 11',type:'Submachine gun',level:99},
+    {id:'special_singularity',name:'Singularity',type:'Special',level:100}
   ];
   const rateVariants=[.94,1,1.06],spreadVariants=[.94,1,1.06];
   let shotgunIndex=0;
@@ -117,7 +131,13 @@
     explosive_spark:{name:'Spark Grenadier',type:'Explosive',level:33,damage:65,rate:520,mag:4,range:560,spread:.035,reload:2100,radius:95,model:'launcher'},
     explosive_talon:{name:'Talon AT',type:'Explosive',level:41,damage:120,rate:1350,mag:1,range:800,spread:.009,reload:3000,radius:150,model:'launcher'},
     explosive_quake:{name:'Quake Tube',type:'Explosive',level:48,damage:100,rate:1000,mag:2,range:720,spread:.015,reload:2600,radius:140,model:'launcher'},
-    explosive_storm:{name:'Stormcell Launcher',type:'Explosive',level:54,damage:85,rate:650,mag:3,range:640,spread:.028,reload:2400,radius:120,model:'launcher'}
+    explosive_storm:{name:'Stormcell Launcher',type:'Explosive',level:54,damage:85,rate:650,mag:3,range:640,spread:.028,reload:2400,radius:120,model:'launcher'},
+    pistol_nova:{name:'Nova 10mm',type:'Pistol',level:58,damage:38,rate:240,mag:18,range:550,spread:.022,reload:1300,model:'pistol'},
+    explosive_comet:{name:'Comet Micro-Launcher',type:'Explosive',level:66,damage:88,rate:780,mag:3,range:680,spread:.02,reload:2250,radius:115,model:'launcher'},
+    pistol_revenant:{name:'Revenant .50',type:'Pistol',level:74,damage:68,rate:590,mag:7,range:650,spread:.026,reload:1700,model:'pistol'},
+    explosive_wildfire:{name:'Wildfire Grenadier',type:'Explosive',level:82,damage:78,rate:580,mag:4,range:610,spread:.03,reload:2150,radius:110,model:'launcher'},
+    pistol_undertaker:{name:'Undertaker 12',type:'Pistol',level:90,damage:44,rate:300,mag:16,range:575,spread:.024,reload:1400,model:'pistol'},
+    explosive_cataclysm:{name:'Cataclysm Launcher',type:'Explosive',level:100,damage:130,rate:1450,mag:1,range:900,spread:.01,reload:3200,radius:165,model:'launcher'}
   };
   for (const weapon of Object.values(secondaryWeapons)) weapon.slot='secondary';
   Object.assign(weapons,secondaryWeapons);
@@ -134,7 +154,19 @@
     mag_fast:{name:'Fast magazine',effect:'Faster reload',reload:.68,cost:450},
     smg_duals:{name:'Dual SMG kit',effect:'Dual-wield SMGs · faster fire, wider spread',
       types:['Submachine gun'],dualWield:true,rate:.86,spread:1.18,recoil:1.12,cost:750},
-    trigger_light:{name:'Lightened trigger',effect:'Faster firing · increased recoil',rate:.82,recoil:1.12,cost:650}
+    trigger_light:{name:'Lightened trigger',effect:'Faster firing · increased recoil',rate:.82,recoil:1.12,cost:650},
+    stock_heavy:{name:'Weighted stock',effect:'Reduces recoil on sustained fire',recoil:.68,spread:.94,cost:700},
+    optic_holo:{name:'Holographic sight',effect:'Improves aiming precision',spread:.78,cost:600},
+    bolt_fast:{name:'Polished bolt',effect:'Faster cycling and reload',rate:.9,reload:.88,cost:850},
+    barrel_ported:{name:'Ported barrel',effect:'Reduces recoil, increases spread',recoil:.78,spread:1.08,cost:750},
+    burst_triple:{name:'Three-round burst kit',effect:'Fires three rounds per trigger',
+      types:['Assault rifle','Marksman rifle'],burstRounds:3,cost:900},
+    underbarrel_frag:{name:'Mini grenade launcher',effect:'Tab launches a timed explosive',
+      types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
+      utility:'underbarrelFrag',utilityCooldown:6500,cost:950},
+    underbarrel_smoke:{name:'Underbarrel smoke launcher',effect:'Tab deploys line-blocking smoke',
+      types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
+      utility:'underbarrelSmoke',utilityCooldown:9000,cost:800}
   };
   const weaponColorParts=['receiver','barrel','grip'];
   const weaponColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d'};
@@ -177,7 +209,7 @@
     {id:'central-office-b',x:1930,y:710,w:310,h:200},
     {id:'central-warehouse',x:2250,y:690,w:270,h:190}
   ].map(building=>({...building,type:'building'}));
-  const obstacles=[
+  let obstacles=[
     {id:'north-home-a',x:650,y:220,w:130,h:110,type:'house',enterable:true,doorX:650,doorY:275},
     {id:'north-home-b',x:1080,y:300,w:150,h:120,type:'house',enterable:false},
     {id:'north-barrier-a',x:760,y:565,w:210,h:32,type:'barrier'},
@@ -195,11 +227,66 @@
     ...(item.doorX==null?{}:{doorX:item.doorX*mapScale}),
     ...(item.doorY==null?{}:{doorY:item.doorY*mapScale})}));
   const xpPerLevel=1000;
-  const nodePositions = {
+  const maxLevel=100;
+  const defaultNodePositions = {
     north:{x:900*mapScale,y:420*mapScale,label:'NORTH RELAY'},
     mid:{x:1500*mapScale,y:750*mapScale,label:'SCRAP YARD'},
     south:{x:2100*mapScale,y:1080*mapScale,label:'SOUTH RELAY'}
   };
+  const mapCatalog=[
+    {id:'frontier',name:'Vortex Frontier Reworked',variant:'Standard',points:['north','mid','south'],special:'',preview:'#64745d'},
+    {id:'steel-district',name:'Steel District',variant:'Urban',points:['a','b','c','d','e'],special:'',preview:'#566a70'},
+    {id:'red-canyon',name:'Red Canyon',variant:'Standard',points:['west','mid','east'],special:'',preview:'#a56a4e'},
+    {id:'salt-flats',name:'Salt Flats',variant:'Standard',points:['a','c','e'],special:'',preview:'#b6a778'},
+    {id:'floodplain',name:'Floodplain',variant:'Standard',points:['north','b','c','d','south'],special:'',preview:'#547b78'},
+    {id:'frostline',name:'Frostline Basin',variant:'Low Visibility',points:['north','mid','south'],special:'lowVisibility',preview:'#91b8bd'},
+    {id:'foundry',name:'Ironworks',variant:'Close Quarters',points:['a','b','c','d'],special:'shotgunsOnly',preview:'#84634c'},
+    {id:'blackout-district',name:'Blackout District',variant:'Night Ops',points:['a','b','c','d','e'],special:'nightOps',preview:'#3c4650'}
+  ];
+  let activeMapId='frontier';
+  let nodePositions=defaultNodePositions;
+  let mapObstacles=obstacles;
+
+  function arenaNodes(mapId) {
+    const points=mapCatalog.find(map=>map.id===mapId)?.points||mapCatalog[0].points;
+    const presets={
+      north:{x:900,y:420,label:'NORTH RELAY'},mid:{x:1500,y:750,label:'SCRAP YARD'},south:{x:2100,y:1080,label:'SOUTH RELAY'},
+      a:{x:720,y:430,label:'POINT A'},b:{x:1110,y:1070,label:'POINT B'},c:{x:1500,y:750,label:'POINT C'},
+      d:{x:1890,y:430,label:'POINT D'},e:{x:2280,y:1070,label:'POINT E'},
+      west:{x:720,y:750,label:'WEST RELAY'},east:{x:2280,y:750,label:'EAST RELAY'}
+    };
+    return Object.fromEntries(points.map(id=>[id,{...presets[id],x:presets[id].x*mapScale,y:presets[id].y*mapScale}]));
+  }
+
+  function applyArenaMap(mapId) {
+    const selected=mapCatalog.find(map=>map.id===mapId)||mapCatalog[0];
+    activeMapId=selected.id;
+    nodePositions=arenaNodes(activeMapId);
+    const urbanBuildings=[];
+    if (['steel-district','foundry','blackout-district','floodplain'].includes(activeMapId)) {
+      const size=activeMapId==='steel-district'?430:activeMapId==='floodplain'?250:520;
+      const blocks=[
+        [500,230],[1050,230],[1600,230],[2150,230],
+        [500,760],[1050,760],[1600,760],[2150,760]
+      ];
+      blocks.slice(0,activeMapId==='floodplain'?4:blocks.length).forEach(([x,y],index)=>urbanBuildings.push({id:'map-'+activeMapId+'-block-'+index,
+        x:x*mapScale,y:y*mapScale,w:size*mapScale,h:(activeMapId==='steel-district'?310:380)*mapScale,
+        type:'building',label:'MULTI-LEVEL BLOCK',floorCount:4,enterable:true,
+        doorX:(x+size/2)*mapScale,doorY:(y-20)*mapScale,
+        stairs:{x:(x+size/2)*mapScale,y:(y+((activeMapId==='steel-district'?310:380)/2))*mapScale}}));
+    }
+    if (activeMapId==='red-canyon') {
+      urbanBuildings.push(...[
+        {id:'canyon-ridge-west',x:960*mapScale,y:180*mapScale,w:1700*mapScale,h:250*mapScale,type:'building',label:'CANYON RIDGE'},
+        {id:'canyon-ridge-east',x:960*mapScale,y:1070*mapScale,w:1700*mapScale,h:250*mapScale,type:'building',label:'CANYON RIDGE'}
+      ]);
+    }
+    const sideBlocks=activeMapId==='steel-district'||activeMapId==='blackout-district'||
+      activeMapId==='foundry'||activeMapId==='red-canyon'||activeMapId==='floodplain'?urbanBuildings:[];
+    const originalBuildings=obstacles.filter(item=>!String(item.id).startsWith('map-'));
+    mapObstacles=[...originalBuildings,...sideBlocks];
+    return selected;
+  }
   const fixedLootLocations={
     north_cache:{x:900,y:520},
     refinery_cache:{x:1500,y:500},
@@ -225,11 +312,16 @@
   let incomeTimer = 0;
   let lootTimer=0;
   let heartbeatTimer = 0;
+  let matchTimer=0;
+  let matchLifecycleBusy=false;
+  let lastVoteUiUpdate=0;
+  let selectedVoteTeam='';
   let refreshTimer = 0;
   let lastPositionWrite = 0;
   let lastShot = 0;
   let recoilKick=0;
   let lastRecoilAt=0;
+  let attachmentCooldownUntil=0;
   let reloading = false;
   let captureBusy = false;
   let captureTimer = 0;
@@ -240,6 +332,8 @@
   let vehicleActionBusy=false;
   let localPosition = null;
   let positionWriteBusy = false;
+  let grapplePull=null;
+  let supportTargeting='';
   let movementVelocity={x:0,y:0};
   const renderPositions=new Map();
   let stockTimer = 0;
@@ -252,7 +346,10 @@
   let droneControlled=true;
   let heldGiveUpTimer=0;
   let giveUpInterval=0;
+  let reviveChannelTimer=0;
+  let reviveChannel=null;
   let houseInside='';
+  let houseFloor=0;
   let localDronePosition=null;
   let localTransportId='';
   let cameraPosition={x:0,y:0};
@@ -407,9 +504,16 @@
   }
 
   function freshWar() {
+    const startedAt=Date.now();
     return {
       arenaVersion,
       week:weekKey(),
+      mapId:activeMapId,
+      matchPhase:'playing',
+      matchStartedAt:startedAt,
+      matchEndsAt:startedAt+30*60_000,
+      voteEndsAt:0,
+      mapVotes:{},
       players:{},
       nodes:Object.fromEntries(Object.entries(nodePositions).map(([id,node]) => [id,{team:'',owner:'',capturedAt:0}])),
       bases:{
@@ -437,8 +541,172 @@
     };
   }
 
+  async function updateMatchLifecycle() {
+    if (!warState||destroyed||matchLifecycleBusy) return;
+    const now=Date.now();
+    if (warState.matchPhase==='playing'&&now>=Number(warState.matchEndsAt||Infinity)) {
+      matchLifecycleBusy=true;
+      try {
+        const next={...warState,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}};
+        if (firebaseMode) {
+          const result=await warRef.transaction(current=>current&&current.matchPhase==='playing'&&
+            now>=Number(current.matchEndsAt||Infinity)?{...current,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}}:current);
+          if (result.committed) acceptWarState(result.snapshot.val());
+        } else if (lanMode) {
+          const latest=normalizeWar(await lanGet());
+          if (latest.matchPhase==='playing'&&now>=Number(latest.matchEndsAt||Infinity)) {
+            latest.matchPhase='voting';latest.voteEndsAt=now+15_000;latest.mapVotes={};
+            await lanPut(latest);acceptWarState(latest);
+          }
+        } else {
+          next.matchPhase='voting';
+          warState=next;localStorage.setItem(localGameKey,JSON.stringify(next));draw();
+        }
+      } catch(error) { setStatus(error.message||'Could not begin map voting.',true); }
+      finally { matchLifecycleBusy=false; }
+    } else if (warState.matchPhase==='voting') {
+      if (ui?.mapVoteOverlay) {
+        ui.mapVoteOverlay.hidden=false;
+        const timer=ui.mapVoteOverlay.querySelector('[data-map-vote-timer]');
+        if (timer) timer.textContent=Math.max(0,Math.ceil((Number(warState.voteEndsAt||now)-now)/1000))+'s';
+        if (now-lastVoteUiUpdate>500) { renderMapVotes();lastVoteUiUpdate=now; }
+      }
+      if (now>=Number(warState.voteEndsAt||Infinity)) await finalizeMapVote();
+    }
+  }
+
+  function voteCounts(votes) {
+    return Object.values(votes||{}).reduce((counts,vote)=>{
+      if (vote&&mapCatalog.some(map=>map.id===vote.mapId)) counts[vote.mapId]=(counts[vote.mapId]||0)+1;
+      return counts;
+    },{});
+  }
+
+  function drawMapPreview(canvas,map) {
+    if (!canvas) return;
+    const context=canvas.getContext('2d');
+    const width=canvas.width,height=canvas.height;
+    context.clearRect(0,0,width,height);
+    context.fillStyle=map.preview;context.fillRect(0,0,width,height);
+    context.fillStyle='rgba(18,26,22,.34)';
+    context.fillRect(0,height*.44,width,height*.12);
+    context.fillRect(width*.44,0,width*.12,height);
+    const buildings=map.id==='frontier'?8:map.id==='red-canyon'?5:map.id==='salt-flats'?2:map.id==='floodplain'?10:18;
+    for (let index=0;index<buildings;index++) {
+      const column=index%6,row=Math.floor(index/6);
+      const x=18+column*(width-42)/6+((row%2)*9);
+      const y=15+row*(height-35)/Math.max(1,Math.ceil(buildings/6));
+      const block=map.id==='steel-district'||map.id==='foundry'||map.id==='blackout-district';
+      context.fillStyle=block?'#b9c7be':'rgba(207,218,189,.72)';
+      context.fillRect(x,y,block?24:14,block?21:12);
+      context.strokeStyle='rgba(23,33,27,.75)';context.lineWidth=2;context.strokeRect(x,y,block?24:14,block?21:12);
+    }
+    const points=map.points.length;
+    for (let index=0;index<points;index++) {
+      const angle=index/points*Math.PI*2-Math.PI/2;
+      const x=width/2+Math.cos(angle)*width*.3,y=height/2+Math.sin(angle)*height*.3;
+      context.fillStyle='#f3d36b';context.strokeStyle='#20251b';context.lineWidth=2;
+      context.beginPath();context.arc(x,y,7,0,Math.PI*2);context.fill();context.stroke();
+      context.fillStyle='#152018';context.font='bold 8px system-ui';context.textAlign='center';
+      context.fillText(String.fromCharCode(65+index),x,y+3);
+    }
+  }
+
+  function renderMapVotes() {
+    if (!ui?.mapVoteOverlay||!warState) return;
+    const active=warState.matchPhase==='voting';
+    ui.mapVoteOverlay.hidden=!active;
+    if (!active) return;
+    const counts=voteCounts(warState.mapVotes);
+    const ownVote=warState.mapVotes&&warState.mapVotes[playerKey];
+    if (!selectedVoteTeam) selectedVoteTeam=ownVote?.team||playerTeam;
+    ui.mapVoteOverlay.querySelectorAll('[data-vote-count]').forEach(label=>{
+      label.textContent=String(counts[label.dataset.voteCount]||0);
+    });
+    ui.mapVoteOverlay.querySelectorAll('[data-vote-team]').forEach(button=>{
+      button.setAttribute('aria-pressed',String(button.dataset.voteTeam===selectedVoteTeam));
+    });
+    ui.mapVoteOverlay.querySelectorAll('[data-map-preview]').forEach(canvas=>{
+      const map=mapCatalog.find(entry=>entry.id===canvas.dataset.mapPreview);
+      if (map&&canvas.dataset.drawn!=='true') {drawMapPreview(canvas,map);canvas.dataset.drawn='true';}
+    });
+  }
+
+  async function submitMapVote(mapId) {
+    if (!warState||warState.matchPhase!=='voting'||!mapCatalog.some(map=>map.id===mapId)) return;
+    const team=selectedVoteTeam||playerTeam;
+    if (!['vortex','krypton'].includes(team)) { setStatus('Choose a team before voting.',true);return; }
+    const vote={mapId,team};
+    if (team!==playerTeam) {
+      await updateAccount(user=>{user.team=team;user.teamWeek=weekKey();});
+      playerTeam=team;
+      await mutatePlayer(player=>player?{...player,team}:player);
+    }
+    await updateWar('mapVotes/'+playerKey,()=>vote);
+    renderMapVotes();
+    setStatus('Vote recorded for '+mapCatalog.find(map=>map.id===mapId).name+'.');
+  }
+
+  async function finalizeMapVote() {
+    if (matchLifecycleBusy||!warState||warState.matchPhase!=='voting') return;
+    matchLifecycleBusy=true;
+    try {
+      const finalize=current=>{
+        if (!current||current.matchPhase!=='voting'||Date.now()<Number(current.voteEndsAt||Infinity)) return current;
+        const counts=voteCounts(current.mapVotes);
+        const winner=mapCatalog.slice().sort((a,b)=>(counts[b.id]||0)-(counts[a.id]||0))[0]||mapCatalog[0];
+        const next=freshWar();
+        next.mapId=winner.id;
+        next.matchStartedAt=Date.now();
+        next.matchEndsAt=next.matchStartedAt+30*60_000;
+        next.matchPhase='playing';
+        next.voteEndsAt=0;
+        next.mapVotes={};
+        next.matchResetAt=Date.now();
+        next.nodes=Object.fromEntries(Object.entries(arenaNodes(winner.id)).map(([id])=>
+          [id,{team:'',owner:'',capturedAt:0}]));
+        next.players=Object.fromEntries(Object.entries(current.players||{}).map(([key,player])=>{
+          const reset=resetPlayerRecord(player||{});
+          const vote=current.mapVotes&&current.mapVotes[key];
+          if (vote&&['vortex','krypton'].includes(vote.team)) reset.team=vote.team;
+          return [key,reset];
+        }));
+        return next;
+      };
+      let next;
+      if (firebaseMode) {
+        const result=await warRef.transaction(finalize);
+        next=result.snapshot.val();
+      } else if (lanMode) {
+        const latest=normalizeWar(await lanGet());
+        next=finalize(latest);
+        if (next!==latest) await lanPut(next);
+      } else {
+        const latest=normalizeWar(JSON.parse(localStorage.getItem(localGameKey)||'null'));
+        next=finalize(latest);
+        localStorage.setItem(localGameKey,JSON.stringify(next));
+      }
+      if (next) acceptWarState(next);
+      setStatus('Map vote ended. Resources reset for '+(mapCatalog.find(map=>map.id===next?.mapId)?.name||'the next map')+'.');
+    } catch(error) { setStatus(error.message||'Could not start the next map.',true); }
+    finally { matchLifecycleBusy=false; }
+  }
+
   function safeUserKey(name) {
     return String(name || '').toLowerCase().replace(/[.#$\[\]/]/g,'_').slice(0,32);
+  }
+
+  function cachedDropzoneTeam(name,currentWeek) {
+    try {
+      const saved=JSON.parse(localStorage.getItem('nexusDropzoneTeam_'+safeUserKey(name))||'null');
+      return saved&&saved.week===currentWeek&&['vortex','krypton'].includes(saved.team)?saved.team:'';
+    } catch(error) { return ''; }
+  }
+
+  function cacheDropzoneTeam(name,team,currentWeek=weekKey()) {
+    try {
+      localStorage.setItem('nexusDropzoneTeam_'+safeUserKey(name),JSON.stringify({team,week:currentWeek}));
+    } catch(error) {}
   }
 
   function requestUrl(path) {
@@ -449,12 +717,12 @@
     const owned=Array.isArray(value && value.ownedAttachments)
       ? [...new Set(value.ownedAttachments.filter(id=>Object.prototype.hasOwnProperty.call(attachments,id)))]
       : [];
-    const xp=Math.max(0,Math.min(54*xpPerLevel,Math.floor(Number(value && value.xp)||0)));
+    const xp=Math.max(0,Math.min((maxLevel-1)*xpPerLevel,Math.floor(Number(value && value.xp)||0)));
     const weaponColor=/^#[0-9a-f]{6}$/i.test(value&&value.weaponColor||'')?value.weaponColor:'';
     const savedColors=value&&value.weaponColors&&typeof value.weaponColors==='object'?value.weaponColors:{};
     const weaponColors=Object.fromEntries(weaponColorParts.map(part=>[part,
       /^#[0-9a-f]{6}$/i.test(savedColors[part]||'')?savedColors[part]:weaponColor]));
-    return {xp,level:Math.min(55,Math.floor(xp/xpPerLevel)+1),ownedAttachments:owned,weaponColor,weaponColors};
+    return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:owned,weaponColor,weaponColors};
   }
 
   function accountWorldFromLocal() {
@@ -544,8 +812,8 @@
     const before=own?normalizeProgress(accountData.dropzone).level:0;
     await updateAccountByName(username,user=>{
       const progress=normalizeProgress(user.dropzone);
-      progress.xp=Math.min(54*xpPerLevel,progress.xp+awarded);
-      progress.level=Math.min(55,Math.floor(progress.xp/xpPerLevel)+1);
+      progress.xp=Math.min((maxLevel-1)*xpPerLevel,progress.xp+awarded);
+      progress.level=Math.min(maxLevel,Math.floor(progress.xp/xpPerLevel)+1);
       user.dropzone=progress;
     });
     if (own) {
@@ -555,6 +823,23 @@
       refreshProgressUi();
       draw();
     }
+  }
+
+  async function grantSecretReward() {
+    const beforeXp=normalizeProgress(accountData&&accountData.dropzone).xp;
+    await updateAccount(user=>{
+      const currentBalance=Number(user.balance);
+      user.balance=(Number.isFinite(currentBalance)?currentBalance:0)+10_000;
+      const progress=normalizeProgress(user.dropzone);
+      progress.xp=Math.min((maxLevel-1)*xpPerLevel,progress.xp+10_000);
+      progress.level=Math.min(maxLevel,Math.floor(progress.xp/xpPerLevel)+1);
+      user.dropzone=progress;
+    });
+    accountData.dropzone=normalizeProgress(accountData.dropzone);
+    const xpAwarded=accountData.dropzone.xp-beforeXp;
+    refreshProgressUi();
+    draw();
+    setStatus('Secret reward: +10,000 Sektorium and +'+xpAwarded.toLocaleString()+' XP.');
   }
 
   async function lanGet() {
@@ -582,6 +867,7 @@
   }
 
   function normalizeWar(value) {
+    if (value&&mapCatalog.some(map=>map.id===value.mapId)) applyArenaMap(value.mapId);
     const base = freshWar();
     if (!value || typeof value !== 'object' || Array.isArray(value) || value.week !== base.week) return base;
     const sourceVersion=Number(value.arenaVersion||1);
@@ -601,9 +887,16 @@
       ...base,
       ...value,
       arenaVersion,
+      mapId:mapCatalog.some(map=>map.id===value.mapId)?value.mapId:base.mapId,
+      matchPhase:value.matchPhase==='voting'?'voting':'playing',
+      matchStartedAt:Number(value.matchStartedAt)||base.matchStartedAt,
+      matchEndsAt:Number(value.matchEndsAt)||base.matchEndsAt,
+      voteEndsAt:Number(value.voteEndsAt)||0,
+      mapVotes:value.mapVotes&&typeof value.mapVotes==='object'?value.mapVotes:{},
       players:Object.fromEntries(Object.entries(players).map(([key,player])=>[key,player?{
         armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
         smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
+        grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
           tactical:'smoke',lethal:'grenade',secondary:'pistol_sidekick',secondaryAmmo:15,
           activeWeaponSlot:'primary',downed:false,downedAt:0,vehiclePad:'',vehicleAmmo:0,
         ...player,...(legacyMap?scaleRecord(player):{}),
@@ -633,8 +926,24 @@
   }
 
   async function getPlayerTeam(name) {
-    const user=accountFor(await readAccountWorld(),name);
     const currentWeek=weekKey();
+    const user=accountFor(await readAccountWorld(),name);
+    if (user.teamWeek===currentWeek&&['vortex','krypton'].includes(user.team)) {
+      cacheDropzoneTeam(name,user.team,currentWeek);
+      return user.team;
+    }
+    const cachedTeam=cachedDropzoneTeam(name,currentWeek);
+    if (cachedTeam) {
+      let restoredTeam='';
+      await updateAccountByName(name,current=>{
+        if (current.teamWeek!==currentWeek||!['vortex','krypton'].includes(current.team)) {
+          current.team=cachedTeam;
+          current.teamWeek=currentWeek;
+        }
+        restoredTeam=current.team;
+      });
+      if (['vortex','krypton'].includes(restoredTeam)) return restoredTeam;
+    }
     if (user.teamWeek!==currentWeek) {
       await updateAccountByName(name,current=>{
         if (current.teamWeek!==currentWeek) {
@@ -710,6 +1019,7 @@
       vehiclePad:'',vehicleAmmo:0,
       armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
       smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
+      grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
       downed:false,downedAt:0,
       online:true,lastSeen:Date.now(),
       respawnAt:0,lastShotAt:0
@@ -820,6 +1130,7 @@
     const previousReset=Number(warState&&warState.matchResetAt||0);
     const stale=!value || value.week!==weekKey();
     warState=normalizeWar(value);
+    renderMapVotes();
     const latestAnnouncement=newestAnnouncement(warState.announcements);
     if (latestAnnouncement&&latestAnnouncement[0]!==lastAnnouncementId) {
       const wasInitialized=!!lastAnnouncementId;
@@ -895,6 +1206,8 @@
       spread:weapon.spread * mods.reduce((value,mod) => value * (mod.spread || 1),1),
       recoil:(weapon.recoil||.02)*mods.reduce((value,mod)=>value*(mod.recoil||1),1),
       dualWield:mods.some(mod=>mod.dualWield),
+      burstRounds:mods.reduce((count,mod)=>Math.max(count,Number(mod.burstRounds)||1),1),
+      utilityAttachment:mods.find(mod=>mod.utility)||null,
       mag:Math.round(weapon.mag * mods.reduce((value,mod) => value * (mod.mag || 1),1)),
       reload:Math.round(weapon.reload * mods.reduce((value,mod) => value * (mod.reload || 1),1))
     };
@@ -908,6 +1221,7 @@
     if (reloadTimer) clearTimeout(reloadTimer);
     if (giveUpInterval) clearTimeout(giveUpInterval);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
+    if (matchTimer) clearInterval(matchTimer);
     animation = requestAnimationFrame(gameFrame);
     incomeTimer = window.setInterval(()=>
       Promise.all([generateTeamResources(),payoutSektorium()])
@@ -915,6 +1229,7 @@
     turretTimer=window.setInterval(()=>updateTurrets()
       .then(updateClaymores)
       .then(updateGrenades)
+      .then(updateGasHazards)
       .then(updateParkedVehicles)
       .catch(error=>setStatus(error.message||'Field equipment update failed.',true)),500);
     lootTimer=window.setInterval(()=>updateLootBoxes()
@@ -922,6 +1237,8 @@
     heartbeatTimer = window.setInterval(()=>
       mutatePlayer(player=>player?{...player,online:true,lastSeen:Date.now()}:player)
         .catch(error=>setStatus(error.message,true)),5000);
+    matchTimer=window.setInterval(()=>updateMatchLifecycle()
+      .catch(error=>setStatus(error.message||'Match rotation failed.',true)),500);
     window.addEventListener('keydown',onKeyDown);
     window.addEventListener('keyup',onKeyUp);
     window.addEventListener('blur',onBlur);
@@ -933,7 +1250,6 @@
     container.addEventListener('pointerup',onControlPointerUp);
     container.addEventListener('pointercancel',onControlPointerUp);
     container.addEventListener('pointerleave',onControlPointerUp);
-    ui.form.addEventListener('submit',equipLoadout);
     ui.reload.addEventListener('click',reloadWeapon);
     document.addEventListener('click',onActionClick);
     document.addEventListener('fullscreenchange',updateFullscreenButton);
@@ -970,18 +1286,22 @@
         .catch(error=>setStatus(error.message,true))
         .finally(()=>{respawnBusy=false;});
     }
-    if (player && player.downed && Date.now()-Number(player.downedAt||0)>=30000) giveUp();
+    if (player&&player.downed&&Date.now()-Number(player.downedAt||0)>=10_000) {
+      cancelReviveChannel();
+      giveUp();
+    }
     if (player && !localPosition) {
       localPosition={x:Number(player.x),y:Number(player.y)};
       houseInside=String(player.houseInside||'');
+      houseFloor=Math.max(0,Number(player.houseFloor)||0);
     }
-    if (!paused&&player&&player.online&&player.hp>0&&!player.downed&&!activeDrone&&
+    if (!paused&&warState?.matchPhase==='playing'&&player&&player.online&&player.hp>0&&!player.downed&&!activeDrone&&
       player.respawnAt<=Date.now()&&!reloading&&!captureBusy) {
       const elapsed=Math.min(.05,Math.max(0,(timestamp-(gameFrame.lastFrame||timestamp))/1000));
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
-      const topSpeed=(vehicle?1700*vehicle.speed:2700)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
+      const topSpeed=(vehicle?1700*vehicle.speed:3240)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
@@ -997,9 +1317,24 @@
       const ease=1-Math.exp(-12*elapsed);
       movementVelocity.x+=(moveX/length*topSpeed-movementVelocity.x)*ease;
       movementVelocity.y+=(moveY/length*topSpeed-movementVelocity.y)*ease;
-      const next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
+      let next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
         y:Math.max(110,Math.min(worldHeight-110,localPosition.y+movementVelocity.y*elapsed))};
-      const house=houseInside&&obstacles.find(item=>item.id===houseInside);
+      const grappling=!!grapplePull;
+      if (grapplePull) {
+        const dx=grapplePull.x-localPosition.x,dy=grapplePull.y-localPosition.y;
+        const distance=Math.hypot(dx,dy);
+        const step=Math.min(distance,4200*elapsed);
+        if (distance<=48||step>=distance) {
+          next={x:grapplePull.x,y:grapplePull.y};
+          grapplePull=null;
+          movementVelocity={x:0,y:0};
+          setStatus('Grapple reached the surface.');
+        } else {
+          next={x:localPosition.x+dx/distance*step,y:localPosition.y+dy/distance*step};
+          movementVelocity={x:dx/distance*4200,y:dy/distance*4200};
+        }
+      }
+      const house=houseInside&&mapObstacles.find(item=>item.id===houseInside);
       if (house) {
         localPosition.x=Math.max(house.x+24,Math.min(house.x+house.w-24,next.x));
         localPosition.y=Math.max(house.y+24,Math.min(house.y+house.h-24,next.y));
@@ -1012,7 +1347,11 @@
         const start={...localPosition};
         for (let step=1;step<=steps;step++) {
           const candidate={x:start.x+(next.x-start.x)*step/steps,y:start.y+(next.y-start.y)*step/steps};
-          const blocked=point=>obstacles.some(item=>circleIntersectsRect(point.x,point.y,28,item))||
+          const blocked=point=>mapObstacles.some(item=>{
+            const inDoorway=item.enterable&&Math.abs(point.x-Number(item.doorX))<34&&
+              Math.abs(point.y-Number(item.doorY))<44;
+            return !inDoorway&&circleIntersectsRect(point.x,point.y,28,item);
+          })||
             lootBoxIntersects(point.x,point.y,28);
           if (blocked(candidate)) {
             const slideX={x:candidate.x,y:localPosition.y};
@@ -1026,7 +1365,7 @@
           localPosition=candidate;
         }
       } else localPosition=next;
-      if ((dx||dy) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
+      if ((dx||dy||grappling) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
         lastPositionWrite=timestamp;
         positionWriteBusy=true;
         const next={...localPosition};
@@ -1095,7 +1434,7 @@
     drawVehiclePads(context,'krypton');
     drawBase(context,'vortex',basePositions.vortex.x,basePositions.vortex.y,warState.bases.vortex);
     drawBase(context,'krypton',basePositions.krypton.x,basePositions.krypton.y,warState.bases.krypton);
-    obstacles.forEach(obstacle=>drawObstacle(context,obstacle));
+    mapObstacles.forEach(obstacle=>drawObstacle(context,obstacle));
     Object.entries(nodePositions).forEach(([id,node]) => drawNode(context,id,node,warState.nodes[id]));
     const visiblePlayers = Object.values(warState.players || {}).filter(player => player && player.online && Date.now() - Number(player.lastSeen || 0) < 20000);
     visiblePlayers.forEach(player=>{
@@ -1133,6 +1472,22 @@
     });
     muzzleFlashes=muzzleFlashes.filter(flash=>Date.now()-flash.time<85);
     muzzleFlashes.forEach(flash=>drawMuzzleFlash(context,flash));
+    if (supportTargeting&&localPosition) {
+      context.save();
+      context.strokeStyle=supportTargeting==='bunker_buster'?'#d4d86a':'#ffb64d';
+      context.fillStyle=context.strokeStyle;
+      context.globalAlpha=.9;
+      context.setLineDash([18,12]);
+      context.lineWidth=3;
+      context.beginPath();context.moveTo(localPosition.x,localPosition.y);context.lineTo(aim.x,aim.y);context.stroke();
+      context.setLineDash([]);
+      context.beginPath();context.arc(aim.x,aim.y,26+Math.sin(Date.now()/100)*4,0,Math.PI*2);context.stroke();
+      context.beginPath();context.moveTo(aim.x-38,aim.y);context.lineTo(aim.x+38,aim.y);
+      context.moveTo(aim.x,aim.y-38);context.lineTo(aim.x,aim.y+38);context.stroke();
+      context.font='bold 18px system-ui';context.textAlign='center';
+      context.fillText(supportTargeting==='bunker_buster'?'BUNKER BUSTER · CLICK TARGET':'AIRSTRIKE · CLICK TARGET',aim.x,aim.y-48);
+      context.restore();
+    }
     context.restore();
     drawMinimap();
     updateStats(visiblePlayers);
@@ -1187,7 +1542,7 @@
     context.fillStyle='rgba(220,75,91,.14)';
     const kryptonZone=point(basePositions.krypton.x,basePositions.krypton.y);
     context.beginPath();context.arc(kryptonZone.x,kryptonZone.y,safeZoneRadius*scaleX,0,Math.PI*2);context.fill();
-    for (const obstacle of obstacles) {
+    for (const obstacle of mapObstacles) {
       const topLeft=point(obstacle.x,obstacle.y);
       context.fillStyle=obstacle.type==='building'?'#829187':obstacle.type==='house'?'#a6b4a8':'#b8a779';
       context.fillRect(topLeft.x,topLeft.y,Math.max(1,obstacle.w*scaleX),Math.max(1,obstacle.h*scaleY));
@@ -1348,6 +1703,18 @@
         context.fillStyle='#101713';
         context.font='bold 36px system-ui';
         context.fillText('Q',item.doorX,item.doorY+5);
+      }
+      if (item.stairs) {
+        context.strokeStyle='#e8c96c';context.lineWidth=4;
+        context.beginPath();context.moveTo(item.stairs.x-30,item.stairs.y-40);
+        context.lineTo(item.stairs.x+30,item.stairs.y+40);context.stroke();
+        for (let step=0;step<5;step++) {
+          const offset=step*16-32;
+          context.beginPath();context.moveTo(item.stairs.x-14,item.stairs.y+offset);
+          context.lineTo(item.stairs.x+14,item.stairs.y+offset+18);context.stroke();
+        }
+        context.fillStyle='#f2df9c';context.font='bold 16px system-ui';context.textAlign='center';
+        context.fillText('STAIRS · Q',item.stairs.x,item.stairs.y+64);
       }
     } else if (item.type==='house') {
       context.fillStyle='#26352b';
@@ -1629,10 +1996,20 @@
     context.save();
     context.translate(Number(drone.x),Number(drone.y));
     context.rotate(Number(drone.angle)||0);
-    context.fillStyle='#f0d365';
-    context.beginPath();
-    context.moveTo(20,0);context.lineTo(-12,-10);context.lineTo(-8,0);context.lineTo(-12,10);
-    context.closePath();context.fill();
+    if (drone.type==='rc_car') {
+      context.fillStyle='#141b17';
+      context.fillRect(-15,-13,12,5);context.fillRect(8,-13,12,5);
+      context.fillRect(-15,8,12,5);context.fillRect(8,8,12,5);
+      context.fillStyle='#dc6653';context.strokeStyle='#f6d07d';context.lineWidth=2;
+      context.fillRect(-13,-9,28,18);context.strokeRect(-13,-9,28,18);
+      context.fillStyle='#f0c76b';context.fillRect(4,-5,8,10);
+      context.fillStyle='#fff0b1';context.beginPath();context.arc(16,0,3,0,Math.PI*2);context.fill();
+    } else {
+      context.fillStyle='#f0d365';
+      context.beginPath();
+      context.moveTo(20,0);context.lineTo(-12,-10);context.lineTo(-8,0);context.lineTo(-12,10);
+      context.closePath();context.fill();
+    }
     context.restore();
   }
 
@@ -1643,17 +2020,18 @@
     const baseRadius=Number(smoke.radius)||260;
     const radius=baseRadius*(.62+.38*Math.min(1,age/.72));
     const fade=Math.min(1,(Number(smoke.expiresAt)-now)/2500);
+    const gas=!!smoke.gas;
     const gradient=context.createRadialGradient(smoke.x,smoke.y,radius*.06,smoke.x,smoke.y,radius);
-    gradient.addColorStop(0,'rgba(29,35,31,.98)');
-    gradient.addColorStop(.52,'rgba(39,46,41,.96)');
-    gradient.addColorStop(.84,'rgba(49,57,51,.82)');
-    gradient.addColorStop(1,'rgba(57,66,59,.12)');
+    gradient.addColorStop(0,gas?'rgba(125,137,38,.96)':'rgba(29,35,31,.98)');
+    gradient.addColorStop(.52,gas?'rgba(113,125,39,.9)':'rgba(39,46,41,.96)');
+    gradient.addColorStop(.84,gas?'rgba(91,103,43,.72)':'rgba(49,57,51,.82)');
+    gradient.addColorStop(1,gas?'rgba(89,99,39,.1)':'rgba(57,66,59,.12)');
     context.save();
     context.globalAlpha=.94*fade;
     context.fillStyle=gradient;
     context.beginPath();context.arc(smoke.x,smoke.y,radius,0,Math.PI*2);context.fill();
     context.globalAlpha=.35*fade;
-    context.fillStyle='#343c36';
+    context.fillStyle=gas?'#747c35':'#343c36';
     for (let puff=0;puff<5;puff++) {
       const phase=age*1.1+puff*1.9+Number(smoke.seed||0);
       const angle=puff*Math.PI*2/5+Number(smoke.seed||0)+Math.sin(phase)*.12;
@@ -1663,6 +2041,13 @@
       context.ellipse(smoke.x+Math.cos(angle)*offset,smoke.y+Math.sin(angle)*offset-drift,
         radius*(.4+Math.sin(phase)*.025),radius*(.32+Math.cos(phase)*.02),angle,0,Math.PI*2);
       context.fill();
+    }
+    if (gas) {
+      context.globalAlpha=.9*fade;
+      context.fillStyle='#e7eb9a';
+      context.font='bold 16px system-ui';
+      context.textAlign='center';
+      context.fillText('MUSTARD GAS',smoke.x,smoke.y-radius*.72);
     }
     context.restore();
   }
@@ -1866,7 +2251,7 @@
     context.fillStyle = '#101713';
     context.font = 'bold 20px system-ui';
     context.textAlign = 'center';
-    context.fillText(String(player.name || '?').slice(0,8),x,y+3);
+    context.fillText(String(player.name || '?').slice(0,8)+(player.houseInside?' · F'+(Number(player.houseFloor||0)+1):''),x,y+3);
     context.fillStyle = '#070b09';
     context.fillRect(x-44,y-54,88,10);
     context.fillStyle = player.downed?'#e9c967':Number(player.hp) > 50 ? '#65e6ad' : '#ff7782';
@@ -1889,7 +2274,7 @@
       '</span><span>'+(vehicleWeapons[player.vehicle]?weapon.name+' ammo':
         weaponSlot==='secondary'?'Secondary ammo':'Primary ammo')+': ' +
       ammo + ' / ' + weapon.mag + '</span><span>Level ' + progress.level +
-      ' · XP ' + progress.xp + ' / ' + (progress.level===55?progress.xp:(progress.level*xpPerLevel)) + '</span>';
+      ' · XP ' + progress.xp + ' / ' + (progress.level===maxLevel?progress.xp:(progress.level*xpPerLevel)) + '</span>';
     if (markup!==lastStatsMarkup) { ui.stats.innerHTML=markup;lastStatsMarkup=markup; }
     updateCombatHud(player,weapon,ammo,weaponSlot);
     updateWeaponSwitchUi(player);
@@ -1940,8 +2325,14 @@
   }
 
   function onPointerDown(event) {
-    if (event.button !== 0||paused) return;
+    if (event.button !== 0||paused||warState?.matchPhase!=='playing') return;
     onPointerMove(event);
+    if (supportTargeting) {
+      event.preventDefault();
+      const target={x:aim.x,y:aim.y};
+      launchSupportStrike(target).catch(error=>setStatus(error.message||'Support strike failed.',true));
+      return;
+    }
     pointerDown = true;
     ui.canvas.setPointerCapture(event.pointerId);
     fireWeapon();
@@ -1954,7 +2345,7 @@
     if (holdButton&&container.contains(holdButton)&&warState.players[playerKey]?.downed) {
       event.preventDefault();
       holdButton.setPointerCapture(event.pointerId);
-      if (!giveUpInterval) giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},1500);
+      if (!giveUpInterval) giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},2000);
       return;
     }
     const control=event.target.closest('[data-war-move],[data-war-fire]');
@@ -2001,6 +2392,13 @@
     ui.weaponSwitch.disabled=!!vehicleWeapon;
     ui.weaponSwitch.textContent=vehicleWeapon?vehicleWeapon.name+' active':
       player.activeWeaponSlot==='secondary'?'Secondary (2) · switch to Primary (1)':'Primary (1) · switch to Secondary (2)';
+    if (ui.attachmentAction) {
+      const slot=player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'
+        ?'secondary':'primary';
+      const ability=vehicleWeapon?null:effectiveWeapon(player,slot).utilityAttachment;
+      ui.attachmentAction.hidden=!ability;
+      ui.attachmentAction.textContent=ability?ability.name+' (Tab)':'Underbarrel (Tab)';
+    }
   }
 
   async function toggleDroneControl() {
@@ -2018,11 +2416,27 @@
     if (key==='escape') {
       event.preventDefault();
       if (ui?.spawnMenu&&!ui.spawnMenu.hidden) closeVehicleSpawnMenu();
+      else if (supportTargeting) { supportTargeting='';setStatus('Strike targeting cancelled.');draw(); }
       else togglePause();
+      return;
+    }
+    if (key==='tab'&&!paused&&!(target&&target.closest('input,textarea,[contenteditable="true"]'))) {
+      event.preventDefault();
+      useWeaponAttachment();
+      return;
+    }
+    if ((key==='`'||event.code==='Backquote')&&!paused) {
+      event.preventDefault();
+      if (!event.repeat) useTactical();
       return;
     }
     if (target&&target.closest('input,textarea,[contenteditable="true"]')) return;
     if (target instanceof HTMLSelectElement&&key!=='v') return;
+    if (key==='p') {
+      event.preventDefault();
+      togglePause();
+      return;
+    }
     if (['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright','r','e','v','q','f','g','x','c','z','1','2','shift'].includes(key)) event.preventDefault();
     if (event.repeat&&!['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(key)) return;
     if (/^[a-z]$/.test(key)) {
@@ -2036,7 +2450,7 @@
     if (paused) return;
     if (key==='shift') { toggleDroneControl();return; }
     if (key==='g'&&warState&&warState.players[playerKey]?.downed&&!giveUpInterval) {
-      giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},1500);
+      giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},2000);
     }
     keys.add(key);
     if (key==='1'||key==='2') {
@@ -2056,7 +2470,13 @@
       if (!currentTransport) enterOrExitHouse();
       else if (!isTransportPilot) keys.delete(key);
     }
-    if (key === 'f') reviveNearby();
+    if (key === 'f') {
+      const player=warState&&warState.players[playerKey];
+      if (player?.downed) {
+        if (Number(player.selfRevives||0)>0) useSelfRevive();
+        else setStatus('No self-revive charge. Hold G for 2 seconds to give up, or wait for auto give-up.',true);
+      } else reviveNearby();
+    }
     if (key === 'x') useTactical();
     if (key === 'c') useLethal();
     if (key === 'z') applyArmorPlate();
@@ -2074,7 +2494,7 @@
 
   async function fireWeapon() {
     const now = Date.now();
-    if (destroyed||paused||now-lastShot<30||reloading) return;
+    if (destroyed||paused||warState?.matchPhase!=='playing'||now-lastShot<30||reloading) return;
     const shooter = warState && warState.players[playerKey];
     if (!shooter || shooter.respawnAt > now || shooter.hp <= 0 || shooter.downed) return;
     const transport=shooter.transportId&&warState.vehicles[shooter.transportId];
@@ -2094,7 +2514,8 @@
     const weapon=vehicleWeapon||effectiveWeapon(shooter,weaponSlot);
     const ammoField=vehicleWeapon?'vehicleAmmo':weaponSlot==='secondary'?'secondaryAmmo':'ammo';
     const weaponField=weaponSlot==='secondary'?'secondary':'weapon';
-    const ammoCost=weapon.dualWield?2:1;
+    const burstCount=Math.max(1,Math.floor(Number(weapon.burstRounds)||1));
+    const ammoCost=(weapon.dualWield?2:1)*burstCount;
     if (now - lastShot < weapon.rate) return;
     if (Number(shooter[ammoField]||0) < ammoCost) { setStatus('Magazine empty. Press R to reload.'); return; }
     lastShot = now;
@@ -2118,14 +2539,20 @@
     lastRecoilAt=now;
     const origin = {...shooter,x:Number(shooterPosition.x),y:Number(shooterPosition.y)};
     const flashAngle=Math.atan2(aim.y-origin.y,aim.x-origin.x)-recoilKick;
-    muzzleFlashes.push({x:origin.x+Math.cos(flashAngle)*48,y:origin.y+Math.sin(flashAngle)*48,
-      angle:flashAngle,time:Date.now()});
-    if (muzzleFlashes.length>24) muzzleFlashes.shift();
+    for (let flash=0;flash<burstCount;flash++) {
+      muzzleFlashes.push({x:origin.x+Math.cos(flashAngle)*48,y:origin.y+Math.sin(flashAngle)*48,
+        angle:flashAngle,time:Date.now()+flash*18});
+      if (muzzleFlashes.length>24) muzzleFlashes.shift();
+    }
     const pelletCount=Math.max(1,Math.floor(Number(weapon.pellets)||1));
-    const pelletDamage=Math.max(1,Math.round(weapon.damage/pelletCount));
+    const projectileCount=pelletCount*burstCount;
+    const projectileDamage=burstCount>1?weapon.damage:Math.max(1,Math.round(weapon.damage/pelletCount));
     try {
-      for (let pellet=0;pellet<pelletCount;pellet++) {
-        const angle=Math.atan2(aim.y-origin.y,aim.x-origin.x)+(Math.random()-.5)*weapon.spread-recoilKick;
+      for (let pellet=0;pellet<projectileCount;pellet++) {
+        if (pellet>0&&burstCount>1) playSound('shot');
+        const burstStep=pellet%burstCount;
+        const burstSpread=burstCount>1?(burstStep-(burstCount-1)/2)*weapon.spread*.22:0;
+        const angle=Math.atan2(aim.y-origin.y,aim.x-origin.x)+(Math.random()-.5)*weapon.spread-recoilKick+burstSpread;
         const end={
           x:Math.max(0,Math.min(worldWidth,origin.x+Math.cos(angle)*weapon.range)),
           y:Math.max(0,Math.min(worldHeight,origin.y+Math.sin(angle)*weapon.range))
@@ -2160,13 +2587,13 @@
             }
           }
         } else if (impact&&impact.target) {
-          await hitPlayer(impact.target,pelletDamage,shooter);
+          await hitPlayer(impact.target,projectileDamage,shooter);
         } else if (impact&&impact.turret) {
-          await hitTurret(impact.turretId,pelletDamage);
+          await hitTurret(impact.turretId,projectileDamage);
         } else if (impact&&impact.transport) {
           await hitTransport(impact.transportId,weapon.aircraftDamage||125);
         } else if (baseHit) {
-          await raidBase(baseHit.team,pelletDamage,shooter.team);
+          await raidBase(baseHit.team,projectileDamage,shooter.team);
         }
       }
     } catch(error) {
@@ -2285,7 +2712,7 @@
       try { await grantXpByName(attacker.name,100,'enemy eliminated'); }
       catch(error) { setStatus('Elimination counted, but XP could not be saved: '+error.message,true); }
     } else if (downed && targetKey===playerKey) {
-      setStatus('You are downed. A teammate can revive you; hold G to give up.');
+      setStatus('You are downed. F uses a self-revive if charged; hold G for 2 seconds to give up. Auto give-up in 10 seconds.');
     }
   }
 
@@ -2314,7 +2741,7 @@
       const fraction=segmentRectIntersection(x1,y1,x2,y2,rect,4);
       if (fraction!==null&&fraction<closestFraction) { closestFraction=fraction;blocked=true; }
     };
-    for (const item of obstacles) {
+    for (const item of mapObstacles) {
       if (penetratesWalls&&(item.type==='building'||item.type==='house')) continue;
       checkRect(item);
     }
@@ -2334,9 +2761,13 @@
   function equipmentChoices(player) {
     const tactical=[['smoke','Smoke grenade · '+Number(player.smokeCharges||0)] ,
       ['stim','Stim · '+Number(player.stimCharges||0)]];
+    if (Number(player.grappleCharges||0)>0) tactical.push(['grapple','Grapple hook · '+player.grappleCharges]);
+    if (Number(player.airstrikeCharges||0)>0) tactical.push(['airstrike','Precision airstrike · '+player.airstrikeCharges]);
+    if (Number(player.bunkerBusterCharges||0)>0) tactical.push(['bunker_buster','Bunker buster · '+player.bunkerBusterCharges]);
     const lethal=[['grenade','Frag grenade · '+Number(player.grenadeCharges||0)],
       ['claymore','Claymore · '+Number(player.claymoreCharges||0)]];
     if (Number(player.droneCharges||0)>0) lethal.push(['drone','Kamikaze drone · '+player.droneCharges]);
+    if (Number(player.rcCarCharges||0)>0) lethal.push(['rc_car','RC kamikaze car · '+player.rcCarCharges]);
     if (Number(player.turretCharges||0)>0) lethal.push(['turret','Sentry turret · '+player.turretCharges]);
     return {tactical,lethal};
   }
@@ -2358,7 +2789,9 @@
 
   async function consumeEquipment(slot,item) {
     const chargeField={smoke:'smokeCharges',stim:'stimCharges',grenade:'grenadeCharges',
-      claymore:'claymoreCharges',turret:'turretCharges',drone:'droneCharges'}[item];
+      claymore:'claymoreCharges',turret:'turretCharges',drone:'droneCharges',
+      grapple:'grappleCharges',airstrike:'airstrikeCharges',bunker_buster:'bunkerBusterCharges',
+      rc_car:'rcCarCharges'}[item];
     if (!chargeField) throw new Error('Unknown equipment.');
     let used=false;
     await mutatePlayer(current=>{
@@ -2366,19 +2799,130 @@
       if (!used) return current;
       const remaining=Number(current[chargeField])-1;
       const fallback=slot==='tactical'?'smoke':'grenade';
+      const shouldFallback=remaining===0&&(slot==='tactical'
+        ?['turret','drone','grapple','airstrike','bunker_buster'].includes(item)
+        :['turret','drone','rc_car'].includes(item));
       return {...current,[chargeField]:remaining,
-        ...(remaining===0&&['turret','drone'].includes(item)?{[slot]:fallback}:{})};
+        ...(shouldFallback?{[slot]:fallback}:{})};
     });
     if (!used) throw new Error('Equip this item and make sure you have a charge available.');
+  }
+
+  async function useWeaponAttachment() {
+    const player=warState&&warState.players[playerKey];
+    if (!player||player.downed||player.hp<=0||player.transportId||vehicles[player.vehicle]) {
+      setStatus('Underbarrel launchers can only be used on foot.',true);return;
+    }
+    const weaponSlot=player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'
+      ?'secondary':'primary';
+    const weapon=effectiveWeapon(player,weaponSlot);
+    const attachment=weapon.utilityAttachment;
+    if (!attachment) { setStatus('Equip a mini grenade or smoke launcher attachment first.',true);return; }
+    const now=Date.now();
+    if (now<attachmentCooldownUntil) {
+      setStatus('Underbarrel launcher ready in '+((attachmentCooldownUntil-now)/1000).toFixed(1)+'s.');return;
+    }
+    const position=localPosition||player;
+    if (isInOwnSafeZone(playerTeam,Number(position.x),Number(position.y))) {
+      setStatus('Underbarrel launchers are disabled inside your team safe zone.',true);return;
+    }
+    const maxDistance=attachment.utility==='underbarrelFrag'?620:500;
+    const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+    const distance=aimActive?Math.min(maxDistance,Math.hypot(aim.x-position.x,aim.y-position.y)):maxDistance;
+    const destination={
+      x:Math.max(0,Math.min(worldWidth,position.x+Math.cos(angle)*distance)),
+      y:Math.max(0,Math.min(worldHeight,position.y+Math.sin(angle)*distance))
+    };
+    const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
+    try {
+      if (attachment.utility==='underbarrelFrag') {
+        playSound('throw');
+        const id='underbarrel_frag_'+playerKey+'_'+now;
+        const detonateAt=now+750;
+        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,
+          x:impact.x,y:impact.y,startX:position.x,startY:position.y,
+          targetX:impact.x,targetY:impact.y,createdAt:now,detonateAt,expiresAt:detonateAt+1000,
+          radius:125,damage:68,splashDamage:42,directRadius:42}));
+        setStatus('Mini grenade launched. It detonates in 0.75 seconds.');
+      } else if (attachment.utility==='underbarrelSmoke') {
+        const id='underbarrel_smoke_'+playerKey+'_'+now;
+        await updateWar('smokes',current=>({...Object.fromEntries(Object.entries(current||{})
+          .filter(([,entry])=>entry&&Number(entry.expiresAt)>now)),[id]:{
+            team:playerTeam,x:impact.x,y:impact.y,radius:220,seed:Math.random()*Math.PI*2,
+            createdAt:now,expiresAt:now+10000
+          }}));
+        setStatus('Underbarrel smoke deployed. It blocks sight for 10 seconds.');
+      }
+      attachmentCooldownUntil=Date.now()+Number(attachment.utilityCooldown||7000);
+    } catch(error) { setStatus(error.message||'Could not use the underbarrel launcher.',true); }
+  }
+
+  function beginSupportTargeting(item) {
+    const player=warState&&warState.players[playerKey];
+    const chargeField=item==='airstrike'?'airstrikeCharges':'bunkerBusterCharges';
+    if (!player||!Number(player[chargeField]||0)) {
+      setStatus('Purchase this support strike at your base first.',true);return;
+    }
+    supportTargeting=item;
+    setStatus('Laser pointer active. Aim around the map and click to mark the '+
+      (item==='airstrike'?'precision airstrike.':'bunker-buster impact.'));
+    draw();
+  }
+
+  async function launchSupportStrike(target) {
+    const item=supportTargeting;
+    supportTargeting='';
+    if (!['airstrike','bunker_buster'].includes(item)) return;
+    try {
+      await consumeEquipment('tactical',item);
+      const now=Date.now();
+      if (item==='airstrike') {
+        const pattern=[[-72,-34],[-36,28],[0,0],[36,-28],[72,34]];
+        for (let index=0;index<pattern.length;index++) {
+          const x=Math.max(80,Math.min(worldWidth-80,target.x+pattern[index][0]));
+          const y=Math.max(100,Math.min(worldHeight-100,target.y+pattern[index][1]));
+          const id='airstrike_'+playerKey+'_'+now+'_'+index;
+          const detonateAt=now+950+index*170;
+          await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,effect:'airstrike',
+            x,y,startX:x-420,startY:y-620,targetX:x,targetY:y,createdAt:now,detonateAt,
+            expiresAt:detonateAt+900,radius:140,damage:100,splashDamage:58,directRadius:55}));
+        }
+        setStatus('Precision airstrike inbound. Impact in about one second.');
+      } else {
+        const id='bunker_buster_'+playerKey+'_'+now;
+        const detonateAt=now+1250;
+        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,effect:'bunker_gas',
+          x:target.x,y:target.y,startX:target.x-320,startY:target.y-700,
+          targetX:target.x,targetY:target.y,createdAt:now,detonateAt,expiresAt:detonateAt+1000,
+          radius:205,damage:120,splashDamage:65,directRadius:75}));
+        setStatus('Bunker buster inbound. Impact will leave a dangerous gas cloud.');
+      }
+      refreshEquipmentUi();
+    } catch(error) { setStatus(error.message||'Could not launch the support strike.',true); }
+    draw();
   }
 
   async function useTactical() {
     const player=warState&&warState.players[playerKey];
     if (!player||player.downed||player.transportId) return;
     const item=player.tactical;
+    if (item==='airstrike'||item==='bunker_buster') { beginSupportTargeting(item);return; }
     try {
-      await consumeEquipment('tactical',item);
       const position=localPosition||player;
+      if (item==='grapple') {
+        const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+        const range=950;
+        const end={x:position.x+Math.cos(angle)*range,y:position.y+Math.sin(angle)*range};
+        const anchor=firstSolidObstruction(position.x,position.y,end.x,end.y);
+        if (!anchor) throw new Error('Aim at a wall, building, or solid obstacle to grapple.');
+        await consumeEquipment('tactical',item);
+        grapplePull={x:anchor.x-Math.cos(angle)*44,y:anchor.y-Math.sin(angle)*44};
+        movementVelocity={x:0,y:0};
+        setStatus('Grapple launched. Pulling you to the surface.');
+        refreshEquipmentUi();
+        return;
+      }
+      await consumeEquipment('tactical',item);
       if (item==='smoke') {
         const id='smoke_'+playerKey+'_'+Date.now();
         const distance=Math.min(500,Math.hypot(aim.x-position.x,aim.y-position.y));
@@ -2410,7 +2954,18 @@
     if (!player||player.downed||player.transportId) return;
     const item=player.lethal;
     try {
-      if (item==='drone') {
+      if (item==='rc_car') {
+        if (warState.drones[playerKey]) { setStatus('Your remote vehicle is already active.',true);return; }
+        await consumeEquipment('lethal',item);
+        const position=localPosition||player;
+        const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+        const car={type:'rc_car',owner:playerName,team:playerTeam,x:position.x,y:position.y,
+          angle,hp:1,manual:true,lastWriteAt:0};
+        await updateWar('drones/'+playerKey,()=>car);
+        localDronePosition={x:car.x,y:car.y,angle:car.angle};
+        lastDroneWriteAt=Date.now();activeDrone=true;droneControlled=true;
+        setStatus('RC kamikaze car launched. WASD steers; Shift releases control.');
+      } else if (item==='drone') {
         if (warState.drones[playerKey]) { setStatus('Your drone is already active.',true);return; }
         await launchDrone();
       } else if (item==='turret') {
@@ -2498,22 +3053,62 @@
       const updated=await updateWar('grenades/'+id,current=>{
         detonated=null;
         if (!current||current.detonatedAt||Number(current.detonateAt)>now) return current;
-        detonated={...current,detonatedAt:now,expiresAt:now+650,radius:155};
+        detonated={...current,detonatedAt:now,expiresAt:now+650,radius:Number(current.radius)||155};
         return detonated;
       });
       if (updated&&warState) warState.grenades[id]=updated;
       if (!detonated) continue;
       playSound('explosion');
       const x=Number(detonated.targetX??detonated.x),y=Number(detonated.targetY??detonated.y);
+      const radius=Number(detonated.radius)||155;
+      if (detonated.effect==='bunker_gas') {
+        const gasId='gas_'+id;
+        await updateWar('smokes/'+gasId,current=>current||{
+          team:detonated.team,owner:detonated.owner,gas:true,x,y,radius:285,
+          seed:Math.random()*Math.PI*2,createdAt:now,expiresAt:now+18_000,nextDamageAt:now+1000
+        });
+      }
+      const directRadius=Number(detonated.directRadius)||55;
+      const directDamage=Number(detonated.damage)||90;
+      const splashDamage=Number(detonated.splashDamage)||50;
       for (const enemy of Object.values(warState.players||{})) {
         if (!enemy||enemy.team===detonated.team||enemy.transportId||!enemy.online) continue;
         const distance=Math.hypot(Number(enemy.x)-x,Number(enemy.y)-y);
-        if (distance<155) await hitPlayer(enemy,distance<55?90:50,
-          {name:detonated.owner||'Grenade',team:detonated.team});
+        if (distance<radius&&!lineBlocked(x,y,Number(enemy.x),Number(enemy.y)))
+          await hitPlayer(enemy,distance<directRadius?directDamage:splashDamage,
+            {name:detonated.owner||'Grenade',team:detonated.team});
       }
-      if (detonated.owner===playerName) setStatus('Frag grenade detonated.');
+      if (detonated.owner===playerName) setStatus(detonated.effect==='bunker_gas'
+        ?'Bunker buster detonated. Mustard gas is spreading.'
+        :detonated.effect==='airstrike'?'Precision airstrike impact.':'Frag grenade detonated.');
     }
   }
+
+  async function updateGasHazards() {
+    if (!warState||destroyed) return;
+    const now=Date.now();
+    for (const [id,cloud] of Object.entries(warState.smokes||{})) {
+      if (!cloud||!cloud.gas) continue;
+      if (Number(cloud.expiresAt)<=now) {
+        await updateWar('smokes/'+id,current=>current&&current.gas&&Number(current.expiresAt)<=now?null:current);
+        continue;
+      }
+      let damageTick=false;
+      await updateWar('smokes/'+id,current=>{
+        damageTick=!!current&&current.gas&&Number(current.expiresAt)>now&&Number(current.nextDamageAt||0)<=now;
+        return damageTick?{...current,nextDamageAt:now+1000}:current;
+      });
+      if (!damageTick) continue;
+      for (const player of Object.values(warState.players||{})) {
+        if (!player||!player.online||player.team===cloud.team||player.transportId||player.hp<=0) continue;
+        const x=Number(player.x),y=Number(player.y);
+        if (Math.hypot(x-Number(cloud.x),y-Number(cloud.y))<=Number(cloud.radius||285)&&
+            !firstSolidObstruction(Number(cloud.x),Number(cloud.y),x,y))
+          await hitPlayer(player,14,{name:cloud.owner||'Bunker buster',team:cloud.team});
+      }
+    }
+  }
+
   async function updateTurrets() {
     if (!warState||destroyed) return;
     const now=Date.now();
@@ -2538,41 +3133,132 @@
     }
   }
 
+  function cancelReviveChannel(message='') {
+    if (reviveChannelTimer) clearInterval(reviveChannelTimer);
+    reviveChannelTimer=0;
+    const channel=reviveChannel;
+    reviveChannel=null;
+    if (channel&&message) setStatus(message,true);
+  }
+
+  function beginReviveChannel(targetKey,selfRevive) {
+    if (reviveChannel) { setStatus('A revive is already in progress.',true);return; }
+    const player=warState&&warState.players[playerKey];
+    const target=warState&&warState.players[targetKey];
+    if (!player||player.transportId||
+      (selfRevive?!player.downed:player.downed||player.hp<=0)) {
+      setStatus('You cannot revive while downed or in a vehicle.',true);return;
+    }
+    if (selfRevive&&(!player.downed||Number(player.selfRevives||0)<1)) {
+      setStatus('You need to be downed and have a self-revive charge.',true);return;
+    }
+    if (selfRevive&&Date.now()-Number(player.downedAt||0)>=10_000) {
+      setStatus('It is too late to start a self-revive.',true);return;
+    }
+    if (!selfRevive&&(!target||target.team!==playerTeam||!target.downed||
+        Date.now()-Number(target.downedAt||0)>=10_000)) {
+      setStatus('That teammate cannot be revived.',true);return;
+    }
+    const position=localPosition||player;
+    if (!selfRevive&&Math.hypot(Number(target.x)-Number(position.x),Number(target.y)-Number(position.y))>=145) {
+      setStatus('Move close to a downed teammate to revive them.',true);return;
+    }
+    const channel={targetKey,selfRevive,startedAt:Date.now(),startX:Number(position.x),startY:Number(position.y),
+      startHp:Number(player.hp),lastCountdown:5,finishing:false};
+    reviveChannel=channel;
+    setStatus((selfRevive?'Self-revive':'Reviving teammate')+' · 5 seconds. Stay still.');
+    reviveChannelTimer=window.setInterval(async()=>{
+      if (reviveChannel!==channel||channel.finishing) return;
+      const now=Date.now();
+      const rescuer=warState&&warState.players[playerKey];
+      const rescuerPosition=localPosition||rescuer;
+      const currentTarget=warState&&warState.players[channel.targetKey];
+      const moved=!rescuerPosition||Math.hypot(Number(rescuerPosition.x)-channel.startX,
+        Number(rescuerPosition.y)-channel.startY)>60;
+      const invalidRescuer=!rescuer||rescuer.transportId||moved||
+        (channel.selfRevive?!rescuer.downed:rescuer.hp<=0||rescuer.downed||Number(rescuer.hp)<channel.startHp);
+      const invalidTarget=channel.selfRevive
+        ?!rescuer?.downed||Number(rescuer?.selfRevives||0)<1||now-Number(rescuer?.downedAt||0)>=10_000
+        :!currentTarget||!currentTarget.downed||currentTarget.team!==playerTeam||
+          now-Number(currentTarget.downedAt||0)>=10_000||
+          !rescuerPosition||Math.hypot(Number(currentTarget.x)-Number(rescuerPosition.x),
+            Number(currentTarget.y)-Number(rescuerPosition.y))>=145;
+      if (invalidRescuer||invalidTarget) {
+        cancelReviveChannel('Revive interrupted.');
+        return;
+      }
+      const remaining=5000-(now-channel.startedAt);
+      if (remaining>0) {
+        const seconds=Math.ceil(remaining/1000);
+        if (seconds!==channel.lastCountdown) {
+          channel.lastCountdown=seconds;
+          setStatus((channel.selfRevive?'Self-revive':'Reviving teammate')+' · '+seconds+'s. Stay still.');
+        }
+        return;
+      }
+      channel.finishing=true;
+      clearInterval(reviveChannelTimer);
+      reviveChannelTimer=0;
+      reviveChannel=null;
+      try {
+        if (channel.selfRevive) {
+          let revived=false;
+          await mutatePlayer(current=>{
+            revived=!!current&&current.downed&&Number(current.selfRevives||0)>0&&
+              Date.now()-Number(current.downedAt||0)<10_000;
+            return revived?{...current,hp:50,downed:false,downedAt:0,respawnAt:0,
+              selfRevives:Number(current.selfRevives)-1,lastSeen:Date.now()}:current;
+          });
+          setStatus(revived?'Self-revive complete.':'Self-revive failed.',!revived);
+        } else {
+          let revived=false;
+          await updateWar('players/'+channel.targetKey,current=>{
+            revived=false;
+            const currentRescuer=warState&&warState.players[playerKey];
+            const currentPosition=localPosition||currentRescuer;
+            if (!current||!current.downed||current.team!==playerTeam||
+                Date.now()-Number(current.downedAt||0)>=10_000||!currentRescuer||
+                currentRescuer.downed||currentRescuer.hp<=0||!currentPosition||
+                Math.hypot(Number(current.x)-Number(currentPosition.x),
+                  Number(current.y)-Number(currentPosition.y))>=145) return current;
+            revived=true;
+            return {...current,hp:60,downed:false,downedAt:0,respawnAt:0,lastSeen:Date.now()};
+          });
+          setStatus(revived?'Teammate revived.':'Revive failed; your teammate is no longer downed.',!revived);
+        }
+      } catch(error) { setStatus(error.message||'The revive could not be completed.',true); }
+    },100);
+  }
+
   async function reviveNearby() {
     const player=warState&&warState.players[playerKey];
     if (!player||player.downed||player.hp<=0) return;
+    const position=localPosition||player;
     const ally=Object.entries(warState.players||{}).find(([,candidate])=>candidate&&candidate.team===playerTeam&&
-      candidate.downed&&Math.hypot(Number(candidate.x)-Number(localPosition?.x||player.x),
-        Number(candidate.y)-Number(localPosition?.y||player.y))<145);
+      candidate.downed&&Date.now()-Number(candidate.downedAt||0)<10_000&&
+      Math.hypot(Number(candidate.x)-Number(position.x),Number(candidate.y)-Number(position.y))<145);
     if (!ally) { setStatus('Move close to a downed teammate to revive them.',true);return; }
-    let revived=false;
-    await updateWar('players/'+ally[0],current=>{
-      if (!current||current.team!==playerTeam||!current.downed) return current;
-      revived=true;
-      return {...current,hp:60,downed:false,downedAt:0,respawnAt:0,lastSeen:Date.now()};
-    });
-    setStatus(revived?'Teammate revived.':'That teammate is no longer downed.',!revived);
+    beginReviveChannel(ally[0],false);
   }
 
   async function giveUp() {
     const player=warState&&warState.players[playerKey];
     if (!player||!player.downed||giveUpBusy) return;
+    cancelReviveChannel();
     giveUpBusy=true;
     try {
       await mutatePlayer(current=>current&&current.downed?{...current,hp:0,downed:false,
-        deaths:Number(current.deaths||0)+1,respawnAt:Date.now()+5000}:current);
+        downedAt:0,deaths:Number(current.deaths||0)+1,respawnAt:Date.now()+5000}:current);
       setStatus('You gave up. Respawning in five seconds.');
     } finally { giveUpBusy=false; }
   }
 
   async function useSelfRevive() {
-    let revived=false;
-    await mutatePlayer(current=>{
-      if (!current||!current.downed||Number(current.selfRevives||0)<1) return current;
-      revived=true;
-      return {...current,hp:50,downed:false,downedAt:0,respawnAt:0,selfRevives:current.selfRevives-1};
-    });
-    setStatus(revived?'Self-revive used.':'You need to be downed and have a self-revive available.',!revived);
+    const player=warState&&warState.players[playerKey];
+    if (!player||!player.downed||Number(player.selfRevives||0)<1) {
+      setStatus('You need to be downed and have a self-revive available.',true);return;
+    }
+    beginReviveChannel(playerKey,true);
   }
 
   async function applyArmorPlate() {
@@ -2597,27 +3283,39 @@
   async function enterOrExitHouse() {
     const position=localPosition||warState.players[playerKey];
     if (houseInside) {
-      const house=obstacles.find(item=>item.id===houseInside);
+      const house=mapObstacles.find(item=>item.id===houseInside);
       if (house) {
+        if (house.stairs&&Math.hypot(position.x-house.stairs.x,position.y-house.stairs.y)<115) {
+          const maxFloor=Math.max(2,Number(house.floorCount)||2);
+          houseFloor=(houseFloor+1)%maxFloor;
+          await mutatePlayer(current=>({...current,houseFloor,lastSeen:Date.now()}));
+          setStatus('Stairwell: floor '+(houseFloor+1)+' of '+maxFloor+'. You can fire across the open stairwell.');
+          draw();
+          return;
+        }
         localPosition={x:house.doorX+(house.doorX<=house.x?-32:32),y:house.doorY};
         houseInside='';
-        await mutatePlayer(current=>({...current,...localPosition,houseInside:''}));
+        houseFloor=0;
+        await mutatePlayer(current=>({...current,...localPosition,houseInside:'',houseFloor:0}));
         setStatus('Exited the building.');
       }
       return;
     }
-    const house=obstacles.find(item=>item.enterable&&Math.hypot(position.x-item.doorX,position.y-item.doorY)<110);
+    const house=mapObstacles.find(item=>item.enterable&&Math.hypot(position.x-item.doorX,position.y-item.doorY)<110);
     if (!house) { setStatus('Move to a marked house entrance to enter.',true);return; }
     houseInside=house.id;
+    houseFloor=0;
     localPosition={x:house.x+house.w/2,y:house.y+house.h/2};
     movementVelocity={x:0,y:0};
-    await mutatePlayer(current=>({...current,...localPosition,houseInside}));
+    await mutatePlayer(current=>({...current,...localPosition,houseInside,houseFloor:0}));
     setStatus('Inside '+house.id+'. Press Q to leave.');
   }
 
   async function purchaseFieldUpgrade(type) {
     const config={armor:{cost:150,label:'armor plate'},selfRevive:{cost:400,label:'self-revive'},
-      turret:{cost:350,label:'sentry turret'},drone:{cost:250,label:'kamikaze drone'}};
+      turret:{cost:350,label:'sentry turret'},drone:{cost:250,label:'kamikaze drone'},
+      grapple:{cost:450,label:'grapple hook'},airstrike:{cost:1800,label:'precision airstrike'},
+      bunkerBuster:{cost:2600,label:'bunker buster'},rcCar:{cost:1200,label:'RC kamikaze car'}};
     const item=config[type];
     if (!item) return;
     if (!nearOwnBase()) { setStatus('Field upgrades can only be purchased at your team base.',true);return; }
@@ -2639,6 +3337,14 @@
         await mutatePlayer(current=>({...current,selfRevives:Number(current.selfRevives||0)+1}));
       } else if (type==='drone') {
         await mutatePlayer(current=>({...current,droneCharges:Number(current.droneCharges||0)+1}));
+      } else if (type==='grapple') {
+        await mutatePlayer(current=>({...current,grappleCharges:Number(current.grappleCharges||0)+1}));
+      } else if (type==='airstrike') {
+        await mutatePlayer(current=>({...current,airstrikeCharges:Number(current.airstrikeCharges||0)+1}));
+      } else if (type==='bunkerBuster') {
+        await mutatePlayer(current=>({...current,bunkerBusterCharges:Number(current.bunkerBusterCharges||0)+1}));
+      } else if (type==='rcCar') {
+        await mutatePlayer(current=>({...current,rcCarCharges:Number(current.rcCarCharges||0)+1}));
       } else {
         await mutatePlayer(current=>({...current,turretCharges:Number(current.turretCharges||0)+1}));
       }
@@ -2720,26 +3426,31 @@
     let dx=droneControlled?(keys.has('d')?1:0)-(keys.has('a')?1:0):0;
     let dy=droneControlled?(keys.has('s')?1:0)-(keys.has('w')?1:0):0;
     if (dx||dy) localDronePosition.angle=Math.atan2(dy,dx);
-    const distance=430*elapsed;
+    const isRcCar=current.type==='rc_car';
+    const distance=(isRcCar?650:430)*elapsed;
     const next={x:localDronePosition.x+Math.cos(localDronePosition.angle)*distance,
       y:localDronePosition.y+Math.sin(localDronePosition.angle)*distance};
-    const obstacle=obstacles.some(item=>circleIntersectsRect(next.x,next.y,10,item))||
-      lootBoxIntersects(next.x,next.y,10);
+    const collisionRadius=isRcCar?16:10;
+    const obstacle=mapObstacles.some(item=>circleIntersectsRect(next.x,next.y,collisionRadius,item))||
+      lootBoxIntersects(next.x,next.y,collisionRadius);
     const hit=Object.values(warState.players||{}).find(enemy=>enemy&&enemy.team!==playerTeam&&enemy.online&&
-      enemy.hp>0&&!enemy.downed&&Math.hypot(Number(enemy.x)-next.x,Number(enemy.y)-next.y)<35);
+      enemy.hp>0&&!enemy.downed&&Math.hypot(Number(enemy.x)-next.x,Number(enemy.y)-next.y)<(isRcCar?44:35));
     const outOfBounds=next.x<70||next.x>worldWidth-70||next.y<110||next.y>worldHeight-110;
     if (obstacle||hit||outOfBounds||isInEnemySafeZone(playerTeam,next.x,next.y)) {
       const center=hit?{x:Number(hit.x),y:Number(hit.y)}:localDronePosition;
+      const blastRadius=isRcCar?220:180;
       const victims=Object.values(warState.players||{}).filter(enemy=>enemy&&enemy.team!==playerTeam&&
-        enemy.online&&enemy.hp>0&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<=180);
+        enemy.online&&enemy.hp>0&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<=blastRadius);
       for (const enemy of victims) {
-        const direct=enemy===hit&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<45;
-        hitPlayer(enemy,direct?60:30,{name:playerName,team:playerTeam})
+        const direct=enemy===hit&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<(isRcCar?65:45);
+        hitPlayer(enemy,direct?(isRcCar?120:60):(isRcCar?58:30),{name:playerName,team:playerTeam})
           .catch(error=>setStatus(error.message||'Drone damage failed.',true));
       }
       updateWar('drones',drones=>{const nextDrones={...(drones||{})};delete nextDrones[playerKey];return nextDrones;})
         .catch(error=>setStatus(error.message||'Could not remove the spent drone.',true));
-      activeDrone=false;localDronePosition=null;setStatus(hit?'Drone detonated on target.':'Drone detonated on impact.');return;
+      activeDrone=false;localDronePosition=null;
+      setStatus(isRcCar?(hit?'RC car detonated on target.':'RC car detonated on impact.'):
+        hit?'Drone detonated on target.':'Drone detonated on impact.');return;
     }
     const safeAngle=Number.isFinite(localDronePosition.angle)?localDronePosition.angle:0;
     localDronePosition={...next,angle:safeAngle};
@@ -2900,7 +3611,7 @@
 
   function vehicleDeploymentArea(position) {
     const atOwnBase=isInOwnSafeZone(playerTeam,Number(position.x),Number(position.y));
-    const insideBuilding=!!houseInside||obstacles.some(item=>(item.type==='building'||item.type==='house')&&
+    const insideBuilding=!!houseInside||mapObstacles.some(item=>(item.type==='building'||item.type==='house')&&
       circleIntersectsRect(Number(position.x),Number(position.y),12,item));
     const friendlyRelay=Object.entries(nodePositions).map(([id,node])=>({id,node,
       distance:Math.hypot(node.x-position.x,node.y-position.y)}))
@@ -3327,8 +4038,8 @@
       await updateAccountByName(owner,user=>{
         user.balance=Number(user.balance||0)+amount;
         const progress=normalizeProgress(user.dropzone);
-        progress.xp=Math.min(54*xpPerLevel,progress.xp+(xpShares[owner]||0));
-        progress.level=Math.min(55,Math.floor(progress.xp/xpPerLevel)+1);
+        progress.xp=Math.min((maxLevel-1)*xpPerLevel,progress.xp+(xpShares[owner]||0));
+        progress.level=Math.min(maxLevel,Math.floor(progress.xp/xpPerLevel)+1);
         user.dropzone=progress;
       });
     }
@@ -3339,8 +4050,20 @@
     }
   }
 
+  function setLoadoutStatus(message,error=false) {
+    if (ui?.loadoutStatus) {
+      ui.loadoutStatus.textContent=message;
+      ui.loadoutStatus.classList.toggle('error',error);
+    }
+    setStatus(message,error);
+  }
+
   async function equipLoadout(event) {
     event.preventDefault();
+    if (!warState||!accountData||!playerKey) {
+      setLoadoutStatus('Wait until Dropzone is connected before equipping a loadout.',true);
+      return;
+    }
     const weaponId=ui.weapon.value;
     const secondaryId=ui.secondaryWeapon.value;
     const chosen=[ui.attachment1.value,ui.attachment2.value].filter(Boolean);
@@ -3351,12 +4074,12 @@
       !accountData.dropzone.ownedAttachments.includes(id) ||
       (attachments[id].types&&!chosenWeapons.some(weapon=>weapon&&attachments[id].types.includes(weapon.type)))) ||
       new Set(chosen).size!==chosen.length) {
-      setStatus('Choose a primary, a pistol or explosive secondary, and attachments you own.',true);return;
+      setLoadoutStatus('Choose a primary, a pistol or explosive secondary, and attachments you own.',true);return;
     }
     const lockedWeapon=[weaponId,secondaryId].map(id=>weapons[id])
       .find(weapon=>weapon.level>accountData.dropzone.level);
     if (lockedWeapon) {
-      setStatus('Reach level '+lockedWeapon.level+' to unlock '+lockedWeapon.name+'.',true);return;
+      setLoadoutStatus('Reach level '+lockedWeapon.level+' to unlock '+lockedWeapon.name+'.',true);return;
     }
     try {
       const previous=warState.players[playerKey];
@@ -3382,19 +4105,19 @@
         secondaryAmmo:effectiveWeapon({...player,secondary:secondaryId,attachments:chosen},'secondary').mag}));
       refreshProgressUi();
       refreshEquipmentUi();
-      setStatus('Loadout equipped.');
-    } catch(error) { setStatus(error.message,true); }
+      setLoadoutStatus('Loadout equipped.');
+    } catch(error) { setLoadoutStatus(error.message||'Could not equip this loadout.',true); }
   }
 
   function refreshProgressUi() {
     if (!ui || !accountData) return;
     const progress=normalizeProgress(accountData.dropzone);
     accountData.dropzone=progress;
-    const inLevel=progress.level===55?xpPerLevel:progress.xp%xpPerLevel;
-    const remaining=progress.level===55?0:xpPerLevel-inLevel;
-    ui.progress.innerHTML='<div class="nexus-war-progress-heading"><strong>Level '+progress.level+' / 55</strong><span>'+progress.xp.toLocaleString()+' XP'+
-      (progress.level===55?' · MAX':' · '+remaining.toLocaleString()+' to next level')+'</span></div><div class="nexus-war-progress-bar"><span style="width:'+
-      (progress.level===55?100:inLevel/xpPerLevel*100)+'%"></span></div><small>Eliminations and captured relays earn XP. Progress and purchased attachments stay with your Nexus account after weekly wipes.</small>';
+    const inLevel=progress.level===maxLevel?xpPerLevel:progress.xp%xpPerLevel;
+    const remaining=progress.level===maxLevel?0:xpPerLevel-inLevel;
+    ui.progress.innerHTML='<div class="nexus-war-progress-heading"><strong>Level '+progress.level+' / '+maxLevel+'</strong><span>'+progress.xp.toLocaleString()+' XP'+
+      (progress.level===maxLevel?' · MAX':' · '+remaining.toLocaleString()+' to next level')+'</span></div><div class="nexus-war-progress-bar"><span style="width:'+
+      (progress.level===maxLevel?100:inLevel/xpPerLevel*100)+'%"></span></div><small>Eliminations and captured relays earn XP. Progress and purchased attachments stay with your Nexus account after weekly wipes.</small>';
     const balance=Number(accountData.balance||0);
     ui.wallet.textContent='Sektorium: '+balance.toLocaleString();
     for (const part of weaponColorParts) {
@@ -3495,9 +4218,18 @@
       return;
     }
     if (button.dataset.warAction==='join-dropzone-team') chooseDropzoneTeam(button.dataset.team);
+    if (button.dataset.warAction==='vote-map')
+      submitMapVote(button.dataset.mapId).catch(error=>setStatus(error.message||'Could not record your map vote.',true));
+    if (button.hasAttribute('data-vote-team')) {
+      selectedVoteTeam=button.dataset.voteTeam;
+      renderMapVotes();
+    }
     if (button.dataset.warAction==='pause-game') togglePause(true);
     if (button.dataset.warAction==='resume-game') togglePause(false);
     if (button.dataset.warAction==='audio-toggle') toggleSound();
+    if (button.dataset.warAction==='secret-xp')
+      grantSecretReward().catch(error=>setStatus(error.message||'Secret reward could not be saved.',true));
+    if (button.dataset.warAction==='use-attachment') useWeaponAttachment();
     if (button.dataset.warAction==='color-weapons') colorWeapons();
     if (button.dataset.warAction==='close-spawn-menu') closeVehicleSpawnMenu();
     if (button.dataset.warAction==='spawn-selected-vehicle') deployVehicle(ui.spawnVehicle.value);
@@ -3513,12 +4245,16 @@
     if (button.dataset.warAction==='turret') purchaseFieldUpgrade('turret');
     if (button.dataset.warAction==='self-revive-buy') purchaseFieldUpgrade('selfRevive');
     if (button.dataset.warAction==='drone-buy') purchaseFieldUpgrade('drone');
+    if (button.dataset.warAction==='grapple-buy') purchaseFieldUpgrade('grapple');
+    if (button.dataset.warAction==='airstrike-buy') purchaseFieldUpgrade('airstrike');
+    if (button.dataset.warAction==='bunker-buster-buy') purchaseFieldUpgrade('bunkerBuster');
+    if (button.dataset.warAction==='rc-car-buy') purchaseFieldUpgrade('rcCar');
     if (button.dataset.warAction==='drone-launch') useLethal();
     if (button.dataset.warAction==='use-tactical') useTactical();
     if (button.dataset.warAction==='use-lethal') useLethal();
     if (button.dataset.warAction==='drone-toggle') toggleDroneControl();
     if (button.dataset.warAction==='give-up'&&warState.players[playerKey]?.downed) {
-      setStatus('Hold the give-up button for 1.5 seconds to respawn.');
+      setStatus('Hold the give-up button for 2 seconds to give up.');
     }
   }
 
@@ -3567,7 +4303,7 @@
       '<div class="nexus-war-touch"><div class="nexus-war-pad"><button type="button" data-war-move="up" aria-label="Move up">▲</button><button type="button" data-war-move="left" aria-label="Move left">◀</button><button type="button" data-war-move="down" aria-label="Move down">▼</button><button type="button" data-war-move="right" aria-label="Move right">▶</button></div><button type="button" class="nexus-war-fire" data-war-fire>Fire</button></div>' +
       '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Stims restore up to 45 health and boost movement speed for 8 seconds. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
       '<section class="nexus-war-attachment-shop"><h3>Attachment shop</h3><p>Buy permanent upgrades with your Nexus Sektorium.</p><div data-war-attachment-shop></div></section>' +
-      '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Two assault rifles · two SMGs · two snipers · RPG-4 · Xenophage</span><small>Weapons unlock at levels 1–55. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
+      '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Primary and secondary weapons across nine classes · unlocks through level 100</span><small>Weapons unlock at levels 1–100. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
     const hud=document.createElement('div');
     hud.className='nexus-war-hud';
     hud.dataset.warHud='';
@@ -3605,7 +4341,16 @@
       vehicle:container.querySelector('[data-war-vehicle]'),
       reload:container.querySelector('[data-war-action="reload"]')
     };
+    ui.form.addEventListener('submit',equipLoadout);
     ui.mapWrap=container.querySelector('.nexus-war-map-wrap');
+    ui.mapVoteOverlay=document.createElement('section');
+    ui.mapVoteOverlay.className='nexus-war-map-vote';
+    ui.mapVoteOverlay.hidden=true;
+    ui.mapVoteOverlay.setAttribute('role','dialog');
+    ui.mapVoteOverlay.setAttribute('aria-modal','true');
+    ui.mapVoteOverlay.innerHTML='<header><div><span>ROUND COMPLETE</span><h2>Choose the next map</h2><p>Pick your team, then vote. The map with the most votes wins in <strong data-map-vote-timer>15s</strong>.</p></div></header><div class="nexus-war-vote-teams"><span>Next round team</span><button type="button" data-vote-team="vortex">Vortex</button><button type="button" data-vote-team="krypton">Krypton</button></div><div class="nexus-war-map-vote-grid">'+
+      mapCatalog.map(map=>'<article class="nexus-war-map-option"><canvas width="300" height="150" data-map-preview="'+map.id+'" aria-label="Preview of '+map.name+'"></canvas><div><strong>'+map.name+'</strong><small>'+map.variant+' · '+map.points.length+' control points'+(map.special?' · Special rules':'')+'</small></div><button type="button" data-war-action="vote-map" data-map-id="'+map.id+'">Vote · <span data-vote-count="'+map.id+'">0</span></button></article>').join('')+'</div>';
+    ui.mapWrap.appendChild(ui.mapVoteOverlay);
     ui.fullscreen=container.querySelector('[data-war-action="fullscreen"]');
     ui.mapWrap.appendChild(ui.fullscreen);
     ui.pauseButton=document.createElement('button');
@@ -3629,7 +4374,8 @@
     ui.pauseMenu=document.createElement('div');
     ui.pauseMenu.className='nexus-war-pause';
     ui.pauseMenu.hidden=true;
-    ui.pauseMenu.innerHTML='<section class="nexus-war-pause-panel"><header><div><span>DROPZONE</span><h2>Paused</h2><p>The multiplayer frontline continues while you manage your loadout.</p></div><button class="nexus-button" type="button" data-war-action="resume-game">Resume</button></header><div class="nexus-war-pause-audio"><button class="nexus-button secondary" type="button" data-war-action="audio-toggle">Sound: on</button><label>Volume<input type="range" min="0" max="100" value="18" data-war-volume></label></div><div class="nexus-war-pause-content" data-war-pause-content></div></section>';
+    ui.pauseMenu.innerHTML='<section class="nexus-war-pause-panel"><header><div><span>DROPZONE</span><h2>Paused</h2><p>The multiplayer frontline continues while you manage your loadout.</p></div><button class="nexus-button" type="button" data-war-action="resume-game">Resume</button></header><div class="nexus-war-pause-audio"><button class="nexus-button secondary" type="button" data-war-action="audio-toggle">Sound: on</button><label>Volume<input type="range" min="0" max="100" value="18" data-war-volume></label></div><button class="nexus-button" type="button" data-war-action="secret-xp" hidden>theyseeyou · +10,000 XP</button><div class="nexus-war-pause-content" data-war-pause-content></div></section>';
+    ui.secretXp=ui.pauseMenu.querySelector('[data-war-action="secret-xp"]');
     ui.soundToggle=ui.pauseMenu.querySelector('[data-war-action="audio-toggle"]');
     ui.soundVolume=ui.pauseMenu.querySelector('[data-war-volume]');
     ui.soundVolume.value=String(Math.round(soundVolume*100));
@@ -3687,17 +4433,50 @@
     }
     colorControls.appendChild(colorButton);
     ui.form.insertBefore(colorControls,ui.form.querySelector('.nexus-war-equipment-help'));
+    ui.loadoutStatus=document.createElement('small');
+    ui.loadoutStatus.className='nexus-war-loadout-status';
+    ui.loadoutStatus.setAttribute('role','status');
+    ui.form.insertBefore(ui.loadoutStatus,ui.form.querySelector('.nexus-war-equipment-help'));
     ui.weaponSwitch=document.createElement('button');
     ui.weaponSwitch.type='button';
     ui.weaponSwitch.className='nexus-button secondary nexus-war-weapon-switch';
     ui.weaponSwitch.dataset.warAction='switch-weapon';
     ui.weaponSwitch.textContent='Primary (1)';
     container.querySelector('.nexus-war-controls').appendChild(ui.weaponSwitch);
+    ui.attachmentAction=document.createElement('button');
+    ui.attachmentAction.type='button';
+    ui.attachmentAction.className='nexus-button secondary';
+    ui.attachmentAction.dataset.warAction='use-attachment';
+    ui.attachmentAction.textContent='Underbarrel (Tab)';
+    ui.attachmentAction.hidden=true;
+    container.querySelector('.nexus-war-controls').appendChild(ui.attachmentAction);
+    const giveUpHint=document.createElement('span');
+    giveUpHint.innerHTML='<kbd>G</kbd> Hold 2s to give up · auto at 10s';
+    container.querySelector('.nexus-war-controls').appendChild(giveUpHint);
+    const reviveHint=[...container.querySelectorAll('.nexus-war-controls kbd')]
+      .find(key=>key.textContent==='F')?.parentElement;
+    if (reviveHint) reviveHint.innerHTML='<kbd>F</kbd> Self-revive / revive ally · 5s';
+    const supportHint=document.createElement('span');
+    supportHint.innerHTML='<kbd>`</kbd> Target airstrike / bunker buster';
+    container.querySelector('.nexus-war-controls').appendChild(supportHint);
+    container.querySelector('[data-war-action="revive"]').textContent='Revive ally · 5s';
+    container.querySelector('[data-war-action="self-revive"]').textContent='Self-revive · 5s';
+    container.querySelector('[data-war-action="give-up"]').textContent='Hold 2s to give up';
     const droneHint=document.createElement('span');
     droneHint.innerHTML='<kbd>Shift</kbd> Toggle drone control';
     container.querySelector('.nexus-war-controls').prepend(droneHint);
     const droneToggle=container.querySelector('[data-war-action="drone-toggle"]');
     if (droneToggle) droneToggle.textContent='Toggle drone control (Shift)';
+    const baseControls=container.querySelectorAll('.nexus-war-controls')[1];
+    for (const [action,label] of [
+      ['grapple-buy','Grapple hook · 450'],['airstrike-buy','Precision airstrike · 1800'],
+      ['bunker-buster-buy','Bunker buster · 2600'],['rc-car-buy','RC kamikaze car · 1200']
+    ]) {
+      const button=document.createElement('button');
+      button.type='button';button.className='nexus-button secondary';
+      button.dataset.warAction=action;button.textContent=label;
+      baseControls.appendChild(button);
+    }
     updateWeaponSwitchUi();
   }
 
@@ -3753,6 +4532,7 @@
       });
       if (selectionError) throw new Error(selectionError);
       if (!selected) throw new Error('Could not save your team choice. Try again.');
+      cacheDropzoneTeam(playerName,team,currentWeek);
       playerTeam=team;
       teamLookup=team;
       ui.teamChoice.hidden=true;
@@ -3799,6 +4579,7 @@
     reloadEndsAt=0;
     reloadStartedAt=0;
     giveUpInterval=0;
+    cancelReviveChannel();
     captureTimer=0;
     heartbeatTimer=0;
     refreshTimer=0;
