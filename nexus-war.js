@@ -581,6 +581,23 @@
     }
   }
 
+  async function grantSecretReward() {
+    const beforeXp=normalizeProgress(accountData&&accountData.dropzone).xp;
+    await updateAccount(user=>{
+      const currentBalance=Number(user.balance);
+      user.balance=(Number.isFinite(currentBalance)?currentBalance:0)+10_000;
+      const progress=normalizeProgress(user.dropzone);
+      progress.xp=Math.min(54*xpPerLevel,progress.xp+10_000);
+      progress.level=Math.min(55,Math.floor(progress.xp/xpPerLevel)+1);
+      user.dropzone=progress;
+    });
+    accountData.dropzone=normalizeProgress(accountData.dropzone);
+    const xpAwarded=accountData.dropzone.xp-beforeXp;
+    refreshProgressUi();
+    draw();
+    setStatus('Secret reward: +10,000 Sektorium and +'+xpAwarded.toLocaleString()+' XP.');
+  }
+
   async function lanGet() {
     const response = await fetch(requestUrl(gamePath));
     if (!response.ok) throw new Error((await response.text()) || 'Could not connect to the shared war game.');
@@ -3730,7 +3747,7 @@
     if (button.dataset.warAction==='resume-game') togglePause(false);
     if (button.dataset.warAction==='audio-toggle') toggleSound();
     if (button.dataset.warAction==='secret-xp')
-      grantXp(10000,'secret bonus').catch(error=>setStatus(error.message||'Secret XP could not be saved.',true));
+      grantSecretReward().catch(error=>setStatus(error.message||'Secret reward could not be saved.',true));
     if (button.dataset.warAction==='use-attachment') useWeaponAttachment();
     if (button.dataset.warAction==='color-weapons') colorWeapons();
     if (button.dataset.warAction==='close-spawn-menu') closeVehicleSpawnMenu();
