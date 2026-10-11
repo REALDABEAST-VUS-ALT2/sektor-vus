@@ -15,7 +15,9 @@
     assault_rover:{x:270,y:-75,label:'ROVER'},
     tank:{x:270,y:75,label:'TANK'},
     anti_air:{x:200,y:220,label:'ANTI-AIR'},
-    transport_helicopter:{x:0,y:285,label:'HELICOPTER'}
+    transport_helicopter:{x:0,y:285,label:'HELICOPTER'},
+    apache:{x:0,y:-320,label:'APACHE'},
+    jeep:{x:-285,y:-285,label:'JEEP'}
   };
   const lanMode = new URLSearchParams(location.search).get('lan') === '1';
   const firebaseApi = globalThis.firebase;
@@ -37,6 +39,7 @@
     'Sniper rifle':{damage:86,rate:950,mag:5,range:1150,spread:.004,recoil:.032,reload:2400,model:'sniper'},
     'Shotgun':{damage:78,rate:780,mag:8,range:340,spread:.19,recoil:.045,reload:2300,model:'shotgun'},
     'Marksman rifle':{damage:48,rate:380,mag:14,range:900,spread:.012,recoil:.024,reload:1800,model:'marksman'},
+    'Carbine':{damage:29,rate:220,mag:27,range:760,spread:.026,recoil:.021,reload:1500,model:'rifle'},
     'Special':{damage:40,rate:400,mag:24,range:700,spread:.035,recoil:.022,reload:1900,model:'special'},
     'Explosive':{damage:105,rate:1250,mag:2,range:850,spread:.012,recoil:.04,reload:3000,radius:135,model:'launcher'},
     'Pistol':{damage:30,rate:260,mag:15,range:520,spread:.025,recoil:.02,reload:1250,model:'pistol'}
@@ -102,7 +105,15 @@
     {id:'dmr_longview',name:'Longview 10',type:'Marksman rifle',level:96},
     {id:'shot_leviathan',name:'Leviathan 12G',type:'Shotgun',level:98},
     {id:'smg_wraith',name:'Wraith 11',type:'Submachine gun',level:99},
-    {id:'special_singularity',name:'Singularity',type:'Special',level:100}
+    {id:'special_singularity',name:'Singularity',type:'Special',level:100},
+    {id:'carbine_lynx',name:'Lynx C4',type:'Carbine',level:5},
+    {id:'carbine_ranger',name:'Ranger-11',type:'Carbine',level:16},
+    {id:'carbine_sable',name:'Sable C9',type:'Carbine',level:28},
+    {id:'carbine_aegis',name:'Aegis 762',type:'Carbine',level:40},
+    {id:'carbine_vandal',name:'Vandal-C',type:'Carbine',level:52},
+    {id:'carbine_spectre',name:'Spectre 4',type:'Carbine',level:64},
+    {id:'carbine_falcon',name:'Falcon 6',type:'Carbine',level:76},
+    {id:'carbine_harbinger',name:'Harbinger C',type:'Carbine',level:88}
   ];
   const rateVariants=[.94,1,1.06],spreadVariants=[.94,1,1.06];
   let shotgunIndex=0;
@@ -117,14 +128,21 @@
   }
   const secondaryWeapons={
     pistol_sidekick:{name:'Sidekick 9',type:'Pistol',level:1,damage:30,rate:260,mag:15,range:520,spread:.025,reload:1250,model:'pistol'},
+    pistol_cinder:{name:'Cinder 9',type:'Pistol',level:3,damage:27,rate:190,mag:18,range:500,spread:.03,reload:1200,model:'pistol'},
     pistol_trail:{name:'Trailblazer .45',type:'Pistol',level:4,damage:36,rate:330,mag:12,range:540,spread:.022,reload:1350,model:'pistol'},
+    pistol_vigil:{name:'Vigil Compact',type:'Pistol',level:7,damage:32,rate:240,mag:17,range:530,spread:.026,reload:1250,model:'pistol'},
     pistol_rivet:{name:'Rivet Auto',type:'Pistol',level:9,damage:20,rate:105,mag:24,range:420,spread:.055,reload:1450,model:'pistol'},
+    pistol_mako:{name:'Mako Machine Pistol',type:'Pistol',level:12,damage:18,rate:85,mag:28,range:390,spread:.07,reload:1550,model:'pistol'},
     pistol_warden:{name:'Warden .50',type:'Pistol',level:14,damage:48,rate:430,mag:8,range:600,spread:.035,reload:1600,model:'pistol'},
     pistol_dart:{name:'Dart 9',type:'Pistol',level:19,damage:26,rate:185,mag:20,range:510,spread:.03,reload:1300,model:'pistol'},
+    explosive_sparrow:{name:'Sparrow Micro-Launcher',type:'Explosive',level:20,damage:72,rate:850,mag:3,range:620,spread:.02,reload:2100,radius:105,model:'launcher'},
     pistol_marshal:{name:'Marshal 44',type:'Pistol',level:25,damage:58,rate:560,mag:6,range:620,spread:.028,reload:1800,model:'pistol'},
+    pistol_ember:{name:'Ember 10',type:'Pistol',level:29,damage:29,rate:155,mag:22,range:475,spread:.045,reload:1400,model:'pistol'},
     pistol_quickdraw:{name:'Quickdraw 9',type:'Pistol',level:31,damage:33,rate:215,mag:18,range:540,spread:.025,reload:1350,model:'pistol'},
     pistol_shock:{name:'Shockline',type:'Pistol',level:37,damage:25,rate:145,mag:22,range:500,spread:.04,reload:1550,model:'pistol'},
+    explosive_rattler:{name:'Rattler Hand Launcher',type:'Explosive',level:39,damage:92,rate:1120,mag:2,range:690,spread:.018,reload:2550,radius:120,model:'launcher'},
     pistol_longarm:{name:'Longarm .357',type:'Pistol',level:44,damage:64,rate:620,mag:6,range:680,spread:.018,reload:1750,model:'pistol'},
+    pistol_fox:{name:'Foxfire Burst',type:'Pistol',level:47,damage:23,rate:100,mag:26,range:430,spread:.06,reload:1500,model:'pistol'},
     pistol_viper:{name:'Viper Burst',type:'Pistol',level:50,damage:24,rate:95,mag:27,range:460,spread:.065,reload:1600,model:'pistol'},
     explosive_mite:{name:'Mite Micro-Rocket',type:'Explosive',level:12,damage:75,rate:900,mag:3,range:600,spread:.018,reload:2200,radius:105,model:'launcher'},
     explosive_breach:{name:'Breach Charge Launcher',type:'Explosive',level:22,damage:95,rate:1100,mag:2,range:660,spread:.012,reload:2500,radius:125,model:'launcher'},
@@ -132,11 +150,17 @@
     explosive_talon:{name:'Talon AT',type:'Explosive',level:41,damage:120,rate:1350,mag:1,range:800,spread:.009,reload:3000,radius:150,model:'launcher'},
     explosive_quake:{name:'Quake Tube',type:'Explosive',level:48,damage:100,rate:1000,mag:2,range:720,spread:.015,reload:2600,radius:140,model:'launcher'},
     explosive_storm:{name:'Stormcell Launcher',type:'Explosive',level:54,damage:85,rate:650,mag:3,range:640,spread:.028,reload:2400,radius:120,model:'launcher'},
+    explosive_pike:{name:'Pike Breach Tube',type:'Explosive',level:57,damage:112,rate:1280,mag:1,range:790,spread:.012,reload:2850,radius:145,model:'launcher'},
     pistol_nova:{name:'Nova 10mm',type:'Pistol',level:58,damage:38,rate:240,mag:18,range:550,spread:.022,reload:1300,model:'pistol'},
+    pistol_cobalt:{name:'Cobalt Service Pistol',type:'Pistol',level:62,damage:34,rate:275,mag:16,range:575,spread:.024,reload:1350,model:'pistol'},
     explosive_comet:{name:'Comet Micro-Launcher',type:'Explosive',level:66,damage:88,rate:780,mag:3,range:680,spread:.02,reload:2250,radius:115,model:'launcher'},
+    explosive_drill:{name:'Drillshot Launcher',type:'Explosive',level:70,damage:105,rate:1200,mag:2,range:760,spread:.014,reload:2700,radius:135,model:'launcher'},
     pistol_revenant:{name:'Revenant .50',type:'Pistol',level:74,damage:68,rate:590,mag:7,range:650,spread:.026,reload:1700,model:'pistol'},
+    pistol_sundown:{name:'Sundown Auto-9',type:'Pistol',level:78,damage:22,rate:90,mag:30,range:410,spread:.065,reload:1600,model:'pistol'},
     explosive_wildfire:{name:'Wildfire Grenadier',type:'Explosive',level:82,damage:78,rate:580,mag:4,range:610,spread:.03,reload:2150,radius:110,model:'launcher'},
+    explosive_hail:{name:'Hailstorm Pocket Launcher',type:'Explosive',level:86,damage:62,rate:480,mag:5,range:540,spread:.04,reload:2300,radius:92,model:'launcher'},
     pistol_undertaker:{name:'Undertaker 12',type:'Pistol',level:90,damage:44,rate:300,mag:16,range:575,spread:.024,reload:1400,model:'pistol'},
+    pistol_wraith:{name:'Wraith Sidearm',type:'Pistol',level:94,damage:41,rate:360,mag:14,range:590,spread:.021,reload:1450,model:'pistol'},
     explosive_cataclysm:{name:'Cataclysm Launcher',type:'Explosive',level:100,damage:130,rate:1450,mag:1,range:900,spread:.01,reload:3200,radius:165,model:'launcher'}
   };
   for (const weapon of Object.values(secondaryWeapons)) weapon.slot='secondary';
@@ -163,10 +187,45 @@
       types:['Assault rifle','Marksman rifle'],burstRounds:3,cost:900},
     underbarrel_frag:{name:'Mini grenade launcher',effect:'Tab launches a timed explosive',
       types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
-      utility:'underbarrelFrag',utilityCooldown:6500,cost:950},
+      utility:'underbarrelFrag',utilityCooldown:6500,ammo:2,cost:950},
     underbarrel_smoke:{name:'Underbarrel smoke launcher',effect:'Tab deploys line-blocking smoke',
       types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
-      utility:'underbarrelSmoke',utilityCooldown:9000,cost:800}
+      utility:'underbarrelSmoke',utilityCooldown:9000,ammo:3,cost:800},
+    underbarrel_mini_grapple:{name:'Mini grapple',effect:'Tab pulls you to a nearby surface · 2 charges',
+      types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
+      utility:'miniGrapple',utilityCooldown:5000,ammo:2,cost:1100},
+    underbarrel_mini_rc:{name:'Mini kamikaze car',effect:'Tab launches a compact RC blast · one third damage · 1 charge',
+      types:['Assault rifle','Submachine gun','Light machine gun'],
+      utility:'miniRcCar',utilityCooldown:5000,ammo:1,cost:1450},
+    underbarrel_mini_pistol:{name:'Mini pistol',effect:'Tab fires a compact 8-round sidearm',
+      types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
+      utility:'miniPistol',utilityCooldown:280,ammo:8,miniPistolDamage:24,cost:1250},
+    underbarrel_frag_light:{name:'Lightweight grenade tube',effect:'Three quick-launch grenades',
+      types:['Assault rifle','Light machine gun','Marksman rifle'],utility:'underbarrelFrag',utilityCooldown:5200,ammo:3,cost:1150},
+    suppressor_compact:{name:'Compact suppressor',effect:'Quieter fire with tighter grouping',spread:.91,recoil:.9,damage:.96,cost:500},
+    suppressor_integral:{name:'Integral suppressor',effect:'Quieter shots and reduced muzzle climb',spread:.88,recoil:.84,rate:1.04,cost:800},
+    muzzle_brake:{name:'Dual-port muzzle brake',effect:'Strong vertical recoil control',recoil:.66,spread:1.04,cost:600},
+    muzzle_flash_hider:{name:'Flash hider',effect:'Cleaner sight picture and reduced recoil',spread:.94,recoil:.88,cost:450},
+    barrel_precision:{name:'Precision barrel',effect:'Longer range and tighter shots',range:1.16,spread:.82,rate:1.1,cost:900},
+    barrel_light:{name:'Lightweight barrel',effect:'Faster handling and fire rate',rate:.91,range:.92,recoil:1.1,cost:700},
+    optic_reflex:{name:'Reflex optic',effect:'Faster close-range target acquisition',spread:.88,rate:.97,cost:500},
+    optic_3x:{name:'3× combat optic',effect:'Improved mid-range precision',types:['Assault rifle','Marksman rifle','Sniper rifle'],spread:.76,range:1.12,cost:850},
+    optic_thermal:{name:'Thermal optic',effect:'Clearer aim through smoke',spread:.83,range:1.08,cost:1150},
+    stock_skeleton:{name:'Skeleton stock',effect:'Faster movement with the weapon raised',spread:1.04,rate:.94,cost:650},
+    stock_precision:{name:'Precision stock',effect:'Steadier aim and lower recoil',spread:.84,recoil:.8,rate:1.08,cost:750},
+    stock_recoil:{name:'Recoil pad',effect:'Reduces sustained-fire climb',recoil:.72,mag:.96,cost:550},
+    grip_vertical:{name:'Vertical foregrip',effect:'Strong recoil reduction while firing',recoil:.74,spread:.96,cost:600},
+    grip_stubby:{name:'Stubby foregrip',effect:'Balanced recoil and handling',recoil:.86,rate:.97,cost:500},
+    mag_fast_reload:{name:'Quick-change magazine',effect:'Faster reload with a smaller magazine',reload:.72,mag:.88,cost:650},
+    mag_drum:{name:'Compact drum magazine',effect:'More rounds between reloads',types:['Assault rifle','Submachine gun','Light machine gun'],mag:1.38,reload:1.12,cost:1000},
+    ammo_hollow:{name:'Hollow-point rounds',effect:'Higher damage at shorter range',damage:1.16,range:.86,cost:950},
+    ammo_armor:{name:'Armor-piercing rounds',effect:'Improved damage against armored targets',damage:1.1,spread:1.04,cost:1050},
+    ammo_match:{name:'Match-grade ammunition',effect:'More precise shots with a slower cycle',spread:.78,rate:1.08,cost:900},
+    trigger_binary:{name:'Binary trigger',effect:'Faster follow-up shots with more recoil',rate:.78,recoil:1.18,cost:950},
+    compensator_linear:{name:'Linear compensator',effect:'Reduced recoil and muzzle climb',recoil:.76,spread:.92,cost:850},
+    handstop_angled:{name:'Angled hand stop',effect:'Faster handling and tighter spread',spread:.9,rate:.96,cost:550},
+    rail_light:{name:'Lightweight accessory rail',effect:'Improves aim speed and stability',spread:.94,recoil:.9,cost:500},
+    mag_subsonic:{name:'Subsonic rounds',effect:'Quiet fire with reduced damage and range',damage:.9,range:.9,spread:.92,cost:700}
   };
   const weaponColorParts=['receiver','barrel','grip'];
   const weaponColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d'};
@@ -175,11 +234,17 @@
     assault_rover:{name:'Assault rover',speed:2.3,color:'#b8836e'},
     tank:{name:'Battle tank',speed:1.55,color:'#71836e'},
     anti_air:{name:'Anti-air',speed:1.75,color:'#8da1a4'},
-    transport_helicopter:{name:'Transport helicopter',speed:1.35,color:'#8da1a4'}
+    transport_helicopter:{name:'Transport helicopter',speed:1.35,color:'#8da1a4'},
+    apache:{name:'Apache attack helicopter',speed:2.05,color:'#7f9270'},
+    jeep:{name:'Five-seat gun jeep',speed:1.8,color:'#9b8062'}
   };
+  const vehiclePrices={scout_bike:0,assault_rover:35,tank:80,anti_air:60,
+    transport_helicopter:55,apache:120,jeep:45};
   const vehicleWeapons={
     tank:{name:'Tank cannon',mag:8,damage:125,rate:1100,range:1250,spread:.012,reload:3200},
-    anti_air:{name:'Anti-air cannon',mag:16,damage:28,rate:260,range:1350,spread:.02,reload:2600,aircraftDamage:125}
+    anti_air:{name:'Anti-air cannon',mag:16,damage:28,rate:260,range:1350,spread:.02,reload:2600,aircraftDamage:125},
+    apache:{name:'Apache autocannon',mag:120,damage:18,rate:90,range:1000,spread:.045,reload:3400},
+    jeep:{name:'Jeep turret',mag:100,damage:15,rate:110,range:850,spread:.055,reload:3000}
   };
   const transportType='transport_helicopter';
   const transportName='Transport helicopter';
@@ -318,6 +383,7 @@
   let selectedVoteTeam='';
   let refreshTimer = 0;
   let lastPositionWrite = 0;
+  let lastPositionWritePosition=null;
   let lastShot = 0;
   let recoilKick=0;
   let lastRecoilAt=0;
@@ -329,7 +395,20 @@
   let captureStartedAt = 0;
   let captureDuration = 0;
   let lastAnnouncementId='';
+  let lastToastTimer=0;
+  let voiceMuted=true;
+  let voiceStream=null;
+  let voiceSyncBusy=false;
+  let lastVoiceSyncAt=0;
+  const voicePeers=new Map();
   let vehicleActionBusy=false;
+  let vehicleHoldTimer=0;
+  let vehicleHoldTriggered=false;
+  let lastVehicleAimWriteAt=0;
+  let c4HoldTimer=0;
+  let c4HoldSource='';
+  let c4HoldTriggered=false;
+  let c4SuppressClick=false;
   let localPosition = null;
   let positionWriteBusy = false;
   let grapplePull=null;
@@ -350,6 +429,7 @@
   let reviveChannel=null;
   let houseInside='';
   let houseFloor=0;
+  let stairTransitionCooldownUntil=0;
   let localDronePosition=null;
   let localTransportId='';
   let cameraPosition={x:0,y:0};
@@ -528,11 +608,14 @@
       sekoriumPayoutAt:Date.now(),
       matchResetAt:0,
       announcements:{},
+      chat:[],
+      voiceSignals:{},
       vehicles:{},
       turrets:{},
       drones:{},
       smokes:{},
       claymores:{},
+      c4s:{},
       grenades:{},
       lootBoxes:Object.fromEntries(Object.entries(fixedLootLocations).map(([id,position])=>[id,{
         id,type:'fixed',x:position.x*mapScale,y:position.y*mapScale,available:true,respawnAt:0
@@ -544,17 +627,20 @@
   async function updateMatchLifecycle() {
     if (!warState||destroyed||matchLifecycleBusy) return;
     const now=Date.now();
-    if (warState.matchPhase==='playing'&&now>=Number(warState.matchEndsAt||Infinity)) {
+    const baseDestroyed=Object.values(warState.bases||{}).some(base=>Number(base?.health)<=0);
+    if (warState.matchPhase==='playing'&&(now>=Number(warState.matchEndsAt||Infinity)||baseDestroyed)) {
       matchLifecycleBusy=true;
       try {
         const next={...warState,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}};
         if (firebaseMode) {
           const result=await warRef.transaction(current=>current&&current.matchPhase==='playing'&&
-            now>=Number(current.matchEndsAt||Infinity)?{...current,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}}:current);
+            (now>=Number(current.matchEndsAt||Infinity)||Object.values(current.bases||{}).some(base=>Number(base?.health)<=0))
+            ?{...current,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}}:current);
           if (result.committed) acceptWarState(result.snapshot.val());
         } else if (lanMode) {
           const latest=normalizeWar(await lanGet());
-          if (latest.matchPhase==='playing'&&now>=Number(latest.matchEndsAt||Infinity)) {
+            if (latest.matchPhase==='playing'&&(now>=Number(latest.matchEndsAt||Infinity)||
+              Object.values(latest.bases||{}).some(base=>Number(base?.health)<=0))) {
             latest.matchPhase='voting';latest.voteEndsAt=now+15_000;latest.mapVotes={};
             await lanPut(latest);acceptWarState(latest);
           }
@@ -894,10 +980,10 @@
       voteEndsAt:Number(value.voteEndsAt)||0,
       mapVotes:value.mapVotes&&typeof value.mapVotes==='object'?value.mapVotes:{},
       players:Object.fromEntries(Object.entries(players).map(([key,player])=>[key,player?{
-        armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
+        armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
         smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
         grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
-          tactical:'smoke',lethal:'grenade',secondary:'pistol_sidekick',secondaryAmmo:15,
+          tactical:'smoke',lethal:'grenade',secondary:'pistol_sidekick',secondaryAmmo:15,attachmentAmmo:{},
           activeWeaponSlot:'primary',downed:false,downedAt:0,vehiclePad:'',vehicleAmmo:0,
         ...player,...(legacyMap?scaleRecord(player):{}),
         vehicleAmmo:vehicleWeapons[player.vehicle]
@@ -911,16 +997,20 @@
       economy:{...base.economy,...(value.economy || {})},
       announcements:value.announcements&&typeof value.announcements==='object'&&!Array.isArray(value.announcements)
         ?value.announcements:{},
+      chat:Array.isArray(value.chat)?value.chat.slice(-40):[],
+      voiceSignals:value.voiceSignals&&typeof value.voiceSignals==='object'&&!Array.isArray(value.voiceSignals)
+        ?value.voiceSignals:{},
       lootBoxes:{...base.lootBoxes,...(value.lootBoxes||{})},
       nextRandomLootAt:Number(value.nextRandomLootAt)||base.nextRandomLootAt,
       vehicles:Object.fromEntries(Object.entries(scaleCollection(value.vehicles))
-        .map(([id,vehicle])=>[id,vehicle&&vehicle.type===transportType
+        .map(([id,vehicle])=>[id,vehicle&&[transportType,'jeep'].includes(vehicle.type)
           ?{...vehicle,passengers:Array.isArray(vehicle.passengers)?vehicle.passengers:[]}:vehicle])),
       turrets:scaleCollection(value.turrets),
       drones:Object.fromEntries(Object.entries(scaleCollection(value.drones)).map(([id,drone])=>
         [id,drone?{...drone,angle:Number.isFinite(Number(drone.angle))?Number(drone.angle):0}:drone])),
       smokes:scaleCollection(value.smokes),
       claymores:scaleCollection(value.claymores),
+      c4s:scaleCollection(value.c4s),
       grenades:scaleCollection(value.grenades)
     };
   }
@@ -978,6 +1068,169 @@
     if (warState) warState.announcements=updated||{[id]:announcement};
     lastAnnouncementId=id;
     setStatus(message);
+    showGameNotice(message,'objective');
+  }
+
+  function showGameNotice(message,kind='info') {
+    if (!ui?.notice) return;
+    ui.notice.textContent=message;
+    ui.notice.dataset.kind=kind;
+    ui.notice.hidden=false;
+    if (lastToastTimer) clearTimeout(lastToastTimer);
+    lastToastTimer=window.setTimeout(()=>{if (ui?.notice) ui.notice.hidden=true;},6500);
+  }
+
+  function chatDistance(message) {
+    if (message.sender===playerKey) return 0;
+    const player=warState?.players?.[message.sender];
+    const position=player&&player.transportId&&warState.vehicles?.[player.transportId]
+      ?warState.vehicles[player.transportId]:player;
+    const local=localPosition||warState?.players?.[playerKey];
+    if (!position||!local) return Infinity;
+    return Math.hypot(Number(position.x)-Number(local.x),Number(position.y)-Number(local.y));
+  }
+
+  function renderChat() {
+    if (!ui?.chatLog||!warState) return;
+    const nearby=(warState.chat||[]).filter(message=>message&&chatDistance(message)<=1050).slice(-12);
+    ui.chatLog.replaceChildren();
+    nearby.forEach(message=>{
+      const line=document.createElement('p');
+      const speaker=document.createElement('strong');
+      speaker.textContent=message.sender===playerKey?'You':String(message.name||'Player');
+      const text=document.createElement('span');
+      text.textContent=String(message.text||'');
+      line.append(speaker,text);
+      ui.chatLog.appendChild(line);
+    });
+    ui.chatLog.hidden=!nearby.length;
+  }
+
+  async function sendChatMessage(event) {
+    event.preventDefault();
+    const text=String(ui?.chatInput?.value||'').trim().slice(0,180);
+    if (!text||!playerKey) return;
+    const position=localPosition||warState.players[playerKey];
+    const message={id:'chat_'+Date.now()+'_'+Math.random().toString(16).slice(2),
+      sender:playerKey,name:playerName,text,team:playerTeam,x:Number(position?.x)||0,
+      y:Number(position?.y)||0,createdAt:Date.now()};
+    ui.chatInput.value='';
+    try {
+      await updateWar('chat',current=>[...(Array.isArray(current)?current:[]),message].slice(-40));
+      renderChat();
+    } catch(error) { showGameNotice(error.message||'Chat could not be sent.','error'); }
+  }
+
+  function voicePairId(otherKey) { return [playerKey,otherKey].sort().join('__'); }
+
+  async function updateVoiceSignal(pairId,updater) {
+    await updateWar('voiceSignals/'+pairId,current=>updater(current||{updatedAt:Date.now()}));
+  }
+
+  function closeVoicePeer(otherKey) {
+    const peer=voicePeers.get(otherKey);
+    if (!peer) return;
+    peer.pc.close();
+    peer.audio.remove();
+    voicePeers.delete(otherKey);
+  }
+
+  async function processVoiceSignal(otherKey,peer,signal) {
+    if (!signal||!peer||peer.processing) return;
+    peer.processing=true;
+    try {
+      if (peer.initiator&&signal.answer&&!peer.pc.currentRemoteDescription)
+        await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+      if (!peer.initiator&&signal.offer&&!peer.pc.currentRemoteDescription) {
+        await peer.pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+        const answer=await peer.pc.createAnswer();
+        await peer.pc.setLocalDescription(answer);
+        await updateVoiceSignal(peer.pairId,current=>({...current,answer,updatedAt:Date.now()}));
+      }
+      const candidateField=peer.initiator?'receiverCandidates':'initiatorCandidates';
+      const candidates=signal[candidateField]||[];
+      while (peer.candidateCount<candidates.length&&peer.pc.remoteDescription) {
+        await peer.pc.addIceCandidate(new RTCIceCandidate(candidates[peer.candidateCount++]));
+      }
+    } catch(error) {
+      console.debug('[Dropzone] Voice signaling update failed.',error);
+    } finally { peer.processing=false; }
+  }
+
+  async function createVoicePeer(otherKey,other) {
+    if (!globalThis.RTCPeerConnection||voicePeers.has(otherKey)) return;
+    const pairId=voicePairId(otherKey),initiator=playerKey<otherKey;
+    const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    const audio=document.createElement('audio');
+    audio.autoplay=true;
+    audio.playsInline=true;
+    ui?.voiceAudio?.appendChild(audio);
+    const transceiver=pc.addTransceiver('audio',{direction:'sendrecv'});
+    if (voiceStream) await transceiver.sender.replaceTrack(voiceStream.getAudioTracks()[0]||null);
+    const peer={pc,audio,initiator,pairId,candidateCount:0,processing:false,sender:transceiver.sender};
+    voicePeers.set(otherKey,peer);
+    pc.ontrack=event=>{
+      audio.srcObject=event.streams[0];
+      audio.play().catch(()=>showGameNotice('Tap Enable voice to hear nearby players.','info'));
+    };
+    pc.onicecandidate=event=>{
+      if (!event.candidate) return;
+      const field=initiator?'initiatorCandidates':'receiverCandidates';
+      updateVoiceSignal(pairId,current=>({...current,[field]:[...(current[field]||[]),event.candidate.toJSON()].slice(-40),updatedAt:Date.now()}))
+        .catch(error=>console.debug('[Dropzone] Could not send a voice candidate.',error));
+    };
+    pc.onconnectionstatechange=()=>{
+      if (['failed','closed'].includes(pc.connectionState)) closeVoicePeer(otherKey);
+    };
+    if (initiator) {
+      const offer=await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await updateVoiceSignal(pairId,current=>({...current,offer,updatedAt:Date.now()}));
+    }
+    processVoiceSignal(otherKey,peer,warState?.voiceSignals?.[pairId]);
+  }
+
+  async function syncVoicePeers() {
+    if (voiceSyncBusy||!warState||!playerKey||!ui||Date.now()-lastVoiceSyncAt<700) return;
+    voiceSyncBusy=true;
+    lastVoiceSyncAt=Date.now();
+    try {
+      const self=warState.players[playerKey],selfPosition=localPosition||self;
+      const nearby=new Map(Object.entries(warState.players||{}).filter(([key,player])=>{
+        if (key===playerKey||!player?.online||Date.now()-Number(player.lastSeen||0)>20_000) return false;
+        const position=player.transportId&&warState.vehicles?.[player.transportId]
+          ?warState.vehicles[player.transportId]:player;
+        return selfPosition&&Math.hypot(Number(position.x)-Number(selfPosition.x),
+          Number(position.y)-Number(selfPosition.y))<=1050;
+      }));
+      for (const otherKey of voicePeers.keys()) if (!nearby.has(otherKey)) closeVoicePeer(otherKey);
+      for (const [otherKey,other] of nearby) {
+        let peer=voicePeers.get(otherKey);
+        if (!peer) { await createVoicePeer(otherKey,other);peer=voicePeers.get(otherKey); }
+        if (peer) processVoiceSignal(otherKey,peer,warState.voiceSignals?.[peer.pairId]);
+      }
+    } finally { voiceSyncBusy=false; }
+  }
+
+  async function toggleVoiceMute() {
+    try {
+      if (voiceMuted) {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Voice chat requires microphone access in a secure browser context.');
+        voiceStream=voiceStream||await navigator.mediaDevices.getUserMedia({audio:true});
+        for (const peer of voicePeers.values()) await peer.sender.replaceTrack(voiceStream.getAudioTracks()[0]||null);
+        voiceStream.getAudioTracks().forEach(track=>{track.enabled=true;});
+        voiceMuted=false;
+        showGameNotice('Microphone on. Nearby players can hear you.','info');
+      } else {
+        voiceMuted=true;
+        voiceStream?.getAudioTracks().forEach(track=>{track.enabled=false;});
+        showGameNotice('Microphone muted. Press K to unmute.','info');
+      }
+      if (ui?.voiceToggle) {
+        ui.voiceToggle.textContent=voiceMuted?'Voice: muted (K)':'Mute voice (K)';
+        ui.voiceToggle.setAttribute('aria-pressed',String(!voiceMuted));
+      }
+    } catch(error) { showGameNotice(error.message||'Could not enable voice chat.','error'); }
   }
 
   function safeZoneFor(team) {
@@ -1010,14 +1263,14 @@
 
   function playerDefaults() {
     const initial={weapon:'ar_pulse',secondary:'pistol_sidekick',activeWeaponSlot:'primary',
-      attachments:[],tactical:'smoke',lethal:'grenade'};
+      attachments:[],attachmentAmmo:{},tactical:'smoke',lethal:'grenade'};
     const spawn=basePositions[playerTeam];
     return {
       name:playerName,team:playerTeam,x:playerTeam==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y,
       hp:100,ammo:effectiveWeapon(initial,'primary').mag,
       secondaryAmmo:effectiveWeapon(initial,'secondary').mag,kills:0,deaths:0,...initial,loadoutSet:false,
       vehiclePad:'',vehicleAmmo:0,
-      armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,
+      armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
       smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
       grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
       downed:false,downedAt:0,
@@ -1106,6 +1359,7 @@
       return {...initial,...(player || {}),name:playerName,team:playerTeam,
         weaponColors:accountData.dropzone.weaponColors,weaponColor:'',
         weapon:selectedWeapon,secondary:selectedSecondary,attachments:selectedAttachments,
+        attachmentAmmo:normalizeAttachmentAmmo(selectedAttachments,player?.attachmentAmmo||{},selectedAttachments),
         ammo:player && selectedWeapon===player.weapon?Math.min(Number(player.ammo)||0,selectedMag):selectedMag,
         secondaryAmmo:player&&selectedSecondary===player.secondary
           ?Math.min(Number(player.secondaryAmmo)||0,selectedSecondaryMag):selectedSecondaryMag,
@@ -1113,6 +1367,7 @@
         online:true,lastSeen:Date.now()};
     });
     localPosition={x:Number(activePlayer.x),y:Number(activePlayer.y)};
+    lastPositionWritePosition={...localPosition};
     cameraPosition={...localPosition};
     refreshProgressUi();
     updateHeader();
@@ -1135,8 +1390,11 @@
     if (latestAnnouncement&&latestAnnouncement[0]!==lastAnnouncementId) {
       const wasInitialized=!!lastAnnouncementId;
       lastAnnouncementId=latestAnnouncement[0];
-      if (wasInitialized&&Date.now()-Number(latestAnnouncement[1]?.createdAt||0)<15_000)
-        setStatus(latestAnnouncement[1].text||'Frontline update.');
+      if (wasInitialized&&Date.now()-Number(latestAnnouncement[1]?.createdAt||0)<15_000) {
+        const message=latestAnnouncement[1].text||'Frontline update.';
+        setStatus(message);
+        showGameNotice(message,/captur|attack|raid|under fire/i.test(message)?'objective':'info');
+      }
     }
     if (stale) {
       if (lanMode) lanPut(warState).catch(error=>setStatus(error.message,true));
@@ -1157,6 +1415,8 @@
         if (ui) updateHeader();
       }
     }
+    renderChat();
+    syncVoicePeers();
     draw();
   }
 
@@ -1197,20 +1457,34 @@
   function effectiveWeapon(player,slot=player&&player.activeWeaponSlot||'primary') {
     const weaponId=slot==='secondary'?player&&player.secondary:player&&player.weapon;
     const weapon = weapons[weaponId] || weapons.ar_pulse;
-    const mods = (player && Array.isArray(player.attachments) ? player.attachments : [])
-      .map(id => attachments[id]).filter(mod=>mod&&(!mod.types||mod.types.includes(weapon.type)));
+    const equippedMods=(player&&Array.isArray(player.attachments)?player.attachments:[])
+      .map(id=>({id,mod:attachments[id]})).filter(({mod})=>mod&&(!mod.types||mod.types.includes(weapon.type)));
+    const mods=equippedMods.map(entry=>entry.mod);
+    const utility=equippedMods.find(({mod})=>mod.utility);
     return {
       ...weapon,
       weaponId,
+      damage:Math.max(1,Math.round(weapon.damage*mods.reduce((value,mod)=>value*(mod.damage||1),1))),
       rate:Math.max(40,Math.round(weapon.rate*mods.reduce((value,mod)=>value*(mod.rate||1),1))),
       spread:weapon.spread * mods.reduce((value,mod) => value * (mod.spread || 1),1),
+      range:Math.max(80,Math.round(weapon.range*mods.reduce((value,mod)=>value*(mod.range||1),1))),
       recoil:(weapon.recoil||.02)*mods.reduce((value,mod)=>value*(mod.recoil||1),1),
       dualWield:mods.some(mod=>mod.dualWield),
       burstRounds:mods.reduce((count,mod)=>Math.max(count,Number(mod.burstRounds)||1),1),
-      utilityAttachment:mods.find(mod=>mod.utility)||null,
+      utilityAttachment:utility?{...utility.mod,attachmentId:utility.id}:null,
       mag:Math.round(weapon.mag * mods.reduce((value,mod) => value * (mod.mag || 1),1)),
       reload:Math.round(weapon.reload * mods.reduce((value,mod) => value * (mod.reload || 1),1))
     };
+  }
+
+  function normalizeAttachmentAmmo(ids,ammo={},previousIds=ids) {
+    return Object.fromEntries(ids.filter(id=>attachments[id]?.ammo).map(id=>{
+      const capacity=Math.max(0,Math.floor(Number(attachments[id].ammo)||0));
+      const previous=Number(ammo[id]);
+      const count=previousIds.includes(id)&&Number.isFinite(previous)
+        ?Math.max(0,Math.min(capacity,Math.floor(previous))):capacity;
+      return [id,count];
+    }));
   }
 
   function startLoops() {
@@ -1261,6 +1535,7 @@
     const player = warState && warState.players[playerKey];
     if (player&&player.transportId!==localTransportId) {
       localTransportId=player.transportId||'';
+      movementVelocity={x:0,y:0};
       const transport=localTransportId&&warState.vehicles[localTransportId];
       if (transport) localPosition={x:Number(transport.x),y:Number(transport.y)};
       else if (player.x!=null&&player.y!=null) {
@@ -1268,6 +1543,9 @@
         movementVelocity={x:0,y:0};
       }
     }
+    const occupiedVehicle=player?.transportId&&warState.vehicles?.[player.transportId];
+    if (occupiedVehicle&&occupiedVehicle.pilot!==playerKey)
+      localPosition={x:Number(occupiedVehicle.x),y:Number(occupiedVehicle.y)};
     if (warState&&warState.drones&&warState.drones[playerKey]&&!activeDrone) {
       activeDrone=true;
       droneControlled=!!warState.drones[playerKey].manual;
@@ -1301,7 +1579,7 @@
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
-      const topSpeed=(vehicle?1700*vehicle.speed:3240)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
+      const topSpeed=(vehicle?1700*vehicle.speed:1500)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
@@ -1310,8 +1588,12 @@
       let moveY=dy;
       if (aimActive&&Math.hypot(aimOffset.x,aimOffset.y)>1) {
         const angle=Math.atan2(aimOffset.y,aimOffset.x);
-        moveX=-Math.sin(angle)*dx-Math.cos(angle)*dy;
-        moveY=Math.cos(angle)*dx-Math.sin(angle)*dy;
+        const forward=(keys.has('w')||keys.has('arrowup')?1:0)-
+          (keys.has('s')||keys.has('arrowdown')?1:0);
+        const strafe=(keys.has('d')||keys.has('arrowright')?1:0)-
+          (keys.has('a')||keys.has('arrowleft')?1:0);
+        moveX=Math.cos(angle)*forward-Math.sin(angle)*strafe;
+        moveY=Math.sin(angle)*forward+Math.cos(angle)*strafe;
       }
       const length=Math.hypot(moveX,moveY)||1;
       const ease=1-Math.exp(-12*elapsed);
@@ -1323,7 +1605,8 @@
       if (grapplePull) {
         const dx=grapplePull.x-localPosition.x,dy=grapplePull.y-localPosition.y;
         const distance=Math.hypot(dx,dy);
-        const step=Math.min(distance,4200*elapsed);
+        const grappleSpeed=Math.max(1200,Number(grapplePull.speed)||4200);
+        const step=Math.min(distance,grappleSpeed*elapsed);
         if (distance<=48||step>=distance) {
           next={x:grapplePull.x,y:grapplePull.y};
           grapplePull=null;
@@ -1331,51 +1614,62 @@
           setStatus('Grapple reached the surface.');
         } else {
           next={x:localPosition.x+dx/distance*step,y:localPosition.y+dy/distance*step};
-          movementVelocity={x:dx/distance*4200,y:dy/distance*4200};
+          movementVelocity={x:dx/distance*grappleSpeed,y:dy/distance*grappleSpeed};
         }
       }
       const house=houseInside&&mapObstacles.find(item=>item.id===houseInside);
       if (house) {
         localPosition.x=Math.max(house.x+24,Math.min(house.x+house.w-24,next.x));
         localPosition.y=Math.max(house.y+24,Math.min(house.y+house.h-24,next.y));
+        const transition=stairLandingTransition(house,localPosition,movementVelocity,houseFloor);
+        if (transition) {
+          houseFloor=transition.floor;
+          stairTransitionCooldownUntil=Date.now()+450;
+          localPosition={...transition.position};
+          movementVelocity={x:0,y:0};
+          mutatePlayer(current=>current?{...current,...localPosition,houseFloor,lastSeen:Date.now()}:current)
+            .catch(error=>setStatus(error.message||'Could not sync your building floor.',true));
+          setStatus('Walked to floor '+(houseFloor+1)+' of '+buildingFloorCount(house)+'.');
+        }
       } else if (isInEnemySafeZone(playerTeam,next.x,next.y)) {
         movementVelocity={x:0,y:0};
         setStatus('That base is protected for the opposing team.');
       } else if (!pilot) {
-        const distance=Math.hypot(next.x-localPosition.x,next.y-localPosition.y);
-        const steps=Math.max(1,Math.ceil(distance/24));
         const start={...localPosition};
-        for (let step=1;step<=steps;step++) {
-          const candidate={x:start.x+(next.x-start.x)*step/steps,y:start.y+(next.y-start.y)*step/steps};
-          const blocked=point=>mapObstacles.some(item=>{
+        const deltaX=next.x-start.x,deltaY=next.y-start.y;
+        const steps=Math.max(1,Math.ceil(Math.max(Math.abs(deltaX),Math.abs(deltaY))/12));
+        const blocked=point=>mapObstacles.some(item=>{
             const inDoorway=item.enterable&&Math.abs(point.x-Number(item.doorX))<34&&
               Math.abs(point.y-Number(item.doorY))<44;
             return !inDoorway&&circleIntersectsRect(point.x,point.y,28,item);
           })||
             lootBoxIntersects(point.x,point.y,28);
-          if (blocked(candidate)) {
-            const slideX={x:candidate.x,y:localPosition.y};
-            const slideY={x:localPosition.x,y:candidate.y};
-            if (!blocked(slideX)) localPosition.x=slideX.x;
-            else movementVelocity.x=0;
-            if (!blocked(slideY)) localPosition.y=slideY.y;
-            else movementVelocity.y=0;
-            break;
-          }
-          localPosition=candidate;
+        for (let step=1;step<=steps;step++) {
+          const fraction=step/steps;
+          const candidateX={x:start.x+deltaX*fraction,y:localPosition.y};
+          if (!blocked(candidateX)) localPosition.x=candidateX.x;
+          else movementVelocity.x=0;
+          const candidateY={x:localPosition.x,y:start.y+deltaY*fraction};
+          if (!blocked(candidateY)) localPosition.y=candidateY.y;
+          else movementVelocity.y=0;
         }
       } else localPosition=next;
-      if ((dx||dy||grappling) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
+      const positionNeedsSync=!lastPositionWritePosition||
+        Math.hypot(localPosition.x-lastPositionWritePosition.x,localPosition.y-lastPositionWritePosition.y)>2;
+      if ((dx||dy||grappling||positionNeedsSync) && timestamp-lastPositionWrite>(lanMode?180:100) && !positionWriteBusy) {
         lastPositionWrite=timestamp;
         positionWriteBusy=true;
         const next={...localPosition};
+        lastPositionWritePosition=next;
         const facingAngle=aimActive?Math.atan2(aimOffset.y,aimOffset.x):Number(player.facingAngle)||0;
         mutatePlayer(current=>current?{...current,...next,facingAngle,lastSeen:Date.now()}:current)
           .catch(error=>setStatus(error.message,true))
           .finally(()=>{positionWriteBusy=false;});
       }
       if (pilot) updateTransportPosition(transport,localPosition,
-        (keys.has('e')?1:0)-(keys.has('q')?1:0))
+        transport.type===transportType?(keys.has('e')?1:0)-(keys.has('q')?1:0):0,
+        aimActive&&Math.hypot(aimOffset.x,aimOffset.y)>1
+          ?Math.atan2(aimOffset.y,aimOffset.x):Number(transport.facingAngle)||0)
         .catch(error=>setStatus(error.message||'Could not update helicopter lift.',true));
     }
     const viewPosition=player&&player.transportId&&warState.vehicles[player.transportId]
@@ -1440,24 +1734,21 @@
     visiblePlayers.forEach(player=>{
       if (player.transportId) return;
       const self=player.name===playerName;
-      if (!self) {
-        const position=renderPositions.get(player.name)||{x:Number(player.x),y:Number(player.y)};
-        position.x+=(Number(player.x)-position.x)*.32;
-        position.y+=(Number(player.y)-position.y)*.32;
-        renderPositions.set(player.name,position);
-        drawPlayer(context,{...player,...position},false);
-      } else drawPlayer(context,{...player,...(localPosition||{})},true);
+      if (!self) drawPlayer(context,{...player,x:Number(player.x),y:Number(player.y)},false);
+      else drawPlayer(context,{...player,...(localPosition||{})},true);
     });
     Object.values(warState.turrets||{}).forEach(turret=>drawTurret(context,turret));
     Object.values(warState.drones||{}).forEach(drone=>drawDrone(context,drone));
     Object.values(warState.vehicles||{}).forEach(vehicle=>{
       drawTransport(context,vehicle);
+      drawJeep(context,vehicle);
       drawParkedVehicle(context,vehicle);
     });
     Object.values(warState.smokes||{}).forEach(smoke=>drawSmoke(context,smoke));
     Object.values(warState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
     Object.values(warState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
     Object.values(warState.lootBoxes||{}).forEach(crate=>drawLootBox(context,crate));
+    Object.values(warState.c4s||{}).forEach(c4=>drawC4(context,c4));
     traces = traces.filter(trace => Date.now() - trace.time < 110);
     traces.forEach(trace => {
       context.globalAlpha = Math.max(0,1 - (Date.now() - trace.time) / 110);
@@ -1668,9 +1959,151 @@
     context.fillText(destroyed ? 'RAIDED' : Math.ceil(Number(base && base.health || 0)) + ' / 1200',x,y+145);
   }
 
+  function buildingTheme(item) {
+    const identity=String(item.id||item.label||'building').toLowerCase();
+    if (item.type==='house'||identity.includes('home')) return 'home';
+    if (identity.includes('warehouse')) return 'warehouse';
+    if (identity.includes('office')) return 'office';
+    if (identity.includes('depot')) return 'depot';
+    if (identity.includes('relay')) return 'relay';
+    return ['factory','clinic','market','security'][Array.from(identity).reduce((sum,char)=>sum+char.charCodeAt(0),0)%4];
+  }
+
+  function stairLayout(item) {
+    return {
+      start:{x:item.x+item.w*.28,y:item.y+item.h*.76},
+      end:{x:item.x+item.w*.72,y:item.y+item.h*.24}
+    };
+  }
+
+  function stairLandingTransition(item,position,velocity,floor) {
+    if (Date.now()<stairTransitionCooldownUntil) return null;
+    const layout=stairLayout(item);
+    const start=floor%2===0?layout.start:layout.end;
+    const end=floor%2===0?layout.end:layout.start;
+    const axisX=end.x-start.x,axisY=end.y-start.y;
+    const length=Math.hypot(axisX,axisY)||1;
+    const direction=(Number(velocity.x)||0)*axisX/length+(Number(velocity.y)||0)*axisY/length;
+    const nearStart=Math.hypot(position.x-start.x,position.y-start.y)<38;
+    const nearEnd=Math.hypot(position.x-end.x,position.y-end.y)<38;
+    const maxFloor=buildingFloorCount(item)-1;
+    if (floor<maxFloor&&nearEnd&&direction>35) return {floor:floor+1,position:end};
+    if (floor>0&&nearStart&&direction<-35) return {floor:floor-1,position:start};
+    return null;
+  }
+
+  function buildingFloorCount(item) {
+    return Math.max(2,Number(item.floorCount)||(item.type==='house'?2:4));
+  }
+
+  function drawInteriorStairs(context,item) {
+    const layout=stairLayout(item);
+    const start=houseFloor%2===0?layout.start:layout.end;
+    const end=houseFloor%2===0?layout.end:layout.start;
+    const treadCount=14;
+    context.save();
+    context.strokeStyle='#222a25';context.lineWidth=15;
+    context.beginPath();context.moveTo(start.x,start.y);context.lineTo(end.x,end.y);context.stroke();
+    for (let index=0;index<treadCount;index++) {
+      const progress=index/(treadCount-1);
+      const x=start.x+(end.x-start.x)*progress;
+      const y=start.y+(end.y-start.y)*progress;
+      const shade=Math.round(170-progress*92);
+      context.fillStyle='rgb('+shade+','+Math.round(shade*.86)+','+Math.round(shade*.68)+')';
+      context.strokeStyle='#252b26';context.lineWidth=3;
+      context.fillRect(x-30,y-11,60,22);
+      context.strokeRect(x-30,y-11,60,22);
+      context.strokeStyle='rgba(240,230,204,.42)';context.lineWidth=2;
+      context.beginPath();context.moveTo(x-24,y-5);context.lineTo(x+24,y-5);context.stroke();
+    }
+    context.fillStyle='#f1d98d';context.font='bold 14px system-ui';context.textAlign='center';
+    context.fillText('UP  '+(Math.min(buildingFloorCount(item),houseFloor+2)),end.x,end.y-26);
+    context.restore();
+  }
+
+  function drawBuildingInterior(context,item) {
+    const inset=22;
+    const x=item.x+inset,y=item.y+inset,w=item.w-inset*2,h=item.h-inset*2;
+    const theme=buildingTheme(item);
+    const floorColors={home:['#665e4e','#776953'],office:['#566b68','#657975'],
+      warehouse:['#625f52','#746f5c'],depot:['#665b4b','#776a55'],relay:['#3f6564','#4d7773'],
+      factory:['#555d55','#667065'],clinic:['#61716a','#74847d'],market:['#6b6250','#7e7159'],
+      security:['#4d5e61','#5d7071']};
+    const colors=floorColors[theme]||floorColors.factory;
+    context.save();
+    context.beginPath();context.rect(x,y,w,h);context.clip();
+    context.fillStyle=colors[Math.abs(houseFloor)%colors.length];context.fillRect(x,y,w,h);
+    const tile=theme==='warehouse'||theme==='depot'?156:128;
+    for (let row=0;row<Math.ceil(h/tile);row++) for (let column=0;column<Math.ceil(w/tile);column++) {
+      context.fillStyle=(row+column)%2?'rgba(18,25,21,.09)':'rgba(231,224,194,.055)';
+      context.fillRect(x+column*tile,y+row*tile,tile-2,tile-2);
+    }
+    context.strokeStyle='rgba(225,235,220,.32)';context.lineWidth=5;
+    context.strokeRect(x,y,w,h);
+    context.lineWidth=2;
+    if (theme==='warehouse') {
+      for (let row=0;row<3;row++) for (let column=0;column<2;column++) {
+        const rackX=x+w*(.08+column*.72),rackY=y+h*(.12+row*.27);
+        context.fillStyle='#4d4438';context.fillRect(rackX,rackY,w*.2,h*.13);
+        context.strokeStyle='#c49c61';context.strokeRect(rackX,rackY,w*.2,h*.13);
+        for (let box=0;box<3;box++) {
+          context.fillStyle=['#a9824d','#718066','#986b50'][(row+column+box)%3];
+          context.fillRect(rackX+8+box*(w*.052),rackY+8,w*.045,h*.075);
+        }
+      }
+    } else if (theme==='office'||theme==='clinic'||theme==='security') {
+      const desks=theme==='office'?6:4;
+      for (let index=0;index<desks;index++) {
+        const column=index%2,row=Math.floor(index/2);
+        const deskX=x+w*(.08+column*.63),deskY=y+h*(.12+row*.29);
+        context.fillStyle=theme==='clinic'?'#bac8b5':'#8c7658';
+        context.fillRect(deskX,deskY,w*.26,h*.12);
+        context.fillStyle='#273630';context.fillRect(deskX+w*.08,deskY+h*.025,w*.1,h*.06);
+        context.fillStyle='#303b35';context.beginPath();context.arc(deskX+w*.13,deskY+h*.18,10,0,Math.PI*2);context.fill();
+      }
+    } else if (theme==='home') {
+      context.fillStyle='#8a7257';context.fillRect(x+w*.08,y+h*.12,w*.31,h*.2);
+      context.fillStyle='#bca17b';context.fillRect(x+w*.1,y+h*.14,w*.27,h*.14);
+      context.fillStyle='#584f44';context.fillRect(x+w*.59,y+h*.1,w*.3,h*.22);
+      context.fillStyle='#8c7b63';context.fillRect(x+w*.61,y+h*.12,w*.26,h*.16);
+      context.fillStyle='#473f35';context.fillRect(x+w*.18,y+h*.58,w*.62,h*.1);
+      context.fillStyle='#ac8960';context.fillRect(x+w*.2,y+h*.6,w*.58,h*.065);
+      for (const [px,py] of [[.15,.8],[.82,.8],[.48,.42]]) {
+        context.fillStyle='#463d32';context.beginPath();context.arc(x+w*px,y+h*py,12,0,Math.PI*2);context.fill();
+      }
+    } else if (theme==='depot'||theme==='market') {
+      for (let index=0;index<4;index++) {
+        const bayX=x+w*(.08+index*.22);
+        context.fillStyle=theme==='depot'?'#78634a':'#826c4a';
+        context.fillRect(bayX,y+h*.14,w*.15,h*.58);
+        context.strokeStyle='#d1b57a';context.strokeRect(bayX,y+h*.14,w*.15,h*.58);
+        context.fillStyle='#4b5146';context.fillRect(bayX+7,y+h*.2,w*.15-14,h*.08);
+        context.fillRect(bayX+7,y+h*.42,w*.15-14,h*.08);
+      }
+      context.fillStyle='#323e38';context.fillRect(x+w*.1,y+h*.82,w*.8,h*.055);
+    } else {
+      context.fillStyle='#394840';context.fillRect(x+w*.12,y+h*.12,w*.22,h*.7);
+      context.fillStyle='#4b5c50';context.fillRect(x+w*.66,y+h*.12,w*.22,h*.7);
+      for (let row=0;row<4;row++) {
+        context.fillStyle=['#b17d4e','#73816b','#a85e50','#7d9ba0'][row];
+        context.fillRect(x+w*.17,y+h*(.18+row*.15),w*.12,h*.08);
+        context.fillRect(x+w*.71,y+h*(.18+row*.15),w*.12,h*.08);
+      }
+      context.fillStyle='#293a34';context.fillRect(x+w*.4,y+h*.32,w*.2,h*.36);
+      context.strokeStyle='#d5c27b';context.strokeRect(x+w*.4,y+h*.32,w*.2,h*.36);
+    }
+    drawInteriorStairs(context,item);
+    context.fillStyle='#f0e5bd';context.font='bold 16px system-ui';context.textAlign='left';
+    context.fillText((item.label||item.id).toUpperCase()+' · FLOOR '+(houseFloor+1),x+12,y+24);
+    context.restore();
+  }
+
   function drawObstacle(context,item) {
     const building=item.type==='building';
-    context.fillStyle=building?'#48564f':item.type==='house'?'#59665d':'#807b68';
+    const theme=buildingTheme(item);
+    const facades={home:'#66594a',warehouse:'#5a5749',office:'#536562',depot:'#625744',
+      relay:'#41605f',factory:'#4d584e',clinic:'#5b6a64',market:'#655946',security:'#4b5c60'};
+    context.fillStyle=building?facades[theme]:item.type==='house'?'#59665d':'#807b68';
     context.strokeStyle=building?'#9cad9f':item.type==='house'?'#b5c5b6':'#c6b57e';
     context.lineWidth=building?5:4;
     context.fillRect(item.x,item.y,item.w,item.h);
@@ -1682,7 +2115,7 @@
       context.lineWidth=3;
       context.strokeRect(item.x+14,item.y+14,item.w-28,item.h-28);
       context.fillStyle='#202c25';
-      context.fillRect(item.x+item.w*.38,item.y+item.h*.36,item.w*.24,item.h*.28);
+      if (houseInside!==item.id) context.fillRect(item.x+item.w*.38,item.y+item.h*.36,item.w*.24,item.h*.28);
       context.strokeStyle='#849488';
       context.lineWidth=2;
       const windowSize=Math.max(10,Math.min(22,item.w*.07));
@@ -1693,10 +2126,13 @@
           context.strokeRect(side,row,windowSize,windowSize);
         }
       }
-      context.fillStyle='#d2c297';
-      context.font=item.enterable?'bold 30px system-ui':'bold 11px system-ui';
-      context.textAlign='center';
-      context.fillText(item.label||(item.enterable?'ENTERABLE DEPOT':'BLOCKED BUILDING'),item.x+item.w/2,item.y+item.h/2+4);
+      if (houseInside===item.id) drawBuildingInterior(context,item);
+      else {
+        context.fillStyle='#d2c297';
+        context.font=item.enterable?'bold 30px system-ui':'bold 11px system-ui';
+        context.textAlign='center';
+        context.fillText(item.label||(item.enterable?'ENTERABLE DEPOT':'BLOCKED BUILDING'),item.x+item.w/2,item.y+item.h/2+4);
+      }
       if (item.enterable) {
         context.fillStyle='#8ee6ac';
         context.fillRect(item.doorX-16,item.doorY-10,32,20);
@@ -1704,21 +2140,10 @@
         context.font='bold 36px system-ui';
         context.fillText('Q',item.doorX,item.doorY+5);
       }
-      if (item.stairs) {
-        context.strokeStyle='#e8c96c';context.lineWidth=4;
-        context.beginPath();context.moveTo(item.stairs.x-30,item.stairs.y-40);
-        context.lineTo(item.stairs.x+30,item.stairs.y+40);context.stroke();
-        for (let step=0;step<5;step++) {
-          const offset=step*16-32;
-          context.beginPath();context.moveTo(item.stairs.x-14,item.stairs.y+offset);
-          context.lineTo(item.stairs.x+14,item.stairs.y+offset+18);context.stroke();
-        }
-        context.fillStyle='#f2df9c';context.font='bold 16px system-ui';context.textAlign='center';
-        context.fillText('STAIRS · Q',item.stairs.x,item.stairs.y+64);
-      }
     } else if (item.type==='house') {
       context.fillStyle='#26352b';
       context.fillRect(item.x+12,item.y+12,item.w-24,item.h-24);
+      if (houseInside===item.id) drawBuildingInterior(context,item);
       if (item.enterable) {
         context.fillStyle='#8ee6ac';
         context.fillRect(item.doorX-12,item.doorY-8,24,16);
@@ -1774,6 +2199,7 @@
     context.globalAlpha=1;
     context.translate(x,y);
     context.scale(scale,scale);
+    context.rotate(Number(vehicle.facingAngle)||0);
     context.fillStyle=vehicle.team==='vortex'?'#6f9bd5':'#c4757d';
     context.strokeStyle='#e8eee9';
     context.lineWidth=3/scale;
@@ -1795,6 +2221,13 @@
       context.strokeStyle='#d1ddd4';
       context.lineWidth=2/scale;
       context.beginPath();context.moveTo(seatX,side*22);context.lineTo(seatX,side*34);context.stroke();
+      if (gunners[seat]) {
+        const angle=(Number(vehicle.gunnerAngles?.[gunners[seat]])||0)-(Number(vehicle.facingAngle)||0);
+        context.save();context.translate(seatX,side*19);context.rotate(angle);
+        context.strokeStyle='#171e19';context.lineWidth=5/scale;
+        context.beginPath();context.moveTo(0,0);context.lineTo(24,0);context.stroke();
+        context.restore();
+      }
     }
     context.restore();
     context.fillStyle='#edf5ef';context.font='bold 13px system-ui';context.textAlign='center';
@@ -1802,6 +2235,29 @@
       ?'PARKED · '+Math.ceil((Number(vehicle.expiresAt)-Date.now())/1000)+'s'
       :transportName+' · '+vehicle.passengers.length+'/10 · '+Math.round(altitude)+'m';
     context.fillText(label,x,y-34*scale);
+  }
+
+  function drawJeep(context,vehicle) {
+    if (!vehicle||vehicle.type!=='jeep'||vehicle.parked||vehicle.explodedAt) return;
+    const x=Number(vehicle.x),y=Number(vehicle.y),gunners=transportGunnerKeys(vehicle);
+    context.save();context.globalAlpha=.24;context.fillStyle='#050806';
+    context.beginPath();context.ellipse(x,y+12,40,22,0,0,Math.PI*2);context.fill();context.restore();
+    drawVehicleSprite(context,'jeep',x,y,vehicles.jeep.color,
+      vehicle.team==='vortex'?'#9fc4ff':'#ffabb1',vehicle.facingAngle);
+    const seats=[[-11,-9],[10,-9],[-11,11],[10,11]];
+    seats.forEach(([offsetX,offsetY],index)=>{
+      const occupied=vehicle.pilot&&index===0||gunners.includes(vehicle.passengers?.[index+1]);
+      context.fillStyle=occupied?vehicle.team==='vortex'?'#83b3ff':'#ff8792':'#475149';
+      context.beginPath();context.arc(x+offsetX,y+offsetY,4,0,Math.PI*2);context.fill();
+    });
+    if (gunners.length) {
+      const angle=Number(vehicle.gunnerAngles?.[gunners[0]])||0;
+      context.save();context.translate(x+10,y-8);context.rotate(angle);
+      context.strokeStyle='#171e19';context.lineWidth=6;
+      context.beginPath();context.moveTo(0,0);context.lineTo(34,0);context.stroke();context.restore();
+    }
+    context.fillStyle='#edf5ef';context.font='bold 12px system-ui';context.textAlign='center';
+    context.fillText('GUN JEEP · '+(vehicle.passengers?.length||0)+'/5',x,y-34);
   }
 
   function drawVehicleSprite(context,type,x,y,bodyColor,teamColor,angle=0) {
@@ -1862,6 +2318,29 @@
       context.beginPath();context.moveTo(1,-6);context.lineTo(31,-17);context.moveTo(1,6);context.lineTo(31,17);context.stroke();
       context.strokeStyle='#59655d';context.lineWidth=8;
       context.beginPath();context.moveTo(21,-13);context.lineTo(31,-17);context.moveTo(21,13);context.lineTo(31,17);context.stroke();
+    } else if (type==='apache') {
+      context.fillStyle='#1a241b';
+      context.fillRect(-5,-36,10,72);
+      context.fillRect(-35,-3,70,6);
+      context.fillStyle=bodyColor;context.strokeStyle=teamColor;context.lineWidth=3;
+      context.beginPath();context.ellipse(0,0,25,12,0,0,Math.PI*2);context.fill();context.stroke();
+      context.fillStyle='#a8c4bd';context.fillRect(13,-7,13,14);
+      context.strokeStyle='#e7d985';context.lineWidth=3;
+      context.beginPath();context.moveTo(-8,-31);context.lineTo(8,-31);context.moveTo(-8,31);context.lineTo(8,31);context.stroke();
+      context.fillStyle='#202820';context.fillRect(-15,-12,8,24);context.fillRect(5,-12,8,24);
+    } else if (type==='jeep') {
+      context.fillStyle='#171c18';
+      for (const wheelX of [-24,22]) for (const wheelY of [-19,19]) {
+        context.fillRect(wheelX-7,wheelY-6,14,12);
+        context.strokeStyle='#8b9185';context.lineWidth=2;context.strokeRect(wheelX-7,wheelY-6,14,12);
+      }
+      context.fillStyle=bodyColor;context.strokeStyle=teamColor;context.lineWidth=3;
+      context.fillRect(-25,-17,52,34);context.strokeRect(-25,-17,52,34);
+      context.fillStyle='#33443a';context.fillRect(-14,-13,23,26);
+      context.fillStyle='#b9c6bb';context.fillRect(9,-12,10,24);
+      context.fillStyle='#222a23';context.beginPath();context.arc(-1,0,10,0,Math.PI*2);context.fill();
+      context.strokeStyle='#e0c87b';context.lineWidth=5;
+      context.beginPath();context.moveTo(4,0);context.lineTo(31,0);context.stroke();
     }
     context.restore();
   }
@@ -1961,6 +2440,9 @@
   }
 
   function transportGunnerKeys(vehicle) {
+    if (vehicle&&vehicle.gunnerSeats&&typeof vehicle.gunnerSeats==='object')
+      return [...new Set(Object.values(vehicle.gunnerSeats)
+        .filter(key=>vehicle.passengers?.includes(key)))].slice(0,vehicle.type==='jeep'?1:4);
     return Array.isArray(vehicle&&vehicle.passengers)
       ?vehicle.passengers.filter(key=>key!==vehicle.pilot).slice(0,4):[];
   }
@@ -1968,23 +2450,78 @@
   function transportGunnerPosition(vehicle,key) {
     const seat=transportGunnerKeys(vehicle).indexOf(key);
     if (seat<0) return null;
+    if (vehicle.type==='jeep') return {x:Number(vehicle.x)+10,y:Number(vehicle.y)-8};
     const scale=1+Math.max(0,Math.min(100,Number(vehicle.altitude)||0))/100;
     return {x:Number(vehicle.x)+(seat%2===0?-18:18)*scale,
       y:Number(vehicle.y)+(seat<2?-24:24)*scale};
   }
 
-  async function updateTransportPosition(vehicle,position,altitudeInput=0) {
+  function openVehicleSeatMenu() {
+    const player=warState?.players?.[playerKey];
+    const vehicle=player?.transportId&&warState.vehicles?.[player.transportId];
+    if (!vehicle||!ui?.seatMenu) {
+      showGameNotice('Move within range of a parked vehicle and tap V to re-enter it.','info');
+      return;
+    }
+    const gunners=vehicle.gunnerSeats||{};
+    const jeep=vehicle.type==='jeep';
+    const seatLimit=jeep?5:10;
+    const seats=[
+      {id:'pilot',label:jeep?'Driver':'Pilot',occupied:vehicle.pilot&&vehicle.pilot!==playerKey},
+      ...Array.from({length:jeep?1:4},(_,index)=>({id:'gunner-'+index,label:jeep?'Turret gunner':'Gunner '+(index+1),
+        occupied:gunners[index]&&gunners[index]!==playerKey})),
+      {id:'passenger',label:'Passenger',occupied:(vehicle.passengers?.length||0)>=seatLimit}
+    ];
+    ui.seatMenu.innerHTML='<section><header><strong>'+(jeep?'GUN JEEP SEAT':'HELICOPTER SEAT')+'</strong><button type="button" data-war-action="close-seat-menu" aria-label="Close seat menu">×</button></header>'+
+      seats.map(seat=>'<button type="button" data-war-action="change-vehicle-seat" data-seat="'+seat.id+'" '+
+        (seat.occupied?'disabled':'')+'>'+seat.label+(seat.occupied?' · occupied':'')+'</button>').join('')+'</section>';
+    ui.seatMenu.hidden=false;
+  }
+
+  async function changeTransportSeat(seat) {
+    const player=warState?.players?.[playerKey];
+    const vehicle=player?.transportId&&warState.vehicles?.[player.transportId];
+    if (!vehicle||!ui?.seatMenu) return;
+    let changed=false;
+    await updateWar('vehicles/'+vehicle.id,current=>{
+      if (!current||!current.passengers?.includes(playerKey)) return current;
+      const gunners={...(current.gunnerSeats||{})};
+      Object.keys(gunners).forEach(index=>{if(gunners[index]===playerKey) delete gunners[index];});
+      if (seat==='pilot') {
+        if (current.pilot&&current.pilot!==playerKey) return current;
+        changed=true;
+        return {...current,pilot:playerKey,gunnerSeats:gunners};
+      }
+      if (seat==='passenger') {
+        changed=true;
+        return {...current,pilot:current.pilot===playerKey?'':current.pilot,gunnerSeats:gunners};
+      }
+      const index=Number(seat.replace('gunner-',''));
+      if (!Number.isInteger(index)||index<0||index>(current.type==='jeep'?0:3)||gunners[index]&&gunners[index]!==playerKey) return current;
+      gunners[index]=playerKey;
+      changed=true;
+      return {...current,pilot:current.pilot===playerKey?'':current.pilot,gunnerSeats:gunners};
+    });
+    if (!changed) {showGameNotice('That seat is already occupied.','error');return;}
+    ui.seatMenu.hidden=true;
+    movementVelocity={x:0,y:0};
+    showGameNotice(seat==='pilot'?'Pilot seat selected. Fly toward the cursor with W.':
+      seat.startsWith('gunner-')?'Gunner seat selected. Aim with the cursor and fire with the mouse.':'Passenger seat selected.','info');
+  }
+
+  async function updateTransportPosition(vehicle,position,altitudeInput=0,facingAngle=0) {
     if (!vehicle||Date.now()-Number(updateTransportPosition.lastWriteAt||0)<140) return;
     const now=Date.now();
     updateTransportPosition.lastWriteAt=now;
     let updated;
     await updateWar('vehicles/'+vehicle.id,current=>{
       if (!current||current.pilot!==playerKey) return current;
-      const elapsed=Math.max(0,now-Number(current.lastMovedAt||now))/1000;
+      const elapsed=Math.min(.2,Math.max(0,now-Number(current.lastMovedAt||now))/1000);
       const moving=Math.hypot(position.x-Number(current.x),position.y-Number(current.y))>2;
-      const liftRate=altitudeInput?altitudeInput*30:moving?12:0;
+      const liftRate=current.type===transportType?(altitudeInput?altitudeInput*30:moving?12:0):0;
       const lift=Math.max(0,Math.min(100,Number(current.altitude||0)+elapsed*liftRate));
-      updated={...current,x:position.x,y:position.y,altitude:lift,lastMovedAt:now};
+      updated={...current,x:position.x,y:position.y,altitude:lift,
+        facingAngle:Number.isFinite(facingAngle)?facingAngle:Number(current.facingAngle)||0,lastMovedAt:now};
       return updated;
     });
     if (!updated) return;
@@ -1996,7 +2533,8 @@
     context.save();
     context.translate(Number(drone.x),Number(drone.y));
     context.rotate(Number(drone.angle)||0);
-    if (drone.type==='rc_car') {
+    if (drone.type==='mini_rc_car') context.scale(.72,.72);
+    if (drone.type==='rc_car'||drone.type==='mini_rc_car') {
       context.fillStyle='#141b17';
       context.fillRect(-15,-13,12,5);context.fillRect(8,-13,12,5);
       context.fillRect(-15,8,12,5);context.fillRect(8,8,12,5);
@@ -2081,6 +2619,32 @@
     }
     context.fillStyle='#141a16';
     context.fillRect(-14,-21,18,4);context.fillRect(-14,17,18,4);
+    const owned=claymore.ownerKey===playerKey||safeUserKey(claymore.owner)===playerKey;
+    if (owned) {
+      context.strokeStyle='#75efa0';context.lineWidth=3;
+      context.beginPath();context.arc(0,0,36,0,Math.PI*2);context.stroke();
+      context.fillStyle='#baffce';context.font='bold 12px system-ui';context.textAlign='center';
+      context.fillText('YOURS',0,-39);
+    }
+    context.restore();
+  }
+
+  function drawC4(context,c4) {
+    if (!c4) return;
+    const x=Number(c4.x),y=Number(c4.y);
+    const owned=c4.ownerKey===playerKey||safeUserKey(c4.owner)===playerKey;
+    context.save();
+    context.translate(x,y);
+    context.fillStyle=owned?'rgba(69,220,125,.16)':'rgba(238,100,92,.13)';
+    context.strokeStyle=owned?'#70f0a1':'#f07870';context.lineWidth=3;
+    context.beginPath();context.arc(0,0,27,0,Math.PI*2);context.fill();context.stroke();
+    context.fillStyle='#222d27';context.strokeStyle='#d3dacd';context.lineWidth=2;
+    context.fillRect(-16,-11,32,22);context.strokeRect(-16,-11,32,22);
+    context.fillStyle='#414d44';context.fillRect(-11,-7,22,14);
+    context.fillStyle=Math.floor(Date.now()/350)%2?'#ff6c58':'#f2d77e';
+    context.beginPath();context.arc(10,-5,3,0,Math.PI*2);context.fill();
+    context.fillStyle=owned?'#baffce':'#ffc0b9';context.font='bold 11px system-ui';context.textAlign='center';
+    context.fillText(owned?'YOUR C4':'C4',0,-34);
     context.restore();
   }
 
@@ -2109,6 +2673,14 @@
     const now=Date.now();
     if (grenade.detonatedAt) {
       const progress=Math.min(1,(now-Number(grenade.detonatedAt))/650);
+      if (grenade.effect==='smoke') {
+        context.save();
+        context.globalAlpha=1-progress;
+        context.fillStyle='#9aa29b';
+        context.beginPath();context.arc(Number(grenade.x),Number(grenade.y),10+progress*24,0,Math.PI*2);context.fill();
+        context.restore();
+        return;
+      }
       const radius=Number(grenade.radius)||155;
       context.save();
       context.globalAlpha=1-progress;
@@ -2129,8 +2701,8 @@
     const y=groundY-height;
     context.fillStyle='rgba(5,8,6,.42)';
     context.beginPath();context.ellipse(x,groundY,9,5,0,0,Math.PI*2);context.fill();
-    context.fillStyle='#e5bd55';
-    context.strokeStyle='#fff1ad';
+    context.fillStyle=grenade.effect==='smoke'?'#9aa29b':'#e5bd55';
+    context.strokeStyle=grenade.effect==='smoke'?'#e1e7df':'#fff1ad';
     context.lineWidth=2;
     context.beginPath();context.arc(x,y,7+Math.sin(now/45)*1.5,0,Math.PI*2);context.fill();context.stroke();
   }
@@ -2186,7 +2758,7 @@
       context.fillStyle='#101713';
       context.font='bold 10px system-ui';
       context.textAlign='center';
-      const labels={scout_bike:'BIKE',assault_rover:'ROVER',tank:'TANK',anti_air:'ANTI-AIR'};
+      const labels={scout_bike:'BIKE',assault_rover:'ROVER',tank:'TANK',anti_air:'ANTI-AIR',apache:'APACHE'};
       context.fillText(labels[player.vehicle]||'VEHICLE',x,y+4);
     } else {
       const angle=isSelf&&aimActive?Math.atan2(aim.y-y,aim.x-x):Number(player.facingAngle)||0;
@@ -2269,13 +2841,22 @@
     const progress=accountData && accountData.dropzone?normalizeProgress(accountData.dropzone):normalizeProgress(null);
     const markup = '<span class="nexus-war-vortex">Vortex resources: ' +
       Number(warState.economy.vortex.resources || 0) + '</span><span class="nexus-war-krypton">Krypton resources: ' +
-      Number(warState.economy.krypton.resources || 0) + '</span><span>Players online: ' + players.length +
+      Number(warState.economy.krypton.resources || 0) + '</span><span class="nexus-war-own-resources">Your resources: ' +
+      Number(warState.economy[playerTeam]?.resources||0) + '</span><span>Players online: ' + players.length +
       '</span><span>K / D: ' + Number(player.kills || 0) + ' / ' + Number(player.deaths || 0) +
       '</span><span>'+(vehicleWeapons[player.vehicle]?weapon.name+' ammo':
         weaponSlot==='secondary'?'Secondary ammo':'Primary ammo')+': ' +
       ammo + ' / ' + weapon.mag + '</span><span>Level ' + progress.level +
       ' · XP ' + progress.xp + ' / ' + (progress.level===maxLevel?progress.xp:(progress.level*xpPerLevel)) + '</span>';
     if (markup!==lastStatsMarkup) { ui.stats.innerHTML=markup;lastStatsMarkup=markup; }
+    updateVehicleShopPrice();
+    const remaining=Math.max(0,Number(warState.matchEndsAt||Date.now())-Date.now());
+    if (ui.matchTimer) ui.matchTimer.textContent=warState.matchPhase==='voting'?'MAP VOTE':
+      Math.floor(remaining/60_000).toString().padStart(2,'0')+':'+
+      Math.floor(remaining%60_000/1000).toString().padStart(2,'0')+' REMAINING';
+    if (ui.resourceHud) ui.resourceHud.textContent=teamLabel(playerTeam)+' '+
+      Number(warState.economy[playerTeam]?.resources||0)+' RES · '+
+      Number(accountData?.balance||0).toLocaleString()+' SEKTORIUM';
     updateCombatHud(player,weapon,ammo,weaponSlot);
     updateWeaponSwitchUi(player);
     if (ui.giveUp) ui.giveUp.hidden=!player.downed;
@@ -2310,7 +2891,10 @@
       '<div class="nexus-war-plate-slots">'+slots+'</div><small class="nexus-war-ready-plates">'+carried+' READY</small></div>'+
       '<div class="nexus-war-hud-ammo"><div class="nexus-war-hud-heading"><span>'+ammoLabel+'</span><strong>'+Math.max(0,Number(ammo)||0)+
       '<small> / '+Number(weapon.mag||0)+'</small></strong></div><div class="nexus-war-ammo-track"><i style="width:'+ammoPercent+'%"></i></div>'+
-      '<small class="nexus-war-ammo-name">'+weapon.name+'</small></div>';
+      '<small class="nexus-war-ammo-name">'+weapon.name+'</small></div>'+
+      (weapon.utilityAttachment?.ammo?'<div class="nexus-war-hud-underbarrel"><div class="nexus-war-hud-heading"><span>UNDERBARREL</span><strong>'+
+        Math.max(0,Number(player.attachmentAmmo?.[weapon.utilityAttachment.attachmentId])||0)+'<small> / '+weapon.utilityAttachment.ammo+
+        '</small></strong></div><small class="nexus-war-ammo-name">'+weapon.utilityAttachment.name+'</small></div>':'');
     if (markup!==lastHudMarkup) { ui.hud.innerHTML=markup;lastHudMarkup=markup; }
   }
 
@@ -2322,6 +2906,20 @@
     };
     aimActive=true;
     aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
+    const player=warState?.players?.[playerKey];
+    const vehicle=player?.transportId&&warState.vehicles?.[player.transportId];
+    if (vehicle&&Date.now()-lastVehicleAimWriteAt>140) {
+      const angle=Math.atan2(aimOffset.y,aimOffset.x);
+      const gunner=transportGunnerKeys(vehicle).includes(playerKey);
+      if (vehicle.pilot===playerKey||gunner) {
+        lastVehicleAimWriteAt=Date.now();
+        const path='vehicles/'+vehicle.id;
+        updateWar(path,current=>current?vehicle.pilot===playerKey
+          ?{...current,facingAngle:angle}
+          :{...current,gunnerAngles:{...(current.gunnerAngles||{}),[playerKey]:angle}}:current)
+          .catch(error=>setStatus(error.message||'Could not update vehicle aim.',true));
+      }
+    }
   }
 
   function onPointerDown(event) {
@@ -2341,6 +2939,13 @@
   function onPointerUp() { pointerDown = false; }
 
   function onControlPointerDown(event) {
+    const lethalButton=event.target.closest('[data-war-action="use-lethal"]');
+    if (!paused&&lethalButton&&container.contains(lethalButton)&&
+        warState?.players?.[playerKey]?.lethal==='c4') {
+      beginC4Hold('pointer');
+      if (lethalButton.setPointerCapture) lethalButton.setPointerCapture(event.pointerId);
+      return;
+    }
     const holdButton=event.target.closest('[data-war-action="give-up"]');
     if (holdButton&&container.contains(holdButton)&&warState.players[playerKey]?.downed) {
       event.preventDefault();
@@ -2362,6 +2967,10 @@
   }
 
   function onControlPointerUp(event) {
+    if (c4HoldSource==='pointer') {
+      const held=finishC4Hold('pointer');
+      if (held) c4SuppressClick=true;
+    }
     const holdButton=event.target.closest('[data-war-action="give-up"]');
     if (holdButton&&giveUpInterval) { clearTimeout(giveUpInterval);giveUpInterval=0; }
     const control=event.target.closest('[data-war-move],[data-war-fire]');
@@ -2397,7 +3006,8 @@
         ?'secondary':'primary';
       const ability=vehicleWeapon?null:effectiveWeapon(player,slot).utilityAttachment;
       ui.attachmentAction.hidden=!ability;
-      ui.attachmentAction.textContent=ability?ability.name+' (Tab)':'Underbarrel (Tab)';
+      const ammo=ability?.ammo?' · '+Number(player.attachmentAmmo?.[ability.attachmentId]||0)+'/'+ability.ammo:'';
+      ui.attachmentAction.textContent=ability?ability.name+ammo+' (Tab)':'Underbarrel (Tab)';
     }
   }
 
@@ -2410,12 +3020,35 @@
     setStatus(droneControlled?'Manual drone control active. WASD steers; the operator stays in place.':'Drone released to continue on its current heading.');
   }
 
+  function beginC4Hold(source) {
+    if (c4HoldSource) return;
+    c4HoldSource=source;
+    c4HoldTriggered=false;
+    c4HoldTimer=window.setTimeout(()=>{
+      c4HoldTimer=0;
+      c4HoldTriggered=true;
+      if (source==='pointer') c4SuppressClick=true;
+      detonateC4s().catch(error=>setStatus(error.message||'Could not detonate C4.',true));
+    },650);
+  }
+
+  function finishC4Hold(source) {
+    if (c4HoldSource!==source) return false;
+    if (c4HoldTimer) clearTimeout(c4HoldTimer);
+    c4HoldTimer=0;
+    const held=c4HoldTriggered;
+    c4HoldSource='';
+    c4HoldTriggered=false;
+    return held;
+  }
+
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
     const target=event.target instanceof Element?event.target:null;
     if (key==='escape') {
       event.preventDefault();
       if (ui?.spawnMenu&&!ui.spawnMenu.hidden) closeVehicleSpawnMenu();
+      else if (ui?.seatMenu&&!ui.seatMenu.hidden) ui.seatMenu.hidden=true;
       else if (supportTargeting) { supportTargeting='';setStatus('Strike targeting cancelled.');draw(); }
       else togglePause();
       return;
@@ -2432,6 +3065,24 @@
     }
     if (target&&target.closest('input,textarea,[contenteditable="true"]')) return;
     if (target instanceof HTMLSelectElement&&key!=='v') return;
+    if (!paused&&key==='c'&&warState?.players?.[playerKey]?.lethal==='c4') {
+      event.preventDefault();
+      if (!event.repeat) beginC4Hold('keyboard');
+      return;
+    }
+    if (key==='v') {
+      event.preventDefault();
+      if (!event.repeat&&!vehicleHoldTimer) {
+        vehicleHoldTriggered=false;
+        vehicleHoldTimer=window.setTimeout(()=>{
+          vehicleHoldTimer=0;
+          vehicleHoldTriggered=true;
+          openVehicleSeatMenu();
+        },450);
+      }
+      return;
+    }
+    if (key==='k') {event.preventDefault();if (!event.repeat) toggleVoiceMute();return;}
     if (key==='p') {
       event.preventDefault();
       togglePause();
@@ -2484,11 +3135,30 @@
 
   function onKeyUp(event) {
     const key=event.key.toLowerCase();
+    if (key==='c'&&c4HoldSource==='keyboard') {
+      const held=finishC4Hold('keyboard');
+      if (!held) useLethal();
+      keys.delete(key);
+      return;
+    }
+    if (key==='v') {
+      if (!vehicleHoldTimer&&!vehicleHoldTriggered) {keys.delete(key);return;}
+      if (vehicleHoldTimer) {clearTimeout(vehicleHoldTimer);vehicleHoldTimer=0;}
+      const held=vehicleHoldTriggered;
+      vehicleHoldTriggered=false;
+      if (!held) deployVehicle();
+      keys.delete(key);
+      return;
+    }
     keys.delete(key);
     if (key==='g'&&giveUpInterval) { clearTimeout(giveUpInterval);giveUpInterval=0; }
   }
   function onBlur() {
     keys.clear();pointerDown=false;movementVelocity={x:0,y:0};
+    if (c4HoldTimer) clearTimeout(c4HoldTimer);
+    c4HoldTimer=0;c4HoldSource='';c4HoldTriggered=false;c4SuppressClick=false;
+    if (vehicleHoldTimer) clearTimeout(vehicleHoldTimer);
+    vehicleHoldTimer=0;vehicleHoldTriggered=false;
     if (giveUpInterval) { clearTimeout(giveUpInterval);giveUpInterval=0; }
   }
 
@@ -2499,6 +3169,10 @@
     if (!shooter || shooter.respawnAt > now || shooter.hp <= 0 || shooter.downed) return;
     const transport=shooter.transportId&&warState.vehicles[shooter.transportId];
     const gunnerPosition=transport&&transportGunnerPosition(transport,playerKey);
+    if (transport?.type==='jeep'&&transport.pilot===playerKey) {
+      setStatus('The driver cannot fire the jeep turret. Hold V to take the gunner seat.');
+      return;
+    }
     if (transport&&transport.pilot!==playerKey&&!gunnerPosition) {
       setStatus('The four helicopter side-gunner seats are occupied.');
       return;
@@ -2575,6 +3249,7 @@
             detonatedAt:Date.now(),expiresAt:Date.now()+650,radius:weapon.radius}));
           if (baseHit&&impact===baseHit) await raidBase(baseHit.team,Math.round(weapon.damage*.7),shooter.team);
           if (impact&&impact.turret) await hitTurret(impact.turretId,weapon.damage);
+          if (impact&&impact.c4) await destroyC4(impact.c4Id,impact.c4);
           if (impact&&impact.transport) await hitTransport(impact.transportId,weapon.aircraftDamage||weapon.damage);
           for (const enemy of Object.values(warState.players||{})) {
             if (!enemy||enemy.team===shooter.team||enemy.transportId||!enemy.online) continue;
@@ -2590,6 +3265,8 @@
           await hitPlayer(impact.target,projectileDamage,shooter);
         } else if (impact&&impact.turret) {
           await hitTurret(impact.turretId,projectileDamage);
+        } else if (impact&&impact.c4) {
+          await destroyC4(impact.c4Id,impact.c4);
         } else if (impact&&impact.transport) {
           await hitTransport(impact.transportId,weapon.aircraftDamage||125);
         } else if (baseHit) {
@@ -2601,6 +3278,27 @@
     }
     draw();
     if (pointerDown) window.setTimeout(fireWeapon,weapon.rate);
+  }
+
+  async function destroyC4(id,c4) {
+    let destroyedCharge=false;
+    const remaining=await updateWar('c4s/'+id,current=>{
+      destroyedCharge=!!current;
+      return destroyedCharge?null:current;
+    });
+    if (!remaining&&warState?.c4s) delete warState.c4s[id];
+    if (!destroyedCharge) return;
+    const ownedByMe=(c4.ownerKey||safeUserKey(c4.owner))===playerKey;
+    if (ownedByMe) {
+      if (!Number(warState?.players?.[playerKey]?.c4Charges||0)&&
+          !Object.values(warState?.c4s||{}).some(entry=>entry?.ownerKey===playerKey))
+        await mutatePlayer(current=>current?.lethal==='c4'?{...current,lethal:'grenade'}:current);
+      showGameNotice('Your C4 was destroyed.','error');
+      return;
+    }
+    showGameNotice('Enemy C4 destroyed · +10 XP.','objective');
+    try { await grantXp(10,'enemy C4 destroyed'); }
+    catch(error) { setStatus('C4 destroyed, but XP could not be saved: '+error.message,true); }
   }
 
   function closestTarget(origin,end,penetratesWalls=false) {
@@ -2619,6 +3317,12 @@
       if (hit.distance<=30&&!lineBlocked(origin.x,origin.y,turret.x,turret.y,penetratesWalls)&&
           (!closest||hit.along<closest.distance)) closest={turret,turretId:id,distance:hit.along,x:hit.x,y:hit.y};
     }
+        for (const [id,c4] of Object.entries(warState.c4s||{})) {
+          if (!c4) continue;
+          const hit=pointToSegment(c4.x,c4.y,origin.x,origin.y,end.x,end.y);
+          if (hit.distance<=20&&!lineBlocked(origin.x,origin.y,c4.x,c4.y,penetratesWalls)&&
+            (!closest||hit.along<closest.distance)) closest={c4,c4Id:id,distance:hit.along,x:hit.x,y:hit.y};
+        }
     return closest;
   }
 
@@ -2766,6 +3470,9 @@
     if (Number(player.bunkerBusterCharges||0)>0) tactical.push(['bunker_buster','Bunker buster · '+player.bunkerBusterCharges]);
     const lethal=[['grenade','Frag grenade · '+Number(player.grenadeCharges||0)],
       ['claymore','Claymore · '+Number(player.claymoreCharges||0)]];
+    if (Number(player.c4Charges||0)>0||Object.values(warState?.c4s||{}).some(c4=>c4?.ownerKey===playerKey))
+      lethal.push(['c4','C4 · '+Number(player.c4Charges||0)+' available · '+
+        Object.values(warState?.c4s||{}).filter(c4=>c4?.ownerKey===playerKey).length+' placed']);
     if (Number(player.droneCharges||0)>0) lethal.push(['drone','Kamikaze drone · '+player.droneCharges]);
     if (Number(player.rcCarCharges||0)>0) lethal.push(['rc_car','RC kamikaze car · '+player.rcCarCharges]);
     if (Number(player.turretCharges||0)>0) lethal.push(['turret','Sentry turret · '+player.turretCharges]);
@@ -2785,13 +3492,16 @@
       '<option value="'+id+'">'+label+'</option>').join('');
     ui.tactical.value=tacticalValue;
     ui.lethal.value=lethalValue;
+    const lethalAction=container?.querySelector('[data-war-action="use-lethal"]');
+    if (lethalAction) lethalAction.textContent=lethalValue==='c4'
+      ?'Place C4 · hold to detonate (C)':'Use lethal (C)';
   }
 
   async function consumeEquipment(slot,item) {
     const chargeField={smoke:'smokeCharges',stim:'stimCharges',grenade:'grenadeCharges',
       claymore:'claymoreCharges',turret:'turretCharges',drone:'droneCharges',
       grapple:'grappleCharges',airstrike:'airstrikeCharges',bunker_buster:'bunkerBusterCharges',
-      rc_car:'rcCarCharges'}[item];
+      rc_car:'rcCarCharges',c4:'c4Charges'}[item];
     if (!chargeField) throw new Error('Unknown equipment.');
     let used=false;
     await mutatePlayer(current=>{
@@ -2808,43 +3518,94 @@
     if (!used) throw new Error('Equip this item and make sure you have a charge available.');
   }
 
+  async function consumeAttachmentAmmo(attachment) {
+    if (!attachment?.ammo) return;
+    let consumed=false;
+    await mutatePlayer(current=>{
+      const slot=current?.activeWeaponSlot==='secondary'&&weapons[current.secondary]?.slot==='secondary'
+        ?'secondary':'primary';
+      const active=effectiveWeapon(current,slot).utilityAttachment;
+      const ammo={...(current?.attachmentAmmo||{})};
+      const count=Number(ammo[attachment.attachmentId]||0);
+      consumed=!!current&&active?.attachmentId===attachment.attachmentId&&count>0;
+      if (!consumed) return current;
+      ammo[attachment.attachmentId]=count-1;
+      return {...current,attachmentAmmo:ammo};
+    });
+    if (!consumed) throw new Error('Underbarrel magazine empty. Press R to reload.');
+  }
+
+  async function fireMiniPistol(player,position,angle,attachment) {
+    const range=Number(attachment.miniPistolRange)||480;
+    const end={x:Math.max(0,Math.min(worldWidth,position.x+Math.cos(angle)*range)),
+      y:Math.max(0,Math.min(worldHeight,position.y+Math.sin(angle)*range))};
+    const wall=firstSolidObstruction(position.x,position.y,end.x,end.y);
+    const target=closestTarget({...player,x:Number(position.x),y:Number(position.y)},wall||end);
+    traces.push({x1:position.x,y1:position.y,x2:target?target.x:wall?wall.x:end.x,
+      y2:target?target.y:wall?wall.y:end.y,time:Date.now(),color:'#f2d77e',impact:!!target});
+    playSound('shot');
+    if (target?.target) await hitPlayer(target.target,Number(attachment.miniPistolDamage)||24,player);
+    setStatus(target?'Mini pistol hit.':'Mini pistol fired.');
+  }
+
   async function useWeaponAttachment() {
     const player=warState&&warState.players[playerKey];
     if (!player||player.downed||player.hp<=0||player.transportId||vehicles[player.vehicle]) {
-      setStatus('Underbarrel launchers can only be used on foot.',true);return;
+      setStatus('Underbarrel attachments can only be used on foot.',true);return;
     }
     const weaponSlot=player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'
       ?'secondary':'primary';
-    const weapon=effectiveWeapon(player,weaponSlot);
-    const attachment=weapon.utilityAttachment;
-    if (!attachment) { setStatus('Equip a mini grenade or smoke launcher attachment first.',true);return; }
+    const attachment=effectiveWeapon(player,weaponSlot).utilityAttachment;
+    if (!attachment) { setStatus('Equip a Tab utility attachment first.',true);return; }
     const now=Date.now();
     if (now<attachmentCooldownUntil) {
-      setStatus('Underbarrel launcher ready in '+((attachmentCooldownUntil-now)/1000).toFixed(1)+'s.');return;
+      setStatus('Attachment ready in '+((attachmentCooldownUntil-now)/1000).toFixed(1)+'s.');return;
+    }
+    if (attachment.ammo&&Number(player.attachmentAmmo?.[attachment.attachmentId]||0)<=0) {
+      setStatus('Underbarrel magazine empty. Press R to reload.');return;
     }
     const position=localPosition||player;
     if (isInOwnSafeZone(playerTeam,Number(position.x),Number(position.y))) {
-      setStatus('Underbarrel launchers are disabled inside your team safe zone.',true);return;
+      setStatus('Underbarrel attachments are disabled inside your team safe zone.',true);return;
     }
-    const maxDistance=attachment.utility==='underbarrelFrag'?620:500;
     const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
-    const distance=aimActive?Math.min(maxDistance,Math.hypot(aim.x-position.x,aim.y-position.y)):maxDistance;
-    const destination={
-      x:Math.max(0,Math.min(worldWidth,position.x+Math.cos(angle)*distance)),
-      y:Math.max(0,Math.min(worldHeight,position.y+Math.sin(angle)*distance))
-    };
-    const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
     try {
-      if (attachment.utility==='underbarrelFrag') {
+      if (attachment.utility==='miniGrapple') {
+        const end={x:position.x+Math.cos(angle)*560,y:position.y+Math.sin(angle)*560};
+        const anchor=firstSolidObstruction(position.x,position.y,end.x,end.y);
+        if (!anchor) throw new Error('Aim at a nearby wall or solid surface to use the mini grapple.');
+        await consumeAttachmentAmmo(attachment);
+        grapplePull={x:anchor.x-Math.cos(angle)*36,y:anchor.y-Math.sin(angle)*36,speed:3000};
+        movementVelocity={x:0,y:0};
+        setStatus('Mini grapple launched.');
+      } else if (attachment.utility==='miniRcCar') {
+        if (warState.drones[playerKey]) throw new Error('Your remote vehicle is already active.');
+        await consumeAttachmentAmmo(attachment);
+        const car={type:'mini_rc_car',owner:playerName,team:playerTeam,x:position.x,y:position.y,
+          angle,hp:1,manual:true,lastWriteAt:0};
+        await updateWar('drones/'+playerKey,()=>car);
+        localDronePosition={x:car.x,y:car.y,angle:car.angle};
+        lastDroneWriteAt=Date.now();activeDrone=true;droneControlled=true;
+        setStatus('Mini kamikaze car launched. Its blast deals one third of a standard RC car.');
+      } else if (attachment.utility==='miniPistol') {
+        await consumeAttachmentAmmo(attachment);
+        await fireMiniPistol(player,position,angle,attachment);
+      } else if (attachment.utility==='underbarrelFrag') {
+        const distance=Math.min(620,Math.hypot(aim.x-position.x,aim.y-position.y));
+        const destination={x:position.x+Math.cos(angle)*distance,y:position.y+Math.sin(angle)*distance};
+        const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
+        await consumeAttachmentAmmo(attachment);
         playSound('throw');
-        const id='underbarrel_frag_'+playerKey+'_'+now;
-        const detonateAt=now+750;
+        const id='underbarrel_frag_'+playerKey+'_'+now,detonateAt=now+750;
         await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,
-          x:impact.x,y:impact.y,startX:position.x,startY:position.y,
-          targetX:impact.x,targetY:impact.y,createdAt:now,detonateAt,expiresAt:detonateAt+1000,
-          radius:125,damage:68,splashDamage:42,directRadius:42}));
+          x:impact.x,y:impact.y,startX:position.x,startY:position.y,targetX:impact.x,targetY:impact.y,
+          createdAt:now,detonateAt,expiresAt:detonateAt+1000,radius:125,damage:68,splashDamage:42,directRadius:42}));
         setStatus('Mini grenade launched. It detonates in 0.75 seconds.');
       } else if (attachment.utility==='underbarrelSmoke') {
+        const distance=Math.min(500,Math.hypot(aim.x-position.x,aim.y-position.y));
+        const destination={x:position.x+Math.cos(angle)*distance,y:position.y+Math.sin(angle)*distance};
+        const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
+        await consumeAttachmentAmmo(attachment);
         const id='underbarrel_smoke_'+playerKey+'_'+now;
         await updateWar('smokes',current=>({...Object.fromEntries(Object.entries(current||{})
           .filter(([,entry])=>entry&&Number(entry.expiresAt)>now)),[id]:{
@@ -2854,7 +3615,9 @@
         setStatus('Underbarrel smoke deployed. It blocks sight for 10 seconds.');
       }
       attachmentCooldownUntil=Date.now()+Number(attachment.utilityCooldown||7000);
-    } catch(error) { setStatus(error.message||'Could not use the underbarrel launcher.',true); }
+      refreshEquipmentUi();
+      draw();
+    } catch(error) { setStatus(error.message||'Could not use the underbarrel attachment.',true); }
   }
 
   function beginSupportTargeting(item) {
@@ -2924,16 +3687,16 @@
       }
       await consumeEquipment('tactical',item);
       if (item==='smoke') {
-        const id='smoke_'+playerKey+'_'+Date.now();
-        const distance=Math.min(500,Math.hypot(aim.x-position.x,aim.y-position.y));
-        const angle=Math.atan2(aim.y-position.y,aim.x-position.x);
-        const createdAt=Date.now();
-        const smoke={team:playerTeam,x:position.x+Math.cos(angle)*distance,
-          y:position.y+Math.sin(angle)*distance,radius:260,seed:Math.random()*Math.PI*2,
-          createdAt,expiresAt:createdAt+12000};
-        await updateWar('smokes',current=>({...Object.fromEntries(Object.entries(current||{})
-          .filter(([,entry])=>entry&&Number(entry.expiresAt)>Date.now())),[id]:smoke}));
-        setStatus('Smoke deployed. It blocks sight for 12 seconds.');
+        const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+        const distance=aimActive?Math.min(500,Math.hypot(aim.x-position.x,aim.y-position.y)):500;
+        const destination={x:position.x+Math.cos(angle)*distance,y:position.y+Math.sin(angle)*distance};
+        const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
+        const id='smoke_grenade_'+playerKey+'_'+Date.now();
+        const createdAt=Date.now(),detonateAt=createdAt+650;
+        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,effect:'smoke',
+          x:impact.x,y:impact.y,startX:position.x,startY:position.y,targetX:impact.x,targetY:impact.y,
+          createdAt,detonateAt,expiresAt:detonateAt+650,radius:260}));
+        setStatus('Smoke grenade thrown. Cloud deploys on impact.');
       } else if (item==='stim') {
         await mutatePlayer(current=>({...current,hp:Math.min(100,Number(current.hp)+45),
           speedBoostUntil:Date.now()+8000}));
@@ -2949,12 +3712,64 @@
     } catch(error) { setStatus(error.message||'Could not use tactical equipment.',true); }
   }
 
+  async function placeC4() {
+    const player=warState?.players?.[playerKey];
+    if (!player||Number(player.c4Charges||0)<1) {
+      setStatus('Buy a C4 charge at your base first.',true);return;
+    }
+    const placed=Object.values(warState.c4s||{}).filter(c4=>c4?.ownerKey===playerKey);
+    if (placed.length>=3) {setStatus('You can have up to three C4 charges placed at once.',true);return;}
+    const position=localPosition||player;
+    await consumeEquipment('lethal','c4');
+    const id='c4_'+playerKey+'_'+Date.now();
+    const charge={id,owner:playerName,ownerKey:playerKey,team:playerTeam,
+      x:Number(position.x),y:Number(position.y),createdAt:Date.now()};
+    await updateWar('c4s/'+id,()=>charge);
+    if (warState) warState.c4s[id]=charge;
+    showGameNotice('C4 placed. Hold C or hold the C4 button to detonate all your charges.','objective');
+    refreshEquipmentUi();
+    draw();
+  }
+
+  async function detonateC4s() {
+    let charges=[];
+    const remaining=await updateWar('c4s',current=>{
+      charges=Object.entries(current||{}).filter(([,c4])=>c4&&c4.ownerKey===playerKey);
+      const retained=Object.fromEntries(Object.entries(current||{}).filter(([,c4])=>!c4||c4.ownerKey!==playerKey));
+      return retained;
+    });
+    if (warState) warState.c4s=remaining||{};
+    if (!charges.length) {setStatus('Place a C4 charge before holding to detonate.');return;}
+    const now=Date.now();
+    for (const [id,c4] of charges) {
+      const center={x:Number(c4.x),y:Number(c4.y)};
+      await updateWar('grenades/c4_blast_'+id,()=>({team:playerTeam,owner:playerName,
+        effect:'c4',x:center.x,y:center.y,detonatedAt:now,expiresAt:now+650,radius:220}));
+      for (const enemy of Object.values(warState.players||{})) {
+        if (!enemy||enemy.team===playerTeam||!enemy.online||enemy.transportId) continue;
+        const distance=Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y);
+        if (distance<220&&!lineBlocked(center.x,center.y,Number(enemy.x),Number(enemy.y)))
+          await hitPlayer(enemy,distance<62?120:72,{name:playerName,team:playerTeam});
+      }
+    }
+    playSound('explosion');
+    const player=warState?.players?.[playerKey];
+    if (player?.lethal==='c4'&&!Number(player.c4Charges||0)&&
+        !Object.values(warState.c4s||{}).some(c4=>c4?.ownerKey===playerKey))
+      await mutatePlayer(current=>current?.lethal==='c4'?{...current,lethal:'grenade'}:current);
+    showGameNotice('Detonated '+charges.length+' C4 charge'+(charges.length===1?'':'s')+'.','objective');
+    refreshEquipmentUi();
+    draw();
+  }
+
   async function useLethal() {
     const player=warState&&warState.players[playerKey];
     if (!player||player.downed||player.transportId) return;
     const item=player.lethal;
     try {
-      if (item==='rc_car') {
+      if (item==='c4') {
+        await placeC4();
+      } else if (item==='rc_car') {
         if (warState.drones[playerKey]) { setStatus('Your remote vehicle is already active.',true);return; }
         await consumeEquipment('lethal',item);
         const position=localPosition||player;
@@ -2980,7 +3795,7 @@
         await consumeEquipment('lethal',item);
         const position=localPosition||player;
         const id='claymore_'+playerKey+'_'+Date.now();
-        await updateWar('claymores/'+id,()=>({id,owner:playerName,team:playerTeam,
+        await updateWar('claymores/'+id,()=>({id,owner:playerName,ownerKey:playerKey,team:playerTeam,
           x:position.x,y:position.y,angle:Math.atan2(aim.y-position.y,aim.x-position.x),
           damage:90,radius:135,triggeredAt:0,createdAt:Date.now()}));
         setStatus('Claymore planted and facing your aim direction.');
@@ -3058,15 +3873,25 @@
       });
       if (updated&&warState) warState.grenades[id]=updated;
       if (!detonated) continue;
-      playSound('explosion');
+      if (grenade.effect!=='smoke') playSound('explosion');
       const x=Number(detonated.targetX??detonated.x),y=Number(detonated.targetY??detonated.y);
       const radius=Number(detonated.radius)||155;
-      if (detonated.effect==='bunker_gas') {
+      if (detonated.effect==='smoke') {
+        const smokeId='smoke_'+id;
+        await updateWar('smokes/'+smokeId,current=>current||{
+          team:detonated.team,owner:detonated.owner,x,y,radius:260,seed:Math.random()*Math.PI*2,
+          createdAt:now,expiresAt:now+12_000
+        });
+      } else if (detonated.effect==='bunker_gas') {
         const gasId='gas_'+id;
         await updateWar('smokes/'+gasId,current=>current||{
           team:detonated.team,owner:detonated.owner,gas:true,x,y,radius:285,
           seed:Math.random()*Math.PI*2,createdAt:now,expiresAt:now+18_000,nextDamageAt:now+1000
         });
+      }
+      if (detonated.effect==='smoke') {
+        if (detonated.owner===playerName) setStatus('Smoke grenade burst. The cloud is spreading.');
+        continue;
       }
       const directRadius=Number(detonated.directRadius)||55;
       const directDamage=Number(detonated.damage)||90;
@@ -3285,17 +4110,10 @@
     if (houseInside) {
       const house=mapObstacles.find(item=>item.id===houseInside);
       if (house) {
-        if (house.stairs&&Math.hypot(position.x-house.stairs.x,position.y-house.stairs.y)<115) {
-          const maxFloor=Math.max(2,Number(house.floorCount)||2);
-          houseFloor=(houseFloor+1)%maxFloor;
-          await mutatePlayer(current=>({...current,houseFloor,lastSeen:Date.now()}));
-          setStatus('Stairwell: floor '+(houseFloor+1)+' of '+maxFloor+'. You can fire across the open stairwell.');
-          draw();
-          return;
-        }
         localPosition={x:house.doorX+(house.doorX<=house.x?-32:32),y:house.doorY};
         houseInside='';
         houseFloor=0;
+        stairTransitionCooldownUntil=0;
         await mutatePlayer(current=>({...current,...localPosition,houseInside:'',houseFloor:0}));
         setStatus('Exited the building.');
       }
@@ -3305,17 +4123,19 @@
     if (!house) { setStatus('Move to a marked house entrance to enter.',true);return; }
     houseInside=house.id;
     houseFloor=0;
+    stairTransitionCooldownUntil=0;
     localPosition={x:house.x+house.w/2,y:house.y+house.h/2};
     movementVelocity={x:0,y:0};
     await mutatePlayer(current=>({...current,...localPosition,houseInside,houseFloor:0}));
-    setStatus('Inside '+house.id+'. Press Q to leave.');
+    setStatus('Inside '+(house.label||house.id)+'. Walk the stairs to change floors; press Q to exit.');
   }
 
   async function purchaseFieldUpgrade(type) {
     const config={armor:{cost:150,label:'armor plate'},selfRevive:{cost:400,label:'self-revive'},
       turret:{cost:350,label:'sentry turret'},drone:{cost:250,label:'kamikaze drone'},
       grapple:{cost:450,label:'grapple hook'},airstrike:{cost:1800,label:'precision airstrike'},
-      bunkerBuster:{cost:2600,label:'bunker buster'},rcCar:{cost:1200,label:'RC kamikaze car'}};
+      bunkerBuster:{cost:2600,label:'bunker buster'},rcCar:{cost:1200,label:'RC kamikaze car'},
+      c4:{cost:550,label:'C4 charge'}};
     const item=config[type];
     if (!item) return;
     if (!nearOwnBase()) { setStatus('Field upgrades can only be purchased at your team base.',true);return; }
@@ -3345,6 +4165,8 @@
         await mutatePlayer(current=>({...current,bunkerBusterCharges:Number(current.bunkerBusterCharges||0)+1}));
       } else if (type==='rcCar') {
         await mutatePlayer(current=>({...current,rcCarCharges:Number(current.rcCarCharges||0)+1}));
+      } else if (type==='c4') {
+        await mutatePlayer(current=>({...current,c4Charges:Number(current.c4Charges||0)+1}));
       } else {
         await mutatePlayer(current=>({...current,turretCharges:Number(current.turretCharges||0)+1}));
       }
@@ -3426,8 +4248,9 @@
     let dx=droneControlled?(keys.has('d')?1:0)-(keys.has('a')?1:0):0;
     let dy=droneControlled?(keys.has('s')?1:0)-(keys.has('w')?1:0):0;
     if (dx||dy) localDronePosition.angle=Math.atan2(dy,dx);
-    const isRcCar=current.type==='rc_car';
-    const distance=(isRcCar?650:430)*elapsed;
+    const isRcCar=current.type==='rc_car'||current.type==='mini_rc_car';
+    const isMiniRcCar=current.type==='mini_rc_car';
+    const distance=(isMiniRcCar?500:isRcCar?650:430)*elapsed;
     const next={x:localDronePosition.x+Math.cos(localDronePosition.angle)*distance,
       y:localDronePosition.y+Math.sin(localDronePosition.angle)*distance};
     const collisionRadius=isRcCar?16:10;
@@ -3438,18 +4261,20 @@
     const outOfBounds=next.x<70||next.x>worldWidth-70||next.y<110||next.y>worldHeight-110;
     if (obstacle||hit||outOfBounds||isInEnemySafeZone(playerTeam,next.x,next.y)) {
       const center=hit?{x:Number(hit.x),y:Number(hit.y)}:localDronePosition;
-      const blastRadius=isRcCar?220:180;
+      const blastRadius=isMiniRcCar?150:isRcCar?220:180;
       const victims=Object.values(warState.players||{}).filter(enemy=>enemy&&enemy.team!==playerTeam&&
         enemy.online&&enemy.hp>0&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<=blastRadius);
       for (const enemy of victims) {
         const direct=enemy===hit&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<(isRcCar?65:45);
-        hitPlayer(enemy,direct?(isRcCar?120:60):(isRcCar?58:30),{name:playerName,team:playerTeam})
+        hitPlayer(enemy,direct?(isMiniRcCar?40:isRcCar?120:60):
+          (isMiniRcCar?19:isRcCar?58:30),{name:playerName,team:playerTeam})
           .catch(error=>setStatus(error.message||'Drone damage failed.',true));
       }
       updateWar('drones',drones=>{const nextDrones={...(drones||{})};delete nextDrones[playerKey];return nextDrones;})
         .catch(error=>setStatus(error.message||'Could not remove the spent drone.',true));
       activeDrone=false;localDronePosition=null;
-      setStatus(isRcCar?(hit?'RC car detonated on target.':'RC car detonated on impact.'):
+      setStatus(isMiniRcCar?(hit?'Mini RC car detonated on target.':'Mini RC car detonated on impact.'):
+        isRcCar?(hit?'RC car detonated on target.':'RC car detonated on impact.'):
         hit?'Drone detonated on target.':'Drone detonated on impact.');return;
     }
     const safeAngle=Number.isFinite(localDronePosition.angle)?localDronePosition.angle:0;
@@ -3468,26 +4293,30 @@
 
   async function raidBase(team,damage,attackingTeam) {
     let raided = false;
+    let announceAttack=false;
     await updateWar('bases/' + team,base => {
       raided=false;
+      announceAttack=false;
       if (!base || Number(base.health)<=0) return base;
       const health=Math.max(0,Number(base.health)-damage);
       if (!health) { raided=true;return {health:0,destroyedUntil:0}; }
-      return {...base,health};
+      const now=Date.now();
+      announceAttack=now-Number(base.lastAttackAnnouncedAt||0)>15_000;
+      return {...base,health,...(announceAttack?{lastAttackAnnouncedAt:now}:{})};
     });
+    if (announceAttack) announceWar(teamLabel(attackingTeam)+' is attacking '+teamLabel(team)+' base!')
+      .catch(error=>setStatus(error.message||'Could not announce the base attack.',true));
     if (raided) {
-      const reset=await resetMatch();
-      if (!reset) {
-        setStatus('Enemy base breach failed: the match state could not be reset.',true);
+      const voteStarted=await resetMatch();
+      if (!voteStarted) {
+        setStatus('Enemy base breached, but the next-map vote could not start.',true);
         return;
       }
-      const spawn=basePositions[playerTeam];
-      localPosition={x:playerTeam==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y};
-      movementVelocity={x:0,y:0};
-      if (ui) updateHeader();
-      setStatus(teamLabel(attackingTeam)+' breached the enemy base. Match reset; account progression retained.');
+      const message=teamLabel(attackingTeam)+' breached the enemy base. Vote for the next map.';
+      setStatus(message);
+      showGameNotice(message,'objective');
       try { await grantXp(75,'enemy vault raided'); }
-      catch(error) { setStatus('Match reset, but raid XP could not be saved: '+error.message,true); }
+      catch(error) { setStatus('Base breached, but raid XP could not be saved: '+error.message,true); }
     } else setStatus('Enemy base hit.');
   }
 
@@ -3496,46 +4325,39 @@
     const spawn=basePositions[team];
     const initial={name:player.name,team,x:team==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y,hp:100,
       ammo:weapons.ar_pulse.mag,secondary:'pistol_sidekick',secondaryAmmo:secondaryWeapons.pistol_sidekick.mag,
-      activeWeaponSlot:'primary',kills:0,deaths:0,weapon:'ar_pulse',attachments:[],loadoutSet:false,vehicle:'',vehiclePad:'',
+      activeWeaponSlot:'primary',kills:0,deaths:0,weapon:'ar_pulse',attachments:[],loadoutSet:false,c4Charges:0,vehicle:'',vehiclePad:'',
       online:!!player.online,lastSeen:Date.now(),respawnAt:0,lastShotAt:0};
     return initial;
   }
 
   async function resetMatch() {
-    const previousResetAt=Number(warState.matchResetAt||0);
-    const applyReset=current=>{
-      if (!current || !current.bases || !['vortex','krypton'].some(team=>Number(current.bases[team]?.health)<=0)) return current;
-      const next=freshWar();
-      next.matchResetAt=Date.now();
-      next.players=Object.fromEntries(Object.entries(current.players||{}).map(([key,player])=>
-        [key,resetPlayerRecord(player||{})]));
-      return next;
-    };
+    const startVote=current=>current&&current.matchPhase==='playing'&&
+      Object.values(current.bases||{}).some(base=>Number(base?.health)<=0)
+      ?{...current,matchPhase:'voting',voteEndsAt:Date.now()+15_000,mapVotes:{}}:current;
     if (firebaseMode) {
-      const result=await warRef.transaction(applyReset);
-      if (!result.committed||Number(result.snapshot.val()?.matchResetAt)<=previousResetAt) return false;
-      warState=normalizeWar(result.snapshot.val());
-      cancelCapture('Match restarted. Capture cancelled.');
+      const result=await warRef.transaction(startVote);
+      const next=result.snapshot.val();
+      if (!next||next.matchPhase!=='voting') return false;
+      acceptWarState(next);
+      cancelCapture('Base destroyed. Choose the next map.');
       return true;
     }
     if (lanMode) {
       const latest=await lanGet();
       const previous=normalizeWar(latest);
-      const reset=applyReset(previous);
-      if (reset===previous) return false;
-      await lanPut(reset);
-      warState=normalizeWar(reset);
-      cancelCapture('Match restarted. Capture cancelled.');
-      draw();
+      const vote=startVote(previous);
+      if (vote!==previous) await lanPut(vote);
+      if (vote.matchPhase!=='voting') return false;
+      acceptWarState(vote);
+      cancelCapture('Base destroyed. Choose the next map.');
       return true;
     }
     const latest=normalizeWar(JSON.parse(localStorage.getItem(localGameKey)||'null'));
-    const reset=applyReset(latest);
-    if (reset===latest) return false;
-    warState=normalizeWar(reset);
-    cancelCapture('Match restarted. Capture cancelled.');
-    localStorage.setItem(localGameKey,JSON.stringify(warState));
-    draw();
+    const vote=startVote(latest);
+    if (vote!==latest) localStorage.setItem(localGameKey,JSON.stringify(vote));
+    if (vote.matchPhase!=='voting') return false;
+    acceptWarState(vote);
+    cancelCapture('Base destroyed. Choose the next map.');
     return true;
   }
 
@@ -3547,18 +4369,26 @@
       player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'?'secondary':'primary';
     const weapon=vehicleWeapon||effectiveWeapon(player,weaponSlot);
     const ammoField=vehicleWeapon?'vehicleAmmo':weaponSlot==='secondary'?'secondaryAmmo':'ammo';
-    if (Number(player[ammoField]||0)>=weapon.mag) return;
+    const utility=weapon.utilityAttachment;
+    const utilityAmmo=utility&&Number(player.attachmentAmmo?.[utility.attachmentId]||0);
+    const needsUtilityReload=!!utility?.ammo&&utilityAmmo<utility.ammo;
+    const needsWeaponReload=Number(player[ammoField]||0)<weapon.mag;
+    if (!needsWeaponReload&&!needsUtilityReload) return;
     reloading = true;
     ui.reload.disabled = true;
     ui.reload.textContent = 'Reloading '+(vehicleWeapon?weapon.name:'')+'…';
     playSound('reload');
     reloadStartedAt=Date.now();
-    reloadEndsAt=reloadStartedAt+weapon.reload;
+    const reloadDuration=needsWeaponReload?weapon.reload:Math.max(700,Math.round(weapon.reload*.65));
+    reloadEndsAt=reloadStartedAt+reloadDuration;
     reloadTimer=window.setTimeout(async () => {
       try {
         await mutatePlayer(current=>current?{
           ...current,[ammoField]:vehicleWeapons[current.vehicle]&&ammoField==='vehicleAmmo'
             ?vehicleWeapons[current.vehicle].mag:weaponSlot?effectiveWeapon(current,weaponSlot).mag:effectiveWeapon(current,'primary').mag,
+          ...(utility?.ammo?{attachmentAmmo:{...(current.attachmentAmmo||{}),
+            [utility.attachmentId]:effectiveWeapon(current,weaponSlot).utilityAttachment?.attachmentId===utility.attachmentId
+              ?utility.ammo:Number(current.attachmentAmmo?.[utility.attachmentId]||0)}}:{}),
           lastSeen:Date.now()
         }:current);
       } catch (error) { setStatus(error.message,true); }
@@ -3566,7 +4396,7 @@
       if (ui.reloadTimer) ui.reloadTimer.hidden=true;
       if (ui.reloadProgress) ui.reloadProgress.style.width='0%';
       if (!destroyed) { ui.reload.disabled=false;ui.reload.textContent='Reload (R)';ui.reloadTimer.textContent=''; }
-    },weapon.reload);
+    },reloadDuration);
   }
 
   async function captureOrRaid() {
@@ -3648,15 +4478,16 @@
   }
 
   async function parkGroundVehicle(player,position) {
-    const id='parked_'+safeUserKey(playerName)+'_'+Date.now();
+    const id=player.vehicleId||'parked_'+safeUserKey(playerName)+'_'+Date.now();
     const now=Date.now();
     const parked={id,type:player.vehicle,team:playerTeam,owner:playerName,
       x:Number(position.x),y:Number(position.y),padId:player.vehiclePad||'',
       facingAngle:Number(player.facingAngle)||0,parked:true,parkedAt:now,expiresAt:now+180_000};
-    await updateWar('vehicles/'+id,()=>parked);
+    await updateWar('vehicles/'+id,current=>({...current,...parked}));
     if (warState) warState.vehicles[id]=parked;
     try {
-      await mutatePlayer(current=>current?{...current,vehicle:'',vehiclePad:'',lastSeen:Date.now()}:current);
+      await mutatePlayer(current=>current?{...current,vehicle:'',vehiclePad:'',
+        vehicleId:'',x:Number(position.x),y:Number(position.y),lastSeen:Date.now()}:current);
     } catch(error) {
       await updateWar('vehicles/'+id,()=>null).catch(()=>{});
       if (warState&&warState.vehicles) delete warState.vehicles[id];
@@ -3667,9 +4498,35 @@
     setStatus('Dismounted. This vehicle will remain for 3 minutes, then explode.');
   }
 
+  async function reenterParkedVehicle(position) {
+    const nearest=Object.entries(warState.vehicles||{}).filter(([,vehicle])=>vehicle&&vehicle.parked&&
+      !vehicle.explodedAt&&Number(vehicle.expiresAt)>Date.now())
+      .map(([id,vehicle])=>({id,vehicle,distance:Math.hypot(Number(vehicle.x)-position.x,Number(vehicle.y)-position.y)}))
+      .filter(entry=>entry.distance<=110).sort((a,b)=>a.distance-b.distance)[0];
+    if (!nearest) return false;
+    let boarded=false;
+    const crewVehicle=[transportType,'jeep'].includes(nearest.vehicle.type);
+    const updated=await updateWar('vehicles/'+nearest.id,current=>{
+      boarded=!!current&&current.parked&&!current.explodedAt&&Number(current.expiresAt)>Date.now();
+      return boarded?{...current,parked:false,parkedAt:0,expiresAt:0,owner:playerName,
+        ...(crewVehicle?{passengers:[playerKey],pilot:playerKey,gunnerSeats:{},gunnerAngles:{}}:{})}:current;
+    });
+    if (!boarded) return false;
+    await mutatePlayer(current=>current?{...current,vehicle:updated.type,
+      vehicleId:crewVehicle?'':nearest.id,transportId:crewVehicle?nearest.id:'',
+      vehiclePad:updated.padId||'',vehicleAmmo:vehicleWeapons[updated.type]?.mag||0,
+      x:Number(updated.x),y:Number(updated.y),lastSeen:Date.now()}:current);
+    localTransportId=crewVehicle?nearest.id:'';
+    localPosition={x:Number(updated.x),y:Number(updated.y)};
+    movementVelocity={x:0,y:0};
+    showGameNotice('Re-entered '+(vehicles[updated.type]?.name||'vehicle')+'.','info');
+    return true;
+  }
+
   async function deployVehicle(selectedType='') {
     if (!warState||vehicleActionBusy) return;
     vehicleActionBusy=true;
+    let paidCost=0;
     try {
     const player=warState.players[playerKey];
     if (!player) return;
@@ -3685,6 +4542,7 @@
       } catch(error) { setStatus(error.message,true); }
       return;
     }
+    if (!selectedType&&await reenterParkedVehicle(position)) return;
     const type=selectedType||ui.vehicle.value;
     ui.vehicle.value=type;
     const {atOwnBase,insideBuilding,friendlyRelay}=vehicleDeploymentArea(position);
@@ -3692,11 +4550,13 @@
       setStatus('Exit the building before deploying a vehicle.');
       return;
     }
-    const nearbyTransport=Object.values(warState.vehicles||{}).some(transport=>transport&&
-      transport.type===transportType&&transport.team===playerTeam&&transport.hp>0&&
-      (!Number(transport.expiresAt)||Number(transport.expiresAt)>Date.now())&&
-      Math.hypot(position.x-transport.x,position.y-transport.y)<115);
-    if (type!==transportType&&!atOwnBase&&!friendlyRelay&&!nearbyTransport) {
+    const nearbyCrew=Object.entries(warState.vehicles||{}).find(([,vehicle])=>vehicle&&
+      [transportType,'jeep'].includes(vehicle.type)&&vehicle.team===playerTeam&&vehicle.hp!==0&&
+      !vehicle.parked&&(!Number(vehicle.expiresAt)||Number(vehicle.expiresAt)>Date.now())&&
+      (vehicle.passengers?.length||0)<(vehicle.type==='jeep'?5:10)&&
+      Math.hypot(position.x-vehicle.x,position.y-vehicle.y)<115);
+    const nearbyTransport=!!nearbyCrew;
+    if (type!==transportType&&type!=='jeep'&&!atOwnBase&&!friendlyRelay&&!nearbyTransport) {
       setStatus('Deploy ground vehicles at your base or inside a friendly captured relay zone.');
       return;
     }
@@ -3705,69 +4565,98 @@
       const pad=atOwnBase?vehiclePadPosition(playerTeam,type):null;
       const spawnPosition=pad||friendlyRelay&&{x:Number(position.x),y:Number(position.y)};
       if (!spawnPosition&&type!==transportType) throw new Error('That vehicle has no designated deployment position.');
-      if (type===transportType||nearbyTransport) {
-        const nearby=Object.entries(warState.vehicles||{}).find(([,transport])=>transport&&
-          transport.type===transportType&&transport.team===playerTeam&&transport.hp>0&&
-          (!Number(transport.expiresAt)||Number(transport.expiresAt)>Date.now())&&
-          transport.passengers.length<10&&Math.hypot(position.x-transport.x,position.y-transport.y)<115);
+      if (type===transportType||type==='jeep'||nearbyTransport) {
+        const crewType=nearbyCrew?nearbyCrew[1].type:type;
+        const nearby=nearbyCrew||Object.entries(warState.vehicles||{}).find(([,vehicle])=>vehicle&&
+          vehicle.type===crewType&&vehicle.team===playerTeam&&vehicle.hp!==0&&!vehicle.parked&&
+          (vehicle.passengers?.length||0)<(crewType==='jeep'?5:10)&&
+          Math.hypot(position.x-vehicle.x,position.y-vehicle.y)<115);
         if (nearby) {
           let boarded=false;
           let boardedRole='passenger';
           const [id]=nearby;
           await updateWar('vehicles/'+id,current=>{
-            boarded=!!current&&current.team===playerTeam&&current.type===transportType&&
-              current.passengers.length<10&&!current.passengers.includes(playerKey);
-            if (boarded) boardedRole=!current.pilot?'pilot':
-              transportGunnerKeys(current).length<4?'side gunner':'passenger';
+            boarded=!!current&&current.team===playerTeam&&current.type===crewType&&
+              current.passengers.length<(crewType==='jeep'?5:10)&&!current.passengers.includes(playerKey);
+            if (boarded) boardedRole=!current.pilot?(crewType==='jeep'?'driver':'pilot'):'passenger';
             return boarded?{...current,pilot:current.pilot||playerKey,
               passengers:[...current.passengers,playerKey],parked:false,parkedAt:0,
               expiresAt:0,explodedAt:0,cleanupAt:0}:current;
           });
           if (!boarded) throw new Error('The helicopter is full or unavailable.');
-          await mutatePlayer(current=>({...current,vehicle:transportType,transportId:id,
+          await mutatePlayer(current=>({...current,vehicle:crewType,vehicleId:'',
+            vehicleAmmo:vehicleWeapons[crewType]?.mag||Number(current.vehicleAmmo||0),transportId:id,
             vehiclePad:nearby[1].padId||'',x:nearby[1].x,y:nearby[1].y,lastSeen:Date.now()}));
           localPosition={x:nearby[1].x,y:nearby[1].y};
           localTransportId=id;
           movementVelocity={x:0,y:0};
           closeVehicleSpawnMenu();
-          setStatus('Boarded transport as '+boardedRole+' ('+(nearby[1].passengers.length+1)+'/10). '+
-            (boardedRole==='pilot'?'WASD fly; hold Q to descend or E to climb. ':'')+'Press V to leave.');
+          setStatus('Boarded '+vehicles[crewType].name+' as '+boardedRole+' ('+(nearby[1].passengers.length+1)+'/'+
+            (crewType==='jeep'?5:10)+'). '+(boardedRole==='pilot'||boardedRole==='driver'
+              ?'WASD drives toward the cursor. ':'')+'Hold V to change seats.');
           return;
         }
         if (!atOwnBase) {
-          setStatus('Press V within 115 units of a friendly helicopter to board; select Transport helicopter to deploy one at base.');
+          setStatus('Return to base to deploy that crew vehicle.');
           return;
         }
         if (Object.values(warState.vehicles||{}).some(transport=>transport&&transport.team===playerTeam&&
             transport.type===transportType&&transport.hp>0))
           throw new Error('The helicopter pad is occupied. Board the active helicopter or wait for it to return.');
-        const id='transport_'+playerKey+'_'+Date.now();
-        const transport={id,type:transportType,team:playerTeam,x:pad.x,y:pad.y,padId,
-          altitude:0,hp:500,maxHp:500,pilot:playerKey,passengers:[playerKey],lastMovedAt:Date.now()};
+        const vehicleCost=Number(vehiclePrices[type]||0);
+        if (vehicleCost) await changeTeamResources(-vehicleCost);
+        paidCost=vehicleCost;
+        const id=(type==='jeep'?'jeep_':'transport_')+playerKey+'_'+Date.now();
+        const transport={id,type,team:playerTeam,x:pad.x,y:pad.y,padId,
+          altitude:0,hp:type==='jeep'?350:500,maxHp:type==='jeep'?350:500,pilot:playerKey,
+          passengers:[playerKey],gunnerSeats:{},gunnerAngles:{},facingAngle:0,lastMovedAt:Date.now()};
         await updateWar('vehicles/'+id,()=>transport);
         warState.vehicles[id]=transport;
-        await mutatePlayer(current=>({...current,x:pad.x,y:pad.y,vehicle:transportType,
-          transportId:id,vehiclePad:padId,lastSeen:Date.now()}));
+        await mutatePlayer(current=>({...current,x:pad.x,y:pad.y,vehicle:type,
+          vehicleAmmo:vehicleWeapons[type]?.mag||0,transportId:id,vehiclePad:padId,lastSeen:Date.now()}));
         localPosition={x:pad.x,y:pad.y};
         localTransportId=id;
         movementVelocity={x:0,y:0};
+        paidCost=0;
         closeVehicleSpawnMenu();
-        setStatus('Transport helicopter deployed. WASD fly; hold Q to descend or E to climb. Up to 10 occupants; press V to leave.');
+        setStatus(type==='jeep'?'Gun jeep deployed. Five seats: driver, three passengers, and a cursor-aimed turret gunner. Hold V to change seats.':
+          'Transport helicopter deployed. WASD flies toward the cursor; hold Q to descend or E to climb. Up to 10 occupants. Hold V to change seats.');
         return;
       }
       const occupied=Object.entries(warState.players||{}).some(([key,other])=>key!==playerKey&&other&&
         other.team===playerTeam&&other.vehicle===type&&other.vehiclePad===padId&&other.online&&
         Date.now()-Number(other.lastSeen||0)<20000);
       if (occupied) throw new Error('The '+vehicles[type].name+' pad is occupied by a teammate.');
-      await mutatePlayer(current=>current?{...current,x:spawnPosition.x,y:spawnPosition.y,vehicle:type,vehiclePad:padId,
-        vehicleAmmo:vehicleWeapons[type]?.mag||0,lastSeen:Date.now()}:current);
+      const vehicleId='vehicle_'+playerKey+'_'+Date.now();
+      const vehicleCost=Number(vehiclePrices[type]||0);
+      if (vehicleCost) await changeTeamResources(-vehicleCost);
+      paidCost=vehicleCost;
+      await updateWar('vehicles/'+vehicleId,()=>({id:vehicleId,type,team:playerTeam,owner:playerName,
+        x:spawnPosition.x,y:spawnPosition.y,facingAngle:0,parked:false,createdAt:Date.now()}));
+      await mutatePlayer(current=>current?{...current,x:spawnPosition.x,y:spawnPosition.y,vehicle:type,
+        vehicleId,vehiclePad:padId,vehicleAmmo:vehicleWeapons[type]?.mag||0,lastSeen:Date.now()}:current);
+      paidCost=0;
       closeVehicleSpawnMenu();
       localPosition={x:spawnPosition.x,y:spawnPosition.y};
       movementVelocity={x:0,y:0};
       closeVehicleSpawnMenu();
       setStatus('Spawned '+vehicles[type].name+' '+(atOwnBase?'at its base pad. ':'at the friendly relay. ')+'Press V to dismount.');
-    } catch(error) { setStatus(error.message,true); }
+    } catch(error) {
+      if (paidCost) await changeTeamResources(paidCost).catch(()=>{});
+      setStatus(error.message,true);
+    }
     } finally { vehicleActionBusy=false; }
+  }
+
+  async function changeTeamResources(amount) {
+    let changed=false;
+    await updateWar('economy/'+playerTeam,current=>{
+      const resources=Number(current?.resources||0);
+      changed=amount>=0||resources>=-amount;
+      return changed?{...(current||{}),resources:resources+amount}:current;
+    });
+    if (!changed) throw new Error('Your team needs '+(-amount)+' resources for that vehicle.');
+    updateVehicleShopPrice();
   }
 
   async function leaveTransport(player) {
@@ -3780,8 +4669,11 @@
       const passengers=current.passengers.filter(key=>key!==playerKey);
       const abandoned=passengers.length===0;
       const parkedAt=abandoned?Date.now():0;
-      remaining={...current,passengers,
-        pilot:current.pilot===playerKey?passengers[0]||'':current.pilot,
+      const nextPilot=current.pilot===playerKey?passengers[0]||'':current.pilot;
+      const gunnerSeats=Object.fromEntries(Object.entries(current.gunnerSeats||{})
+        .filter(([,key])=>key!==playerKey&&key!==nextPilot));
+      remaining={...current,passengers,gunnerSeats,
+        pilot:nextPilot,
         parked:abandoned,parkedAt,expiresAt:abandoned?parkedAt+180_000:0};
       return remaining;
     });
@@ -3796,8 +4688,8 @@
     movementVelocity={x:0,y:0};
     localTransportId='';
     setStatus(remaining&&remaining.parked
-      ?'Helicopter parked. It will remain for 3 minutes, then explode.'
-      :'Disembarked from transport.');
+      ?(vehicles[remaining.type]?.name||'Vehicle')+' parked. Re-enter it within 3 minutes to continue driving.'
+      :'Disembarked from '+(vehicles[remaining?.type]?.name||'vehicle')+'.');
   }
 
   function beginCapture(nodeId,duration) {
@@ -3847,6 +4739,7 @@
             (capturedFrom?' from '+teamLabel(capturedFrom):'')+'.';
           try { await announceWar(message); }
           catch(error) { setStatus(error.message||'Relay captured, but the announcement failed.',true); }
+          showGameNotice(message+' +40 team resources.','objective');
           setStatus(message+' +40 team resources.');
           try { await grantXp(75,'resource relay captured'); }
           catch(error) { setStatus('Relay secured, but XP could not be saved: '+error.message,true); }
@@ -3962,8 +4855,13 @@
           return {...current,[drop.field]:Number(current[drop.field]||0)+drop.amount};
         });
         setStatus('Loot crate: '+rewardLabel+' added to your loadout.');
+        showGameNotice('Loot acquired: '+rewardLabel+'.','loot');
       }
-      if (drop.kind==='resources') setStatus('Loot crate: +'+drop.amount+' resources for '+teamLabel(playerTeam)+'.');
+      if (drop.kind==='resources') {
+        const message='Loot acquired: +'+drop.amount+' resources for '+teamLabel(playerTeam)+'.';
+        setStatus(message);
+        showGameNotice(message,'loot');
+      }
       refreshEquipmentUi();
       draw();
     } catch(error) {
@@ -4081,6 +4979,7 @@
     if (lockedWeapon) {
       setLoadoutStatus('Reach level '+lockedWeapon.level+' to unlock '+lockedWeapon.name+'.',true);return;
     }
+    let chargedSektorium=false,equipped=false;
     try {
       const previous=warState.players[playerKey];
       const {tactical,lethal}=equipmentChoices(previous);
@@ -4092,21 +4991,30 @@
         JSON.stringify(previous.attachments||[])!==JSON.stringify(chosen)||
         previous.tactical!==tacticalId||previous.lethal!==lethalId);
       if (changing && previous && previous.loadoutSet) {
-        let charged=false;
-        await updateWar('economy/' + playerTeam,current=>{
-          charged=Number(current && current.resources||0)>=20;
-          return charged?{...(current||{}),resources:Number(current.resources)-20}:current;
+        let purchaseError='';
+        await updateAccount(user=>{
+          purchaseError='';
+          const balance=Number(user.balance||0);
+          if (balance<20) {purchaseError='You need 20 Sektorium to change your field loadout.';return;}
+          user.balance=balance-20;
         });
-        if (!charged) throw new Error('Your team needs 20 resources to change a field loadout.');
+        if (purchaseError) throw new Error(purchaseError);
+        chargedSektorium=true;
       }
       await mutatePlayer(player=>({...player,weapon:weaponId,secondary:secondaryId,attachments:chosen,loadoutSet:true,
+        attachmentAmmo:normalizeAttachmentAmmo(chosen,previous.attachmentAmmo||{},previous.attachments||[]),
         tactical:tacticalId,lethal:lethalId,
         ammo:effectiveWeapon({...player,weapon:weaponId,attachments:chosen},'primary').mag,
         secondaryAmmo:effectiveWeapon({...player,secondary:secondaryId,attachments:chosen},'secondary').mag}));
+      equipped=true;
+      if (chargedSektorium) await refreshAccount();
       refreshProgressUi();
       refreshEquipmentUi();
       setLoadoutStatus('Loadout equipped.');
-    } catch(error) { setLoadoutStatus(error.message||'Could not equip this loadout.',true); }
+    } catch(error) {
+      if (chargedSektorium&&!equipped) await updateAccount(user=>{user.balance=Number(user.balance||0)+20;}).catch(()=>{});
+      setLoadoutStatus(error.message||'Could not equip this loadout.',true);
+    }
   }
 
   function refreshProgressUi() {
@@ -4154,7 +5062,8 @@
     ui.attachmentShop.innerHTML=Object.entries(attachments).map(([id,item])=>{
       const owned=progress.ownedAttachments.includes(id);
       const canAfford=balance>=item.cost;
-      return '<article class="nexus-war-attachment"><div><strong>'+item.name+'</strong><small>'+item.effect+' · '+item.cost.toLocaleString()+' Sektorium</small></div>'+
+      const compatibility=item.types?'Compatible: '+item.types.join(', '):'Compatible: all weapon classes';
+      return '<article class="nexus-war-attachment"><div><strong>'+item.name+'</strong><small>'+item.effect+' · '+item.cost.toLocaleString()+' Sektorium · '+compatibility+'</small></div>'+
         '<button type="button" data-war-buy-attachment="'+id+'" '+(owned||!canAfford?'disabled':'')+'>'+
         (owned?'Owned':canAfford?'Buy':'Need '+item.cost.toLocaleString())+'</button></article>';
     }).join('');
@@ -4227,11 +5136,15 @@
     if (button.dataset.warAction==='pause-game') togglePause(true);
     if (button.dataset.warAction==='resume-game') togglePause(false);
     if (button.dataset.warAction==='audio-toggle') toggleSound();
+    if (button.dataset.warAction==='voice-toggle') toggleVoiceMute();
     if (button.dataset.warAction==='secret-xp')
       grantSecretReward().catch(error=>setStatus(error.message||'Secret reward could not be saved.',true));
     if (button.dataset.warAction==='use-attachment') useWeaponAttachment();
     if (button.dataset.warAction==='color-weapons') colorWeapons();
     if (button.dataset.warAction==='close-spawn-menu') closeVehicleSpawnMenu();
+    if (button.dataset.warAction==='close-seat-menu') ui.seatMenu.hidden=true;
+    if (button.dataset.warAction==='change-vehicle-seat')
+      changeTransportSeat(button.dataset.seat).catch(error=>showGameNotice(error.message||'Could not change seats.','error'));
     if (button.dataset.warAction==='spawn-selected-vehicle') deployVehicle(ui.spawnVehicle.value);
     if (button.dataset.warAction==='switch-weapon') switchWeaponSlot(
       warState.players[playerKey]?.activeWeaponSlot==='secondary'?'primary':'secondary');
@@ -4249,9 +5162,16 @@
     if (button.dataset.warAction==='airstrike-buy') purchaseFieldUpgrade('airstrike');
     if (button.dataset.warAction==='bunker-buster-buy') purchaseFieldUpgrade('bunkerBuster');
     if (button.dataset.warAction==='rc-car-buy') purchaseFieldUpgrade('rcCar');
+    if (button.dataset.warAction==='c4-buy') purchaseFieldUpgrade('c4');
     if (button.dataset.warAction==='drone-launch') useLethal();
     if (button.dataset.warAction==='use-tactical') useTactical();
-    if (button.dataset.warAction==='use-lethal') useLethal();
+    if (button.dataset.warAction==='use-lethal') {
+      if (warState.players[playerKey]?.lethal==='c4'&&c4SuppressClick) {
+        c4SuppressClick=false;
+        return;
+      }
+      useLethal();
+    }
     if (button.dataset.warAction==='drone-toggle') toggleDroneControl();
     if (button.dataset.warAction==='give-up'&&warState.players[playerKey]?.downed) {
       setStatus('Hold the give-up button for 2 seconds to give up.');
@@ -4298,7 +5218,7 @@
       '<div class="nexus-war-stats" data-war-stats></div>' +
       '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
       '<div class="nexus-war-capture" data-war-capture-progress hidden><strong>Capturing relay</strong><div><span></span></div></div>' +
-      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move relative to cursor / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Loot / capture / raid</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
+      '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move relative to cursor / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Open shop / loot / capture</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option><option value="apache">Apache attack helicopter</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
       '<div class="nexus-war-controls"><strong>Base upgrades</strong><button class="nexus-button secondary" type="button" data-war-action="armor">Buy armor plate · 150</button><span>Press <kbd>Z</kbd> to plate up</span><button class="nexus-button secondary" type="button" data-war-action="self-revive-buy">Self-revive · 400</button><button class="nexus-button secondary" type="button" data-war-action="turret">Buy sentry turret · 350</button><button class="nexus-button secondary" type="button" data-war-action="drone-buy">Buy kamikaze drone · 250</button><button class="nexus-button secondary" type="button" data-war-action="drone-toggle">Toggle drone control</button><button class="nexus-button secondary" type="button" data-war-action="revive">Revive ally</button><button class="nexus-button secondary" type="button" data-war-action="self-revive">Use self-revive</button><button class="nexus-button secondary" type="button" data-war-action="give-up" hidden>Hold to give up</button></div>' +
       '<div class="nexus-war-touch"><div class="nexus-war-pad"><button type="button" data-war-move="up" aria-label="Move up">▲</button><button type="button" data-war-move="left" aria-label="Move left">◀</button><button type="button" data-war-move="down" aria-label="Move down">▼</button><button type="button" data-war-move="right" aria-label="Move right">▶</button></div><button type="button" class="nexus-war-fire" data-war-fire>Fire</button></div>' +
       '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose one tactical and one lethal. Stims restore up to 45 health and boost movement speed for 8 seconds. Smoke, stims, grenades, and claymores restock when you respawn. Purchased turret and drone charges appear in their respective slots.</small></form>' +
@@ -4319,7 +5239,10 @@
     container.querySelector('[data-war-status]').after(teamChoice);
     const interactionHint=[...container.querySelectorAll('.nexus-war-controls kbd')]
       .find(key=>key.textContent==='E')?.parentElement;
-    if (interactionHint) interactionHint.innerHTML='<kbd>E</kbd> Spawn vehicle / loot / capture';
+    if (interactionHint) interactionHint.innerHTML='<kbd>E</kbd> Open shop / loot / capture';
+    const vehicleHint=[...container.querySelectorAll('.nexus-war-controls kbd')]
+      .find(key=>key.textContent==='V')?.parentElement;
+    if (vehicleHint) vehicleHint.innerHTML='<kbd>V</kbd> Tap board / exit · hold to change seats';
     ui={
       canvas:container.querySelector('.nexus-war-canvas'),
       minimap:container.querySelector('[data-war-minimap]'),
@@ -4342,7 +5265,29 @@
       reload:container.querySelector('[data-war-action="reload"]')
     };
     ui.form.addEventListener('submit',equipLoadout);
+    ui.vehicle.add(new Option('Five-seat gun jeep · turret','jeep'));
     ui.mapWrap=container.querySelector('.nexus-war-map-wrap');
+    ui.mapWrap.appendChild(ui.captureProgress);
+    ui.matchTimer=document.createElement('div');
+    ui.matchTimer.className='nexus-war-match-timer';
+    ui.matchTimer.setAttribute('aria-live','off');
+    ui.mapWrap.appendChild(ui.matchTimer);
+    ui.resourceHud=document.createElement('div');
+    ui.resourceHud.className='nexus-war-resource-hud';
+    ui.mapWrap.appendChild(ui.resourceHud);
+    ui.notice=document.createElement('div');
+    ui.notice.className='nexus-war-notice';
+    ui.notice.hidden=true;
+    ui.notice.setAttribute('role','status');
+    ui.mapWrap.appendChild(ui.notice);
+    ui.chatPanel=document.createElement('section');
+    ui.chatPanel.className='nexus-war-chat';
+    ui.chatPanel.innerHTML='<div data-war-chat-log aria-live="polite" hidden></div><form><input type="text" maxlength="180" autocomplete="off" placeholder="Nearby message" aria-label="Send a nearby chat message"><button type="submit" aria-label="Send message" title="Send message">Send</button></form><div class="nexus-war-voice-audio" data-war-voice-audio></div>';
+    ui.chatLog=ui.chatPanel.querySelector('[data-war-chat-log]');
+    ui.chatInput=ui.chatPanel.querySelector('input');
+    ui.voiceAudio=ui.chatPanel.querySelector('[data-war-voice-audio]');
+    ui.chatPanel.querySelector('form').addEventListener('submit',sendChatMessage);
+    ui.mapWrap.appendChild(ui.chatPanel);
     ui.mapVoteOverlay=document.createElement('section');
     ui.mapVoteOverlay.className='nexus-war-map-vote';
     ui.mapVoteOverlay.hidden=true;
@@ -4374,12 +5319,15 @@
     ui.pauseMenu=document.createElement('div');
     ui.pauseMenu.className='nexus-war-pause';
     ui.pauseMenu.hidden=true;
-    ui.pauseMenu.innerHTML='<section class="nexus-war-pause-panel"><header><div><span>DROPZONE</span><h2>Paused</h2><p>The multiplayer frontline continues while you manage your loadout.</p></div><button class="nexus-button" type="button" data-war-action="resume-game">Resume</button></header><div class="nexus-war-pause-audio"><button class="nexus-button secondary" type="button" data-war-action="audio-toggle">Sound: on</button><label>Volume<input type="range" min="0" max="100" value="18" data-war-volume></label></div><button class="nexus-button" type="button" data-war-action="secret-xp" hidden>theyseeyou · +10,000 XP</button><div class="nexus-war-pause-content" data-war-pause-content></div></section>';
+    ui.pauseMenu.innerHTML='<section class="nexus-war-pause-panel"><header><div><span>DROPZONE</span><h2>Menu</h2><p>The multiplayer frontline continues while you manage your loadout.</p></div><button class="nexus-button" type="button" data-war-action="resume-game">Resume</button></header><div class="nexus-war-pause-audio"><button class="nexus-button secondary" type="button" data-war-action="voice-toggle" aria-pressed="false">Voice: muted (K)</button><button class="nexus-button secondary" type="button" data-war-action="audio-toggle">Sound: on</button><label>Volume<input type="range" min="0" max="100" value="18" data-war-volume></label></div><button class="nexus-button" type="button" data-war-action="secret-xp" hidden>theyseeyou · +10,000 XP</button><div class="nexus-war-pause-content" data-war-pause-content></div></section>';
     ui.secretXp=ui.pauseMenu.querySelector('[data-war-action="secret-xp"]');
+    ui.voiceToggle=ui.pauseMenu.querySelector('[data-war-action="voice-toggle"]');
     ui.soundToggle=ui.pauseMenu.querySelector('[data-war-action="audio-toggle"]');
     ui.soundVolume=ui.pauseMenu.querySelector('[data-war-volume]');
     ui.soundVolume.value=String(Math.round(soundVolume*100));
     ui.soundToggle.textContent=soundEnabled?'Sound: on':'Sound: off';
+    ui.voiceToggle.textContent=voiceMuted?'Voice: muted (K)':'Mute voice (K)';
+    ui.voiceToggle.setAttribute('aria-pressed',String(!voiceMuted));
     ui.soundVolume.addEventListener('input',()=>{
       soundVolume=Number(ui.soundVolume.value)/100;
       soundEnabled=soundVolume>0;
@@ -4395,12 +5343,23 @@
     ui.spawnMenu=document.createElement('div');
     ui.spawnMenu.className='nexus-war-spawn-menu';
     ui.spawnMenu.hidden=true;
-    ui.spawnMenu.innerHTML='<section><header><div><span>DEPLOYMENT</span><h3>Spawn vehicle</h3></div><button class="nexus-button secondary" type="button" data-war-action="close-spawn-menu" aria-label="Close vehicle menu">×</button></header><p data-war-spawn-hint></p><label>Vehicle<select data-war-spawn-vehicle><option value="scout_bike">Scout bike</option><option value="assault_rover">Assault rover</option><option value="tank">Battle tank</option><option value="anti_air">Anti-air</option><option value="transport_helicopter">Transport helicopter</option></select></label><div class="nexus-war-spawn-actions"><button class="nexus-button" type="button" data-war-action="spawn-selected-vehicle">Deploy selected</button></div></section>';
+    ui.spawnMenu.innerHTML='<section><header><div><span>FIELD SHOP</span><h3>Base deployment</h3></div><button class="nexus-button secondary" type="button" data-war-action="close-spawn-menu" aria-label="Close field shop">×</button></header><p data-war-spawn-hint></p><nav class="nexus-war-shop-tabs" aria-label="Field shop"><button type="button" data-shop-tab="vehicle" aria-pressed="true">Vehicle</button><button type="button" data-shop-tab="loadout" aria-pressed="false">Loadout</button><button type="button" data-shop-tab="streaks" aria-pressed="false">Scorestreaks</button></nav><div data-shop-panel="vehicle"><label>Vehicle<select data-war-spawn-vehicle><option value="scout_bike">Scout bike</option><option value="assault_rover">Assault rover</option><option value="tank">Battle tank</option><option value="anti_air">Anti-air</option><option value="transport_helicopter">Transport helicopter</option><option value="apache">Apache attack helicopter</option></select></label><p data-war-vehicle-price></p><div class="nexus-war-spawn-actions"><button class="nexus-button" type="button" data-war-action="spawn-selected-vehicle">Deploy selected</button></div></div><div data-shop-panel="loadout" hidden></div><div data-shop-panel="streaks" hidden><p>Purchased scorestreaks are separate from your weapon loadout.</p><div class="nexus-war-streak-shop"><button class="nexus-button secondary" type="button" data-war-action="bunker-buster-buy">Bunker buster · 2,600 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="rc-car-buy">RC kamikaze · 1,200 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="airstrike-buy">Precision airstrike · 1,800 Sektorium</button></div></div></section>';
     ui.spawnVehicle=ui.spawnMenu.querySelector('[data-war-spawn-vehicle]');
+    ui.spawnVehicle.add(new Option('Five-seat gun jeep · turret','jeep'));
     ui.spawnHint=ui.spawnMenu.querySelector('[data-war-spawn-hint]');
+    ui.shopLoadoutPanel=ui.spawnMenu.querySelector('[data-shop-panel="loadout"]');
+    ui.shopVehiclePrice=ui.spawnMenu.querySelector('[data-war-vehicle-price]');
+    ui.shopVehiclePanel=ui.spawnMenu.querySelector('[data-shop-panel="vehicle"]');
+    ui.shopLoadoutPanel.append(ui.form,ui.attachmentShop);
+    ui.spawnMenu.querySelectorAll('[data-shop-tab]').forEach(button=>button.addEventListener('click',()=>selectShopTab(button.dataset.shopTab)));
     ui.spawnVehicle.value=ui.vehicle.value;
-    ui.spawnVehicle.addEventListener('change',()=>{ui.vehicle.value=ui.spawnVehicle.value;});
+    ui.spawnVehicle.addEventListener('change',()=>{ui.vehicle.value=ui.spawnVehicle.value;updateVehicleShopPrice();});
+    updateVehicleShopPrice();
     ui.mapWrap.appendChild(ui.spawnMenu);
+    ui.seatMenu=document.createElement('div');
+    ui.seatMenu.className='nexus-war-seat-menu';
+    ui.seatMenu.hidden=true;
+    ui.mapWrap.appendChild(ui.seatMenu);
     ui.weapon.innerHTML=Object.entries(weapons).filter(([,weapon])=>weapon.slot!=='secondary')
       .sort((left,right)=>left[1].level-right[1].level||left[1].name.localeCompare(right[1].name))
       .map(([id,weapon])=>'<option value="'+id+'">'+weapon.type+' · '+weapon.name+'</option>').join('');
@@ -4468,10 +5427,7 @@
     const droneToggle=container.querySelector('[data-war-action="drone-toggle"]');
     if (droneToggle) droneToggle.textContent='Toggle drone control (Shift)';
     const baseControls=container.querySelectorAll('.nexus-war-controls')[1];
-    for (const [action,label] of [
-      ['grapple-buy','Grapple hook · 450'],['airstrike-buy','Precision airstrike · 1800'],
-      ['bunker-buster-buy','Bunker buster · 2600'],['rc-car-buy','RC kamikaze car · 1200']
-    ]) {
+    for (const [action,label] of [['grapple-buy','Grapple hook · 450'],['c4-buy','C4 charge · 550']]) {
       const button=document.createElement('button');
       button.type='button';button.className='nexus-button secondary';
       button.dataset.warAction=action;button.textContent=label;
@@ -4558,6 +5514,11 @@
     if (refreshTimer) clearInterval(refreshTimer);
     if (firebaseMode && warRef && typeof warRef.off==='function') warRef.off('value');
     if (lanMode && warRef && typeof warRef.close==='function') warRef.close();
+    for (const key of voicePeers.keys()) closeVoicePeer(key);
+    voiceStream?.getTracks().forEach(track=>track.stop());
+    voiceStream=null;
+    voiceMuted=true;
+    if (lastToastTimer) clearTimeout(lastToastTimer);
     window.removeEventListener('storage',onLocalWarStorage);
     window.removeEventListener('keydown',onKeyDown);
     window.removeEventListener('keyup',onKeyUp);
@@ -4579,6 +5540,7 @@
     reloadEndsAt=0;
     reloadStartedAt=0;
     giveUpInterval=0;
+    lastToastTimer=0;
     cancelReviveChannel();
     captureTimer=0;
     heartbeatTimer=0;
@@ -4587,6 +5549,7 @@
     keys.clear();
     renderPositions.clear();
     localPosition=null;
+    lastPositionWritePosition=null;
     cameraPosition={x:0,y:0};
     localTransportId='';
     localDronePosition=null;
@@ -4686,6 +5649,7 @@
     Object.values(spectatorWarState.vehicles||{}).forEach(vehicle=>drawTransport(context,vehicle));
     Object.values(spectatorWarState.smokes||{}).forEach(smoke=>drawSmoke(context,smoke));
     Object.values(spectatorWarState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
+    Object.values(spectatorWarState.c4s||{}).forEach(c4=>drawC4(context,c4));
     Object.values(spectatorWarState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
     Object.values(spectatorWarState.lootBoxes||{}).forEach(crate=>drawLootBox(context,crate));
     context.restore();
