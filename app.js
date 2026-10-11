@@ -75,10 +75,41 @@ async function acceptFriendRequest(request) {
     await loadFriends();
   } catch (error) { showError('Could not accept that friend request.'); }
 }
-function openFriendsArea() { state.activeView = 'friends'; closePrivateDm(); els.friendsBtn.classList.add('active'); els.friendsList.hidden = false; els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false; els.textChannelsLabel.hidden = true; els.textChannels.hidden = true; els.voiceChannelsLabel.hidden = true; els.voiceChannels.hidden = true; els.voiceMembers.hidden = true; els.voiceControls.hidden = true; els.ownerTools.hidden = true; els.gamesPanel.hidden = true; els.friendHome.hidden = false; els.announcement.hidden = true; els.ownerComposer.hidden = true; els.messages.hidden = false; els.messageForm.hidden = false; els.serverName.textContent = 'Friends & DMs'; els.serverCode.textContent = 'Everyone has this server'; els.channelHash.textContent = '◎'; els.channelName.textContent = 'Friends'; els.channelTopic.textContent = 'Private conversations'; els.channelPermission.textContent = ''; els.messages.innerHTML = '<div class="empty-state">Choose a friend from the rail to start a private conversation.</div>'; els.messageInput.placeholder = 'Choose a friend to message'; loadFriends(); }
-function openPrivateDm(friend) {
+async function openFriendsArea() {
+  const navigationVersion=state.navigationVersion=(state.navigationVersion||0)+1;
+  state.activeView='friends';
+  if (state.server) state.lastServerCode=state.server.code;
+  await clearSubscriptions();
+  closePrivateDm();
+  if (navigationVersion!==state.navigationVersion) return;
+  state.server=null;state.channel='';state.editMode=false;
+  els.appView.classList.add('friends-view','friends-home-view');
+  els.friendsBtn.classList.add('active');els.friendsList.hidden=false;
+  els.friendRequestsPanel.hidden=false;els.friendsDirectory.hidden=false;
+  els.textChannelsLabel.hidden=true;els.textChannels.hidden=true;
+  els.voiceChannelsLabel.hidden=true;els.voiceChannels.hidden=true;
+  els.voiceMembers.hidden=true;els.voiceControls.hidden=true;
+  els.ownerTools.hidden=true;els.gamesPanel.hidden=true;els.friendHome.hidden=false;
+  els.friendHome.innerHTML='<div class="friend-home-header"><div><div class="friend-home-title">Friends &amp; DMs</div><div class="friend-home-subtitle">Private conversations are separate from servers.</div></div><button class="friend-home-add" type="button">＋ Add friend</button></div><div class="friend-home-empty">Choose a friend from the rail to start a private conversation.</div>';
+  els.friendHome.querySelector('.friend-home-add').onclick=openFriendModal;
+  els.announcement.hidden=true;els.ownerComposer.hidden=true;
+  els.messages.hidden=true;els.messageForm.hidden=true;
+  els.serverName.textContent='Friends & DMs';els.serverCode.textContent='';
+  els.serverSettings.hidden=true;els.editModeBtn.hidden=true;
+  els.channelHash.textContent='◎';els.channelName.textContent='Friends';
+  els.channelTopic.textContent='Private conversations';els.channelPermission.textContent='';
+  els.textChannels.replaceChildren();els.voiceChannels.replaceChildren();
+  renderServerRail();
+  loadFriends();
+}
+async function openPrivateDm(friend) {
+  const navigationVersion=state.navigationVersion=(state.navigationVersion||0)+1;
   state.activeView = 'friends';
-  state.navigationVersion = (state.navigationVersion || 0) + 1;
+  if (state.server) state.lastServerCode=state.server.code;
+  await clearSubscriptions();
+  closePrivateDm();
+  if (navigationVersion!==state.navigationVersion) return;
+  state.server=null;state.channel='';state.editMode=false;
   els.appView.classList.add('friends-view'); els.appView.classList.remove('friends-home-view');
   els.friendsBtn.classList.add('active'); els.friendsList.hidden = false;
   els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false;
@@ -86,19 +117,46 @@ function openPrivateDm(friend) {
   els.voiceChannelsLabel.hidden = true; els.voiceChannels.hidden = true;
   els.voiceMembers.hidden = true; els.voiceControls.hidden = true;
   els.ownerTools.hidden = true; els.gamesPanel.hidden = true; els.friendHome.hidden = true;
-  els.serverName.textContent = 'Friends & DMs'; els.serverCode.textContent = 'Private conversation';
-  state.dmFriend = friend; state.channel = ''; if (state.unsubMessages) state.unsubMessages(); if (state.dmRef && state.dmHandler) state.dmRef.off('child_added', state.dmHandler); state.dmRef = null; state.dmHandler = null;
-  els.channelHash.textContent = '@'; els.channelName.textContent = friend.username; els.channelTopic.textContent = 'Private messages'; els.channelPermission.textContent = 'DM'; els.announcement.hidden = true; els.ownerComposer.hidden = true; els.messageInput.placeholder = 'Message @' + friend.username; renderFriendsArea(); selectPrivateMessages();
+  state.dmFriend=friend;state.channel='';
+  els.serverName.textContent='Direct Messages';els.serverCode.textContent='';
+  els.serverSettings.hidden=true;els.editModeBtn.hidden=true;
+  replyTo=null;
+  els.channelHash.textContent='@';els.channelName.textContent=friend.username;
+  els.channelTopic.textContent='Private messages';els.channelPermission.textContent='DM';
+  els.announcement.hidden=true;els.ownerComposer.hidden=true;els.friendHome.hidden=true;
+  els.messages.hidden=false;els.messageForm.hidden=false;
+  els.messages.innerHTML='<div class="empty-state">Loading private messages…</div>';
+  els.messageInput.placeholder='Message @'+friend.username;
+  els.textChannels.replaceChildren();els.voiceChannels.replaceChildren();
+  renderServerRail();renderFriendsArea();selectPrivateMessages();
 }
 function selectPrivateMessages() {
-  els.messages.innerHTML = ''; if (!state.dmFriend) return;
-  const ref = db.ref('dms/' + friendConversationId(state.dmFriend.key) + '/messages').limitToLast(100);
-  state.dmRef = ref; state.dmHandler = snap => renderMessage({id:snap.key, ...snap.val(), name:snap.val().name || snap.val().fromUsername || 'Friend'}); ref.on('child_added', state.dmHandler);
+  els.messages.innerHTML='<div class="empty-state">No messages yet. Say hello.</div>';
+  if (!state.dmFriend) return;
+  const friendKey=state.dmFriend.key;
+  const ref=db.ref('dms/'+friendConversationId(friendKey)+'/messages').limitToLast(100);
+  state.dmRef=ref;
+  state.dmHandler=snap=>{
+    if (state.activeView!=='friends'||state.dmFriend?.key!==friendKey) return;
+    const value=snap.val();
+    if (value) renderMessage({id:snap.key,...value,name:value.name||value.fromUsername||'Friend'});
+  };
+  ref.on('child_added',state.dmHandler);
 }
 async function sendPrivateMessage(text) {
-  if (!state.dmFriend || !text) return;
-  const payload = {fromAccountKey:state.user.key, name:state.user.username, avatar:state.user.avatar || '', key:state.user.key, text, ts:firebase.database.ServerValue.TIMESTAMP};
-  try { await db.ref('dms/' + friendConversationId(state.dmFriend.key) + '/messages').push(payload); els.messageInput.value = ''; } catch (error) { showError('Could not send that message.'); }
+  if (!state.dmFriend || !state.user || (!text&&!pendingImage&&!pendingAudio)) return;
+  const friend=state.dmFriend;
+  const payload={fromAccountKey:state.user.key,name:state.user.username,avatar:state.user.avatar||'',
+    key:state.user.key,text,image:pendingImage||'',audioData:pendingAudio||'',audioName:pendingAudioName||'',
+    ts:firebase.database.ServerValue.TIMESTAMP};
+  try {
+    await db.ref('dms/'+friendConversationId(friend.key)+'/messages').push(payload);
+    if (state.dmFriend?.key===friend.key) {
+      els.messageInput.value='';pendingImage='';pendingAudio='';pendingAudioName='';replyTo=null;
+      els.imageInput.value='';els.imageButton.textContent='＋';els.audioInput.value='';els.audioButton.textContent='♪';
+      els.mentionSuggestions.hidden=true;
+    }
+  } catch(error) { els.channelTopic.textContent='Message failed. Check your connection and retry.';showError('Could not send that private message.'); }
 }
 function makeLocalStorageDatabase() {
   const STORE_KEY = 'sektorLocalDatabase';
@@ -665,21 +723,39 @@ async function confirmCreateServer() {
   renderServerRail();
   selectServer(code);
 }
-function clearSubscriptions() { leaveVoice(); if (state.metaRef && state.metaHandler) state.metaRef.off('value', state.metaHandler); if (state.presenceListRef && state.presenceHandler) state.presenceListRef.off('value', state.presenceHandler); if (state.unsubMessages) state.unsubMessages(); unreadChannelWatchers.forEach(watcher => watcher.ref.off('child_added', watcher.handler)); unreadChannelWatchers.clear(); unreadChannels = {}; if (state.presenceRef) { state.presenceRef.onDisconnect().cancel(); state.presenceRef.remove(); } state.metaRef = state.metaHandler = state.presenceListRef = state.presenceHandler = state.unsubMessages = state.presenceRef = null; }
+async function clearSubscriptions() {
+  try { await leaveVoice(); }
+  catch(error) { console.warn('[Sektor] Voice cleanup failed while changing views.',error); }
+  if (state.metaRef&&state.metaHandler) state.metaRef.off('value',state.metaHandler);
+  if (state.presenceListRef&&state.presenceHandler) state.presenceListRef.off('value',state.presenceHandler);
+  if (state.unsubMessages) state.unsubMessages();
+  if (state.gameRef&&state.gameHandler) state.gameRef.off('value',state.gameHandler);
+  state.gameRef=state.gameHandler=null;
+  unreadChannelWatchers.forEach(watcher=>watcher.ref.off('child_added',watcher.handler));
+  unreadChannelWatchers.clear();unreadChannels={};
+  if (state.presenceRef) {
+    try { await state.presenceRef.onDisconnect().cancel(); } catch(error) {}
+    try { await state.presenceRef.remove(); } catch(error) {}
+  }
+  state.metaRef=state.metaHandler=state.presenceListRef=state.presenceHandler=
+    state.unsubMessages=state.presenceRef=null;
+}
 async function selectServer(code) {
   const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.activeView = 'server';
   els.appView.classList.remove('friends-view','friends-home-view');
   try {
-    clearSubscriptions();
+    await clearSubscriptions();
     closePrivateDm();
     state.server = state.servers.find(server => server.code === code);
+    state.lastServerCode=code;
     channelReadAt = loadChannelReadState(state.server);
     unreadChannels = {};
     updateEditModeUi();
     state.channel = 'general';
     if (!state.server) return;
     els.friendsBtn.classList.remove('active');
+    els.serverSettings.hidden=false;
     els.friendHome.hidden = true;
     els.friendRequestsPanel.hidden = true;
     els.friendsDirectory.hidden = true;
@@ -930,6 +1006,7 @@ function syncUnreadChannelWatchers(textChannels) {
 function isGamesChannel() { return false; }
 function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manage:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
 function renderServer() {
+  if (state.activeView==='friends') return;
   if (state.dmFriend) closePrivateDm();
   if (!state.server) return clearServer();
   els.serverName.textContent = state.server.name;
@@ -2160,15 +2237,12 @@ els.serverList.addEventListener('click', () => {
   els.friendHome.hidden = true;
 });
 els.serverList.addEventListener('click', () => { els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); });
-(function enablePrivateDmSubmit() {
-  const existingSubmit = els.messageForm.onsubmit;
-  els.messageForm.onsubmit = async event => {
-    if (!state.dmFriend) return existingSubmit(event);
-    event.preventDefault();
-    const text = els.messageInput.value.trim();
-    if (text) await sendPrivateMessage(text);
-  };
-})();
+els.messageForm.addEventListener('submit',event=>{
+  if (!state.dmFriend) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  sendPrivateMessage(els.messageInput.value.trim());
+},true);
 els.audioButton.addEventListener('click', () => els.audioInput.click());
 els.audioInput.addEventListener('change', () => {
   const file = els.audioInput.files[0];
@@ -2178,7 +2252,7 @@ els.audioInput.addEventListener('change', () => {
   const reader = new FileReader(); reader.onload = () => { pendingAudio = reader.result; pendingAudioName = file.name; els.audioButton.textContent = '✓'; }; reader.readAsDataURL(file); els.audioInput.value = '';
 });
 els.messageForm.addEventListener('submit', async event => {
-  if (!pendingAudio) return;
+  if (!pendingAudio||state.dmFriend) return;
   event.preventDefault();
   const text = els.messageInput.value.trim(); const channel = channels().find(item => item.id === state.channel);
   if (!state.server || !channel || channel.type === 'announcement') return;
@@ -2241,27 +2315,16 @@ els.addChannel.onclick = openAddChannelModal;
   }
 
   const originalOpenFriendsArea = openFriendsArea;
-  openFriendsArea = function () {
-    originalOpenFriendsArea();
+  openFriendsArea = async function () {
+    await originalOpenFriendsArea();
+    if (state.activeView!=='friends'||state.server) return;
     els.appView.classList.add('friends-view','friends-home-view');
-    state.navigationVersion = (state.navigationVersion || 0) + 1;
-    leaveVoice();
     if (els.friendHome) els.friendHome.hidden = false;
     if (els.messages) els.messages.hidden = true;
     if (els.messageForm) els.messageForm.hidden = true;
     renderFriendsHome('all');
   };
   els.friendsBtn.onclick = openFriendsArea;
-
-  const originalOpenPrivateDm = openPrivateDm;
-  openPrivateDm = function (friend) {
-    els.appView.classList.add('friends-view');
-    els.appView.classList.remove('friends-home-view');
-    if (els.friendHome) els.friendHome.hidden = true;
-    if (els.messages) els.messages.hidden = false;
-    if (els.messageForm) els.messageForm.hidden = false;
-    return originalOpenPrivateDm(friend);
-  };
   els.serverList.addEventListener('click', () => {
     if (els.friendHome) els.friendHome.hidden = true;
   });

@@ -719,6 +719,13 @@ body::before {
 .nexus-war-status { min-height:19px; margin:8px 0; color:#9de9c2; font-size:11px; }
 .nexus-war-status.error { color:#ffaaaa; }
 .nexus-war-map-wrap { position:relative; }
+.nexus-war-map-connecting { min-height:clamp(340px,56vh,640px); overflow:hidden; border:1px solid #65e6ad33; border-radius:8px; background:#101915; }
+.nexus-war-connection { position:absolute; z-index:8; inset:0; display:grid; place-items:center; padding:20px; background:rgba(8,15,11,.94); color:#edf5ef; text-align:center; }
+.nexus-war-connection[hidden] { display:none; }
+.nexus-war-connection > div { width:min(500px,100%); }
+.nexus-war-connection > div > span { color:#88d9a5; font-size:10px; font-weight:850; }
+.nexus-war-connection h3 { margin:8px 0; font-size:20px; }
+.nexus-war-connection p { margin:0 auto 14px; color:#b4c2b7; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
 .nexus-war-match-timer { position:absolute; z-index:3; top:12px; right:50%; transform:translateX(50%); padding:7px 11px; border:1px solid #e9c96788; border-radius:6px; background:rgba(7,13,9,.92); color:#f2d77e; font-size:11px; font-weight:850; font-variant-numeric:tabular-nums; pointer-events:none; }
 .nexus-war-resource-hud { position:absolute; z-index:3; top:12px; right:12px; padding:7px 9px; border:1px solid #65e6ad66; border-radius:6px; background:rgba(7,13,9,.92); color:#c8f5d4; font-size:9px; font-weight:850; font-variant-numeric:tabular-nums; pointer-events:none; }
 .nexus-war-notice { position:absolute; z-index:5; top:54px; left:50%; width:min(520px,calc(100% - 24px)); transform:translateX(-50%); padding:11px 14px; border:1px solid #e6c96899; border-radius:6px; background:rgba(14,21,15,.96); color:#f5e6aa; box-shadow:0 8px 24px #0009; font-size:12px; font-weight:800; text-align:center; pointer-events:none; }
@@ -825,7 +832,7 @@ body::before {
 .nexus-war-capture > div { height:9px; overflow:hidden; border-radius:99px; background:#ffffff18; }
 .nexus-war-capture > div > span { display:block; width:0; height:100%; border-radius:inherit; background:#65e6ad; transition:width .1s linear; }
 .nexus-war-touch { display:none; }
-.nexus-war-unavailable .nexus-war-canvas,.nexus-war-unavailable .nexus-war-hud,.nexus-war-unavailable .nexus-war-loadout,.nexus-war-unavailable .nexus-war-controls,.nexus-war-unavailable .nexus-war-touch,.nexus-war-unavailable .nexus-war-capture,.nexus-war-unavailable .nexus-war-attachment-shop { display:none; }
+.nexus-war-unavailable .nexus-war-canvas,.nexus-war-unavailable .nexus-war-minimap,.nexus-war-unavailable .nexus-war-hud,.nexus-war-unavailable .nexus-war-loadout,.nexus-war-unavailable .nexus-war-controls,.nexus-war-unavailable .nexus-war-touch,.nexus-war-unavailable .nexus-war-capture,.nexus-war-unavailable .nexus-war-attachment-shop,.nexus-war-unavailable .nexus-war-chat { display:none; }
 .nexus-war-loadout { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); align-items:end; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid #d5e2d51b; }
 .nexus-war-loadout label { display:grid; gap:5px; color:#a8b8ac; font-size:10px; }
 .nexus-war-loadout select { width:100%; min-width:0; padding:8px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:11px; }

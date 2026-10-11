@@ -26,6 +26,9 @@
   let wheelRotation = 0;
   let wheelSpinning = false;
   let artHistory = [];
+  let artCanvasDraft = null;
+  let artControlDraft = null;
+  let artDraftOwner = '';
   let painting = false;
   let lastPaintPoint = null;
   let paintStartPoint = null;
@@ -506,11 +509,52 @@
     context.putImageData(image, 0, 0);
   }
 
+  function captureArtMakerDraft() {
+    const user=currentUser();
+    const owner=user?String(user.username).toLowerCase():'';
+    if (owner!==artDraftOwner) {
+      artDraftOwner=owner;
+      artCanvasDraft=null;
+      artControlDraft=null;
+      artHistory=[];
+    }
+    const canvas=content.querySelector('[data-art-canvas]');
+    if (!canvas) return;
+    artCanvasDraft=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);
+    const value=selector=>content.querySelector(selector)?.value;
+    artControlDraft={
+      color:value('[data-art-control="color"]')||'#17251c',
+      size:value('[data-art-control="size"]')||'8',
+      tool:value('[data-art-control="tool"]')||'brush',
+      font:value('[data-art-control="font"]')||'Arial, sans-serif',
+      text:value('[data-art-control="text"]')||'',
+      name:value('[data-art-name]')||''
+    };
+    painting=false;
+    lastPaintPoint=null;
+    paintStartPoint=null;
+    paintSnapshot=null;
+  }
+
   function installArtMaker() {
     const canvas = content.querySelector('[data-art-canvas]');
     if (!canvas) return;
     const context = canvas.getContext('2d');
-    artHistory = [];
+    if (artCanvasDraft&&artCanvasDraft.width===canvas.width&&artCanvasDraft.height===canvas.height)
+      context.putImageData(artCanvasDraft,0,0);
+    if (artControlDraft) {
+      for (const [selector,value] of [
+        ['[data-art-control="color"]',artControlDraft.color],
+        ['[data-art-control="size"]',artControlDraft.size],
+        ['[data-art-control="tool"]',artControlDraft.tool],
+        ['[data-art-control="font"]',artControlDraft.font],
+        ['[data-art-control="text"]',artControlDraft.text],
+        ['[data-art-name]',artControlDraft.name]
+      ]) {
+        const control=content.querySelector(selector);
+        if (control) control.value=value;
+      }
+    }
     context.lineCap = 'round';
     context.lineJoin = 'round';
 
@@ -990,6 +1034,7 @@
 
   function render() {
     if (!world) return;
+    if (inventoryPage) captureArtMakerDraft();
     const previousChat=content.querySelector('.nexus-chat');
     const previousChatScrollTop=previousChat?previousChat.scrollTop:0;
     const previousChatAtBottom=!previousChat||
