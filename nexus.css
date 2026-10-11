@@ -800,6 +800,26 @@ body::before {
 .nexus-war-color-label { width:auto; min-width:0; }
 .nexus-war-color-label input[type="color"] { width:100%; height:34px; padding:2px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; cursor:pointer; }
 .nexus-war-color-controls .nexus-button { grid-column:1/-1; min-height:34px; }
+.nexus-war-map-vote { position:absolute; z-index:8; inset:clamp(8px,3vw,36px); display:flex; flex-direction:column; gap:12px; overflow:auto; padding:clamp(14px,2vw,26px); border:1px solid rgba(184,216,190,.32); border-radius:12px; background:rgba(7,13,10,.97); color:#edf5ef; box-shadow:0 24px 90px #000c; }
+.nexus-war-map-vote[hidden] { display:none; }
+.nexus-war-map-vote > header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.nexus-war-map-vote > header span { color:#8ce6b7; font-size:10px; font-weight:850; }
+.nexus-war-map-vote h2 { margin:4px 0; font-size:clamp(18px,3vw,28px); }
+.nexus-war-map-vote p { margin:4px 0; color:#a8b8ac; font-size:12px; }
+.nexus-war-vote-timer { flex:0 0 auto; padding:8px 12px; border:1px solid #e9c96766; border-radius:8px; color:#f0d675; font-variant-numeric:tabular-nums; }
+.nexus-war-vote-teams { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:#a8b8ac; font-size:11px; }
+.nexus-war-vote-teams span { margin-right:5px; }
+.nexus-war-vote-teams button,.nexus-war-map-option button { padding:8px 11px; border:1px solid #82918766; border-radius:7px; background:#18221c; color:#edf5ef; font-weight:750; cursor:pointer; }
+.nexus-war-vote-teams button[aria-pressed="true"] { border-color:#8ce6b7; background:#24503c; }
+.nexus-war-map-vote-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.nexus-war-map-option { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 10px; align-items:center; overflow:hidden; padding:8px; border:1px solid #c2e2ca25; border-radius:8px; background:#111a15; }
+.nexus-war-map-option canvas { grid-column:1/-1; display:block; width:100%; aspect-ratio:2/1; border-radius:5px; background:#26352b; }
+.nexus-war-map-option > div { min-width:0; }
+.nexus-war-map-option strong,.nexus-war-map-option small { display:block; }
+.nexus-war-map-option strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.nexus-war-map-option small { margin-top:3px; color:#9cac9f; font-size:9px; }
+.nexus-war-map-option button { white-space:nowrap; }
+.nexus-war-map-option button span { color:#f0d675; font-variant-numeric:tabular-nums; }
 .nexus-war-loadout-status { grid-column:1/-1; min-height:1.4em; color:#9cac9f; font-size:10px; }
 .nexus-war-loadout-status.error { color:#ff9da4; }
 .nexus-war-equipment-help { grid-column:1/-1; color:#87998d; font-size:10px; line-height:1.5; }
@@ -834,9 +854,14 @@ body::before {
   .nexus-war-loadout { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .nexus-war-loadout > button { grid-column:1/-1; }
   .nexus-war-attachment-shop [data-war-attachment-shop] { grid-template-columns:1fr; }
+  .nexus-war-map-vote { inset:5px; gap:9px; padding:10px; }
+  .nexus-war-map-vote-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .nexus-war-touch { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:12px 0; touch-action:none; }
   .nexus-war-pad { display:grid; grid-template-columns:repeat(3,48px); grid-template-rows:repeat(2,48px); gap:5px; }
   .nexus-war-touch button { min-width:48px; min-height:48px; border:1px solid #65e6ad55; border-radius:10px; background:#17231d; color:#edf5ef; font-size:18px; font-weight:800; touch-action:none; user-select:none; }
   .nexus-war-pad button:first-child { grid-column:2; }
   .nexus-war-fire { min-width:88px !important; min-height:88px !important; border-radius:50% !important; background:#5b2530 !important; border-color:#ff788755 !important; }
+}
+@media (max-width: 420px) {
+  .nexus-war-map-vote-grid { grid-template-columns:1fr; }
 }
