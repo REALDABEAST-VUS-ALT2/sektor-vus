@@ -139,7 +139,9 @@ function selectPrivateMessages() {
   state.dmHandler=snap=>{
     if (state.activeView!=='friends'||state.dmFriend?.key!==friendKey) return;
     const value=snap.val();
-    if (value) renderMessage({id:snap.key,...value,name:value.name||value.fromUsername||'Friend'});
+    if (value) renderMessage({...value,id:snap.key,
+      key:value.key||value.fromAccountKey||value.senderKey,
+      name:value.name||value.fromUsername||'Friend'});
   };
   ref.on('child_added',state.dmHandler);
 }
@@ -2436,7 +2438,7 @@ els.addChannel.onclick = openAddChannelModal;
   const originalOpenFriendsArea = openFriendsArea;
   openFriendsArea = async function () {
     await originalOpenFriendsArea();
-    if (state.activeView!=='friends'||state.server) return;
+    if (state.activeView!=='friends'||state.server||state.dmFriend) return;
     els.appView.classList.add('friends-view','friends-home-view');
     if (els.friendHome) els.friendHome.hidden = false;
     if (els.messages) els.messages.hidden = true;

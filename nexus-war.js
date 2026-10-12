@@ -247,8 +247,10 @@
     rail_light:{name:'Lightweight accessory rail',effect:'Improves aim speed and stability',spread:.94,recoil:.9,cost:500},
     mag_subsonic:{name:'Subsonic rounds',effect:'Quiet fire with reduced damage and range',damage:.9,range:.9,spread:.92,cost:700}
   };
-  const weaponColorParts=['receiver','barrel','grip'];
-  const weaponColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d'};
+  const weaponColorParts=['receiver','barrel','grip','stock','optic','accent'];
+  const weaponColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d',stock:'#536257',optic:'#a5f06d',accent:'#d3b263'};
+  const vehicleColorParts=['body','trim','accent'];
+  const vehicleColorDefaults={body:'#71836e',trim:'#9fc4ff',accent:'#d3b263'};
   const vehicles = {
     scout_bike:{name:'Scout bike',speed:1.9,color:'#d8c76f'},
     assault_rover:{name:'Assault rover',speed:2.3,color:'#b8836e'},
@@ -822,19 +824,6 @@
     return String(name || '').toLowerCase().replace(/[.#$\[\]/]/g,'_').slice(0,32);
   }
 
-  function cachedDropzoneTeam(name,currentWeek) {
-    try {
-      const saved=JSON.parse(localStorage.getItem('nexusDropzoneTeam_'+safeUserKey(name))||'null');
-      return saved&&saved.week===currentWeek&&['vortex','krypton'].includes(saved.team)?saved.team:'';
-    } catch(error) { return ''; }
-  }
-
-  function cacheDropzoneTeam(name,team,currentWeek=weekKey()) {
-    try {
-      localStorage.setItem('nexusDropzoneTeam_'+safeUserKey(name),JSON.stringify({team,week:currentWeek}));
-    } catch(error) {}
-  }
-
   function requestUrl(path) {
     return '/api/data?path=' + encodeURIComponent(path);
   }
@@ -849,7 +838,13 @@
     const savedColors=value&&value.weaponColors&&typeof value.weaponColors==='object'?value.weaponColors:{};
     const weaponColors=Object.fromEntries(weaponColorParts.map(part=>[part,
       /^#[0-9a-f]{6}$/i.test(savedColors[part]||'')?savedColors[part]:weaponColor]));
-    return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:[...new Set([...freeAttachments,...owned])],weaponColor,weaponColors};
+    const savedVehicleColors=value&&value.vehicleColors&&typeof value.vehicleColors==='object'?value.vehicleColors:{};
+    const vehicleColors=Object.fromEntries(Object.entries(vehicles).map(([id,vehicle])=>[id,
+      Object.fromEntries(vehicleColorParts.map(part=>[part,
+        /^#[0-9a-f]{6}$/i.test(savedVehicleColors[id]?.[part]||'')?savedVehicleColors[id][part]:part==='body'?vehicle.color:vehicleColorDefaults[part]]))]));
+    const savedWrap=value&&value.weaponWrap&&typeof value.weaponWrap==='object'?value.weaponWrap:{};
+    const weaponWrap={pattern:['solid','stripes','digital'].includes(savedWrap.pattern)?savedWrap.pattern:'solid'};
+    return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:[...new Set([...freeAttachments,...owned])],weaponColor,weaponColors,weaponWrap,vehicleColors};
   }
 
   async function writeLocalAccountWorld(value) {
@@ -1068,6 +1063,7 @@
       mapVotes:value.mapVotes&&typeof value.mapVotes==='object'?value.mapVotes:{},
       players:Object.fromEntries(Object.entries(players).map(([key,player])=>[key,player?{
         armorPlates:0,armorHp:0,armorSatchel:false,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
+        weaponColors:{},weaponWrap:{},vehicleColors:{},
         smokeCharges:2,stimCharges:2,flashCharges:2,plateBoxCharges:1,grenadeCharges:2,stickyCharges:2,claymoreCharges:1,
         grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
           tactical:'smoke',lethal:'grenade',secondary:'pistol_sidekick',secondaryAmmo:15,attachmentAmmo:{},
@@ -1106,34 +1102,8 @@
   }
 
   async function getPlayerTeam(name) {
-    const currentWeek=weekKey();
-    const user=accountFor(await readAccountWorld(),name);
-    if (user.teamWeek===currentWeek&&['vortex','krypton'].includes(user.team)) {
-      cacheDropzoneTeam(name,user.team,currentWeek);
-      return user.team;
-    }
-    const cachedTeam=cachedDropzoneTeam(name,currentWeek);
-    if (cachedTeam) {
-      let restoredTeam='';
-      await updateAccountByName(name,current=>{
-        if (current.teamWeek!==currentWeek||!['vortex','krypton'].includes(current.team)) {
-          current.team=cachedTeam;
-          current.teamWeek=currentWeek;
-        }
-        restoredTeam=current.team;
-      });
-      if (['vortex','krypton'].includes(restoredTeam)) return restoredTeam;
-    }
-    if (user.teamWeek!==currentWeek) {
-      await updateAccountByName(name,current=>{
-        if (current.teamWeek!==currentWeek) {
-          current.team='';
-          current.teamWeek=currentWeek;
-        }
-      });
-      return '';
-    }
-    return user.team;
+    accountFor(await readAccountWorld(),name);
+    return '';
   }
 
   function setStatus(message, error = false) {
@@ -1443,7 +1413,13 @@
     const initialAnnouncement=newestAnnouncement(warState&&warState.announcements);
     lastAnnouncementId=initialAnnouncement?initialAnnouncement[0]:'';
     await refreshAccount();
-    const activePlayer=await mutatePlayer(player => {
+    const existingPlayer=warState?.players?.[playerKey];
+    const switchingTeams=!!(existingPlayer?.team&&existingPlayer.team!==playerTeam);
+    if (switchingTeams&&existingPlayer.transportId) await leaveTransport(existingPlayer);
+    if (switchingTeams&&existingPlayer.vehicleId) {
+      await updateWar('vehicles/'+existingPlayer.vehicleId,current=>current&&current.owner===playerName?null:current);
+    }
+    let activePlayer=await mutatePlayer(player => {
       const initial = playerDefaults();
       const level=accountData.dropzone.level;
       const selectedWeapon=player&&weapons[player.weapon]&&weapons[player.weapon].slot!=='secondary'&&
@@ -1457,15 +1433,21 @@
       const selectedMag=effectiveWeapon({weapon:selectedWeapon,attachments:selectedAttachments},'primary').mag;
       const selectedSecondaryMag=effectiveWeapon({secondary:selectedSecondary,attachments:selectedAttachments},'secondary').mag;
       return {...initial,...(player || {}),name:playerName,team:playerTeam,
-        weaponColors:accountData.dropzone.weaponColors,weaponColor:'',
+        weaponColors:accountData.dropzone.weaponColors,weaponColor:'',weaponWrap:accountData.dropzone.weaponWrap,
+        vehicleColors:accountData.dropzone.vehicleColors,
         weapon:selectedWeapon,secondary:selectedSecondary,attachments:selectedAttachments,
         attachmentAmmo:normalizeAttachmentAmmo(selectedAttachments,player?.attachmentAmmo||{},selectedAttachments),
         ammo:player && selectedWeapon===player.weapon?Math.min(Number(player.ammo)||0,selectedMag):selectedMag,
         secondaryAmmo:player&&selectedSecondary===player.secondary
           ?Math.min(Number(player.secondaryAmmo)||0,selectedSecondaryMag):selectedSecondaryMag,
         activeWeaponSlot:player&&player.activeWeaponSlot==='secondary'?'secondary':'primary',
-        online:true,lastSeen:Date.now()};
+        online:true,lastSeen:Date.now(),
+        ...(switchingTeams?{x:initial.x,y:initial.y,hp:100,vehicle:'',vehicleId:'',transportId:'',
+          vehiclePad:'',houseInside:'',houseFloor:0,downed:false,downedAt:0,respawnAt:0}: {})};
     });
+    if (!activePlayer) activePlayer=await mutatePlayer(player=>player||playerDefaults());
+    if (!activePlayer||typeof activePlayer!=='object')
+      throw new Error('Dropzone received an empty player record. Reconnect to the frontline and try again.');
     localPosition={x:Number(activePlayer.x),y:Number(activePlayer.y)};
     lastPositionWritePosition={...localPosition};
     cameraPosition={...localPosition};
@@ -2321,6 +2303,10 @@
     const scale=1+altitude/100;
     const x=Number(vehicle.x),groundY=Number(vehicle.y);
     const y=groundY-altitude*.65;
+    const palette=vehicle.colors||warState.players?.[vehicle.pilot]?.vehicleColors?.[transportType]||{};
+    const bodyColor=/^#[0-9a-f]{6}$/i.test(palette.body||'')?palette.body:vehicle.team==='vortex'?'#6f9bd5':'#c4757d';
+    const trimColor=/^#[0-9a-f]{6}$/i.test(palette.trim||'')?palette.trim:'#e8eee9';
+    const accentColor=/^#[0-9a-f]{6}$/i.test(palette.accent||'')?palette.accent:'#d3b263';
     context.save();
     context.globalAlpha=.28;
     context.fillStyle='#050806';
@@ -2329,10 +2315,12 @@
     context.translate(x,y);
     context.scale(scale,scale);
     context.rotate(Number(vehicle.facingAngle)||0);
-    context.fillStyle=vehicle.team==='vortex'?'#6f9bd5':'#c4757d';
-    context.strokeStyle='#e8eee9';
+    context.fillStyle=bodyColor;
+    context.strokeStyle=trimColor;
     context.lineWidth=3/scale;
     context.beginPath();context.ellipse(0,0,38,16,0,0,Math.PI*2);context.fill();context.stroke();
+    context.strokeStyle=accentColor;context.lineWidth=2/scale;
+    context.beginPath();context.moveTo(-15,0);context.lineTo(20,0);context.stroke();
     context.fillRect(-48,-3,24,6);
     context.fillRect(31,-21,4,42);
     context.beginPath();context.moveTo(-28,-2);context.lineTo(-56,-7);context.moveTo(-28,2);context.lineTo(-56,7);context.stroke();
@@ -2372,7 +2360,8 @@
     context.save();context.globalAlpha=.24;context.fillStyle='#050806';
     context.beginPath();context.ellipse(x,y+12,40,22,0,0,Math.PI*2);context.fill();context.restore();
     drawVehicleSprite(context,'jeep',x,y,vehicles.jeep.color,
-      vehicle.team==='vortex'?'#9fc4ff':'#ffabb1',vehicle.facingAngle);
+      vehicle.team==='vortex'?'#9fc4ff':'#ffabb1',vehicle.facingAngle,
+      vehicle.colors||warState.players?.[vehicle.pilot]?.vehicleColors?.jeep||{});
     const seats=[[-11,-9],[10,-9],[-11,11],[10,11]];
     seats.forEach(([offsetX,offsetY],index)=>{
       const occupied=vehicle.pilot&&index===0||gunners.includes(vehicle.passengers?.[index+1]);
@@ -2389,7 +2378,10 @@
     context.fillText('GUN JEEP · '+(vehicle.passengers?.length||0)+'/5',x,y-34);
   }
 
-  function drawVehicleSprite(context,type,x,y,bodyColor,teamColor,angle=0) {
+  function drawVehicleSprite(context,type,x,y,bodyColor,teamColor,angle=0,customColors={}) {
+    if (/^#[0-9a-f]{6}$/i.test(customColors.body||'')) bodyColor=customColors.body;
+    if (/^#[0-9a-f]{6}$/i.test(customColors.trim||'')) teamColor=customColors.trim;
+    const accent=/^#[0-9a-f]{6}$/i.test(customColors.accent||'')?customColors.accent:'#d3b263';
     context.save();
     context.translate(x,y);
     context.rotate(Number(angle)||0);
@@ -2471,6 +2463,11 @@
       context.strokeStyle='#e0c87b';context.lineWidth=5;
       context.beginPath();context.moveTo(4,0);context.lineTo(31,0);context.stroke();
     }
+    context.strokeStyle=accent;
+    context.globalAlpha=.88;
+    context.lineWidth=2;
+    context.beginPath();context.moveTo(-10,0);context.lineTo(16,0);context.stroke();
+    context.globalAlpha=1;
     context.restore();
   }
 
@@ -2487,6 +2484,9 @@
     const receiverColor=/^#[0-9a-f]{6}$/i.test(customColors.receiver||'')?customColors.receiver:legacyColor||finish;
     const barrelColor=/^#[0-9a-f]{6}$/i.test(customColors.barrel||'')?customColors.barrel:legacyColor||'#18211c';
     const gripColor=/^#[0-9a-f]{6}$/i.test(customColors.grip||'')?customColors.grip:legacyColor||'#29362d';
+    const stockColor=/^#[0-9a-f]{6}$/i.test(customColors.stock||'')?customColors.stock:'#536257';
+    const opticColor=/^#[0-9a-f]{6}$/i.test(customColors.optic||'')?customColors.optic:'#a5f06d';
+    const accentColor=/^#[0-9a-f]{6}$/i.test(customColors.accent||'')?customColors.accent:'#d3b263';
     if (weapon.dualWield) {
       context.save();context.translate(0,-4);
       drawHeldWeapon(context,{...weapon,dualWield:false});context.restore();
@@ -2548,6 +2548,31 @@
       context.fillStyle=gripColor;context.fillRect(23,4,7,10);
       context.fillStyle='#111a15';context.fillRect(43,-2,10,4);
     }
+    context.fillStyle=stockColor;
+    context.fillRect(8,-2,6,4);
+    context.fillStyle=opticColor;
+    context.fillRect(26,-8,8,2);
+    const pattern=weapon.customWrap&&['stripes','digital'].includes(weapon.customWrap.pattern)
+      ?weapon.customWrap.pattern:'solid';
+    if (pattern!=='solid') {
+      context.save();
+      context.beginPath();context.rect(12,-6,34,12);context.clip();
+      context.globalAlpha=.58;
+      context.fillStyle=accentColor;
+      if (pattern==='stripes') {
+        for (let stripe=-12;stripe<52;stripe+=7) {
+          context.save();context.translate(stripe,0);context.rotate(-.55);context.fillRect(0,-14,2,28);context.restore();
+        }
+      } else {
+        for (let block=-12;block<52;block+=9) {
+          context.fillRect(block,-5,4,4);
+          if ((block/9)%2===0) context.fillRect(block+3,1,4,4);
+        }
+      }
+      context.restore();
+    }
+    context.fillStyle=accentColor;
+    context.fillRect(37,-2,3,4);
     context.fillStyle=receiverColor;
     context.fillRect(13+(weaponSeed%5)*4,-1.5,3,3);
   }
@@ -2563,7 +2588,7 @@
     const x=Number(vehicle.x),y=Number(vehicle.y);
     const remaining=Math.max(0,Math.ceil((Number(vehicle.expiresAt)-Date.now())/1000));
     drawVehicleSprite(context,vehicle.type,x,y,vehicles[vehicle.type]?.color||'#8da1a4',
-      vehicle.team==='vortex'?'#9fc4ff':'#ffabb1',vehicle.facingAngle);
+      vehicle.team==='vortex'?'#9fc4ff':'#ffabb1',vehicle.facingAngle,vehicle.colors||{});
     context.fillStyle='#edf5ef';context.font='bold 11px system-ui';context.textAlign='center';
     context.fillText((vehicles[vehicle.type]?.name||'Vehicle')+' · '+remaining+'s',x,y+38);
   }
@@ -2924,7 +2949,8 @@
     context.beginPath();
     if (vehicles[player.vehicle]) {
       drawVehicleSprite(context,player.vehicle,x,y,vehicles[player.vehicle].color,
-        isSelf?'#fff':player.team==='vortex'?'#9fc4ff':'#ffabb1',player.facingAngle);
+        isSelf?'#fff':player.team==='vortex'?'#9fc4ff':'#ffabb1',player.facingAngle,
+        player.vehicleColors?.[player.vehicle]||{});
       context.fillStyle='#101713';
       context.font='bold 10px system-ui';
       context.textAlign='center';
@@ -2987,7 +3013,7 @@
       context.fillStyle='#798b7e';
       context.beginPath();context.arc(10,0,8,0,Math.PI*2);context.fill();
       context.strokeStyle='#d4dfd6';context.lineWidth=2;context.stroke();
-      drawHeldWeapon(context,{...weapon,customColor:player.weaponColor||'',customColors:player.weaponColors||{}});
+      drawHeldWeapon(context,{...weapon,customColor:player.weaponColor||'',customColors:player.weaponColors||{},customWrap:player.weaponWrap||{}});
       context.restore();
     }
     context.fillStyle = '#101713';
@@ -4847,7 +4873,7 @@
     const now=Date.now();
     const parked={id,type:player.vehicle,team:playerTeam,owner:playerName,
       x:Number(position.x),y:Number(position.y),padId:player.vehiclePad||'',
-      facingAngle:Number(player.facingAngle)||0,parked:true,parkedAt:now,expiresAt:now+180_000};
+      facingAngle:Number(player.facingAngle)||0,colors:player.vehicleColors?.[player.vehicle]||{},parked:true,parkedAt:now,expiresAt:now+180_000};
     await updateWar('vehicles/'+id,current=>({...current,...parked}));
     if (warState) warState.vehicles[id]=parked;
     try {
@@ -4974,7 +5000,8 @@
         const id=(type==='jeep'?'jeep_':'transport_')+playerKey+'_'+Date.now();
         const transport={id,type,team:playerTeam,x:pad.x,y:pad.y,padId,
           altitude:0,hp:type==='jeep'?350:500,maxHp:type==='jeep'?350:500,pilot:playerKey,
-          passengers:[playerKey],gunnerSeats:{},gunnerAngles:{},facingAngle:0,lastMovedAt:Date.now()};
+          passengers:[playerKey],gunnerSeats:{},gunnerAngles:{},facingAngle:0,lastMovedAt:Date.now(),
+          colors:player.vehicleColors?.[type]||{}};
         await updateWar('vehicles/'+id,()=>transport);
         warState.vehicles[id]=transport;
         await mutatePlayer(current=>({...current,x:pad.x,y:pad.y,vehicle:type,
@@ -4997,7 +5024,7 @@
       if (vehicleCost) await changeTeamResources(-vehicleCost);
       paidCost=vehicleCost;
       await updateWar('vehicles/'+vehicleId,()=>({id:vehicleId,type,team:playerTeam,owner:playerName,
-        x:spawnPosition.x,y:spawnPosition.y,facingAngle:0,parked:false,createdAt:Date.now()}));
+        x:spawnPosition.x,y:spawnPosition.y,facingAngle:0,colors:player.vehicleColors?.[type]||{},parked:false,createdAt:Date.now()}));
       await mutatePlayer(current=>current?{...current,x:spawnPosition.x,y:spawnPosition.y,vehicle:type,
         vehicleId,vehiclePad:padId,vehicleAmmo:vehicleWeapons[type]?.mag||0,lastSeen:Date.now()}:current);
       paidCost=0;
@@ -5437,6 +5464,7 @@
       if (ui.weaponColors&&ui.weaponColors[part])
         ui.weaponColors[part].value=progress.weaponColors[part]||weaponColorDefaults[part];
     }
+    updateVehicleColorControls();
     const current=ui.weapon.value;
     const currentSecondary=ui.secondaryWeapon.value||warState.players[playerKey]?.secondary||'pistol_sidekick';
     const byUnlockLevel=(left,right)=>left[1].level-right[1].level||left[1].name.localeCompare(right[1].name);
@@ -5525,6 +5553,45 @@
     } catch(error) { setStatus(error.message||'Could not apply that weapon color.',true); }
   }
 
+  function updateVehicleColorControls() {
+    if (!ui?.vehicleColorVehicle||!ui.vehicleColors||!accountData) return;
+    const type=ui.vehicleColorVehicle.value;
+    const saved=accountData.dropzone.vehicleColors[type]||{};
+    for (const part of vehicleColorParts) ui.vehicleColors[part].value=saved[part]||vehicleColorDefaults[part];
+  }
+
+  async function colorVehicle() {
+    const type=ui.vehicleColorVehicle.value;
+    const colors=Object.fromEntries(vehicleColorParts.map(part=>[
+      part,String(ui.vehicleColors[part].value||'').toLowerCase()
+    ]));
+    if (Object.values(colors).some(color=>!/^#[0-9a-f]{6}$/.test(color))) {
+      setStatus('Choose a valid color for each vehicle part.',true);return;
+    }
+    const sameColors=current=>vehicleColorParts.every(part=>current&&current[part]===colors[part]);
+    if (sameColors(accountData.dropzone.vehicleColors[type])) {setStatus('Those vehicle colors are already applied.');return;}
+    try {
+      let purchaseError='';
+      await updateAccount(user=>{
+        const progress=normalizeProgress(user.dropzone);
+        const balance=Number(user.balance||0);
+        if (sameColors(progress.vehicleColors[type])) {purchaseError='Those vehicle colors are already applied.';return;}
+        if (balance<100) {purchaseError='You need 100 Sektorium to apply vehicle colors.';return;}
+        user.balance=balance-100;
+        progress.vehicleColors[type]=colors;
+        user.dropzone=progress;
+      });
+      if (purchaseError) throw new Error(purchaseError);
+      await mutatePlayer(player=>({...player,vehicleColors:{...(player.vehicleColors||{}),[type]:colors}}));
+      const player=warState.players[playerKey];
+      const currentVehicleId=player.transportId||player.vehicleId;
+      if (currentVehicleId) await updateWar('vehicles/'+currentVehicleId,current=>current?{...current,colors}:current);
+      refreshProgressUi();
+      draw();
+      setStatus(vehicles[type].name+' colors applied for 100 Sektorium.');
+    } catch(error) {setStatus(error.message||'Could not apply those vehicle colors.',true);}
+  }
+
   function onActionClick(event) {
     const button=event.target.closest('[data-war-action]');
     if (!button || !container || !container.contains(button)) {
@@ -5547,6 +5614,7 @@
       grantSecretReward().catch(error=>setStatus(error.message||'Secret reward could not be saved.',true));
     if (button.dataset.warAction==='use-attachment') useWeaponAttachment();
     if (button.dataset.warAction==='color-weapons') colorWeapons();
+    if (button.dataset.warAction==='color-vehicle') colorVehicle();
     if (button.dataset.warAction==='close-spawn-menu') closeVehicleSpawnMenu();
     if (button.dataset.warAction==='close-seat-menu') ui.seatMenu.hidden=true;
     if (button.dataset.warAction==='change-vehicle-seat')
@@ -5651,10 +5719,10 @@
     hud.setAttribute('aria-label','Health and armor status');
     container.querySelector('.nexus-war-map-wrap').appendChild(hud);
     const teamChoice=document.createElement('section');
-    teamChoice.className='nexus-war-team-choice nexus-stock-team-picker';
+    teamChoice.className='nexus-war-team-choice nexus-war-team-picker';
     teamChoice.dataset.warTeamChoice='';
     teamChoice.hidden=true;
-    teamChoice.innerHTML='<strong>Choose your team for this week</strong><p>Your choice resets at the weekly frontline reset.</p>'+
+    teamChoice.innerHTML='<strong>Choose your team</strong><p>Your side is selected for this visit. You can choose again next time.</p>'+
       '<button class="nexus-button nexus-team-vortex" type="button" data-war-action="join-dropzone-team" data-team="vortex">Join Vortex</button>'+
       '<button class="nexus-button nexus-team-krypton" type="button" data-war-action="join-dropzone-team" data-team="krypton">Join Krypton</button>';
     container.querySelector('[data-war-status]').after(teamChoice);
@@ -5819,6 +5887,31 @@
     }
     colorControls.appendChild(colorButton);
     ui.form.insertBefore(colorControls,ui.form.querySelector('.nexus-war-equipment-help'));
+    ui.vehicleColors={};
+    ui.vehicleColorVehicle=document.createElement('select');
+    ui.vehicleColorVehicle.setAttribute('aria-label','Vehicle to customize');
+    ui.vehicleColorVehicle.innerHTML=Object.entries(vehicles).map(([id,vehicle])=>'<option value="'+id+'">'+vehicle.name+'</option>').join('');
+    const vehicleColorControls=document.createElement('div');
+    vehicleColorControls.className='nexus-war-color-controls nexus-war-vehicle-color-controls';
+    const vehicleSelectLabel=document.createElement('label');
+    vehicleSelectLabel.className='nexus-war-color-label';
+    vehicleSelectLabel.append('Vehicle',ui.vehicleColorVehicle);
+    vehicleColorControls.appendChild(vehicleSelectLabel);
+    for (const [part,label] of [['body','Body'],['trim','Trim'],['accent','Accent']]) {
+      const input=document.createElement('input');
+      input.type='color';input.value=vehicleColorDefaults[part];
+      input.setAttribute('aria-label','Vehicle '+label.toLowerCase()+' color');
+      ui.vehicleColors[part]=input;
+      const colorLabel=document.createElement('label');
+      colorLabel.className='nexus-war-color-label';colorLabel.append(label,input);
+      vehicleColorControls.appendChild(colorLabel);
+    }
+    const vehicleColorButton=document.createElement('button');
+    vehicleColorButton.type='button';vehicleColorButton.className='nexus-button secondary';
+    vehicleColorButton.dataset.warAction='color-vehicle';vehicleColorButton.textContent='Apply vehicle colors · 100 Sektorium';
+    vehicleColorControls.appendChild(vehicleColorButton);
+    ui.vehicleColorVehicle.addEventListener('change',()=>updateVehicleColorControls());
+    ui.form.insertBefore(vehicleColorControls,ui.form.querySelector('.nexus-war-equipment-help'));
     ui.loadoutStatus=document.createElement('small');
     ui.loadoutStatus.className='nexus-war-loadout-status';
     ui.loadoutStatus.setAttribute('role','status');
@@ -5881,8 +5974,8 @@
       if (teamLookup!=='vortex' && teamLookup!=='krypton') {
         container.classList.add('nexus-war-unavailable');
         ui.teamChoice.hidden=false;
-        setStatus('Choose a team for this week to join Dropzone.');
-        showConnectionPanel('Choose Vortex or Krypton above to join this week.','Choose your team');
+        setStatus('Choose Vortex or Krypton for this visit.');
+        showConnectionPanel('Choose Vortex or Krypton for this visit.','Choose your team');
         return;
       }
       playerTeam=teamLookup;
@@ -5899,32 +5992,20 @@
     if (!ui||!ui.teamChoice||!['vortex','krypton'].includes(team)) return;
     const buttons=[...ui.teamChoice.querySelectorAll('button')];
     buttons.forEach(button=>{button.disabled=true;});
-    let selected=false,selectionError='';
+    let selected=false;
     const currentWeek=weekKey();
     try {
       await updateAccount(user=>{
-        selectionError='';
-        if (user.teamWeek!==currentWeek) {
-          user.team='';
-          user.teamWeek=currentWeek;
-        }
-        if (user.team===team) { selected=true;return; }
-        if (user.team==='vortex'||user.team==='krypton') {
-          selectionError='Your team is already set for this week.';
-          return;
-        }
         user.team=team;
         user.teamWeek=currentWeek;
         selected=true;
       });
-      if (selectionError) throw new Error(selectionError);
       if (!selected) throw new Error('Could not save your team choice. Try again.');
-      cacheDropzoneTeam(playerName,team,currentWeek);
       playerTeam=team;
       teamLookup=team;
       ui.teamChoice.hidden=true;
       container.classList.remove('nexus-war-unavailable');
-      setStatus('Joining '+teamLabel(team)+' this week…');
+      setStatus('Joining '+teamLabel(team)+'…');
       await initializeGame();
     } catch(error) {
       container.classList.add('nexus-war-unavailable');
