@@ -341,6 +341,16 @@ input::placeholder { color: #77877c; }
 .nexus-inventory-editor { grid-column: 1 / -1; }
 .nexus-auction-duration select { min-height: 42px; }
 .nexus-art-maker { margin-top: 24px; padding-top: 22px; border-color: var(--nexus-border); }
+.nexus-wrap-maker { margin-top:20px; padding-top:18px; border-top:1px solid var(--nexus-border); }
+.nexus-wrap-maker h3 { margin:0 0 6px; color:#edf5ef; font-size:16px; }
+.nexus-wrap-maker > p { margin:0 0 12px; color:var(--nexus-muted); font-size:12px; line-height:1.5; }
+.nexus-wrap-colors { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.nexus-wrap-colors label,.nexus-wrap-pattern { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--nexus-border); border-radius:9px; background:#ffffff05; color:#b8c6bb; font-size:11px; text-transform:capitalize; }
+.nexus-wrap-colors input[type="color"] { width:34px; height:30px; border:0; padding:0; background:transparent; }
+.nexus-wrap-pattern { justify-content:flex-start; margin-top:9px; }
+.nexus-wrap-pattern select { min-height:34px; padding:5px 8px; border:1px solid var(--nexus-border); border-radius:7px; background:#0b110e; color:#edf5ef; }
+.nexus-wrap-swatches { display:flex; gap:4px; margin-top:6px; }
+.nexus-wrap-swatches i { width:20px; height:12px; border:1px solid #ffffff4a; border-radius:3px; background:var(--wrap-color); }
 .nexus-art-maker h3 { font-size: 18px; letter-spacing: -.02em; }
 .nexus-art-maker > p { color: var(--nexus-muted); line-height: 1.6; }
 .nexus-art-toolbar { gap: 10px; }
@@ -636,11 +646,9 @@ body::before {
 .nexus-tab.active > span { color: #65e6ad; }
 .nexus-tab small { display: inline-grid; min-width: 20px; height: 20px; place-items: center; padding: 0 5px; border: 1px solid rgba(101,230,173,.16); border-radius: 999px; background: rgba(101,230,173,.09); color: #9de9c2; font-size: 10px; }
 .nexus-shop-signin { grid-column: 1 / -1; }
-.nexus-stock-panel { grid-column: 1 / -1; }
-.nexus-shop-team { grid-column: 1 / -1; }
-.nexus-shop-eyebrow,.nexus-spectator-heading > div > span { color:#88d9a5; font-size:10px; font-weight:800; letter-spacing:.14em; }
-.nexus-shop-team h2 { margin:5px 0 0; }
-.nexus-shop-team .nexus-wheel-help { margin:12px 0; }
+.nexus-war-team-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; padding:12px; border:1px solid #d5e2d51b; border-radius:10px; background:#ffffff05; }
+.nexus-war-team-picker > strong { width:100%; }
+.nexus-war-team-picker p { width:100%; margin:0; color:#a8b8ac; font-size:12px; }
 .nexus-spectator-panel { grid-column:1 / -1; }
 .nexus-spectator-details > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; }
 .nexus-spectator-details > summary::-webkit-details-marker { display:none; }
@@ -654,45 +662,10 @@ body::before {
 .nexus-spectator-content select { min-width:190px; padding:8px 10px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; font-size:11px; }
 .nexus-spectator-status { min-height:18px; margin:10px 0; color:#a8b8ac; font-size:11px; }
 .nexus-spectator-canvas { display:block; width:100%; height:auto; aspect-ratio:15 / 8; border:1px solid #d5e2d51b; border-radius:9px; background:#101915; }
-.nexus-stock-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.nexus-stock-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:800; letter-spacing:.14em; }
-.nexus-stock-heading h2 { margin:5px 0 0; }
-.nexus-stock-price { color:#dfffee; font-size:24px; font-weight:850; text-align:right; white-space:nowrap; }
-.nexus-stock-price small { display:block; margin-top:3px; color:#8d99a8; font-size:10px; font-weight:500; }
-.nexus-stock-team-picker { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; padding:12px; border:1px solid #d5e2d51b; border-radius:10px; background:#ffffff05; }
-.nexus-stock-team-picker > strong { width:100%; }
-.nexus-stock-team-picker p { width:100%; margin:0; color:#a8b8ac; font-size:12px; }
 .nexus-team-vortex { border-color:#385c91; background:#14223a; color:#c5d9ff; }
 .nexus-team-vortex:hover { background:#1b3151; }
 .nexus-team-krypton { border-color:#8e3946; background:#35191f; color:#ffc4ca; }
 .nexus-team-krypton:hover { background:#4a202a; }
-.nexus-stock-team-label { margin:13px 0 6px; color:#a8b8ac; font-size:12px; }
-.nexus-stock-team-label strong { display:inline-block; margin-left:4px; padding:4px 9px; border:1px solid currentColor; border-radius:999px; }
-.nexus-stock-holdings { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 16px; margin:12px 0; color:#dbe9df; font-size:12px; }
-.nexus-stock-holdings small { color:#a8b8ac; }
-.nexus-stock-trade-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-.nexus-stock-chart-wrap { margin:13px 0 11px; padding:8px 10px 6px; border:1px solid #d5e2d51b; border-radius:9px; background:#0d141088; }
-.nexus-stock-chart { display:block; width:100%; height:100px; overflow:visible; }
-.nexus-stock-chart polyline { fill:none; stroke:#a5f06d; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
-.nexus-stock-chart.nexus-stock-down polyline { stroke:#ff7887; }
-.nexus-stock-chart-range { display:flex; justify-content:space-between; gap:8px; color:#87998d; font-size:9px; }
-.nexus-stock-quantity { display:flex; align-items:center; gap:8px; color:#a8b8ac; font-size:12px; }
-.nexus-stock-quantity input { width:90px; padding:9px 10px; border:1px solid #d5e2d522; border-radius:8px; background:#0d1410; color:#edf5ef; }
-.nexus-stock-buy { border-color:#65e6ad80; background:#65e6ad22; }
-.nexus-stock-sell { border-color:#d5e2d544; }
-.nexus-team-scoreboard { margin-top:18px; padding-top:14px; border-top:1px solid #d5e2d51b; }
-.nexus-team-scoreboard h3 { margin:0; font-size:13px; }
-.nexus-team-scoreboard > p { margin:5px 0 12px; color:#8d99a8; font-size:11px; }
-.nexus-team-score { margin-top:10px; }
-.nexus-team-score-heading { display:flex; align-items:center; justify-content:space-between; font-size:12px; }
-.nexus-team-score-heading span { color:#dce9df; font-variant-numeric:tabular-nums; }
-.nexus-team-score-bar { height:7px; overflow:hidden; margin:6px 0 4px; border-radius:999px; background:#ffffff12; }
-.nexus-team-score-bar > span { display:block; height:100%; border-radius:inherit; transition:width .2s ease; }
-.nexus-team-score.nexus-team-vortex strong,.nexus-team-score.nexus-team-vortex small { color:#a9c8ff; }
-.nexus-team-score.nexus-team-vortex .nexus-team-score-bar > span { background:#3d6eaf; }
-.nexus-team-score.nexus-team-krypton strong,.nexus-team-score.nexus-team-krypton small { color:#f2a3ad; }
-.nexus-team-score.nexus-team-krypton .nexus-team-score-bar > span { background:#a83d4d; }
-.nexus-team-score > small { font-size:10px; }
 .nexus-dropzone-link { display:grid; gap:6px; grid-column:1/-1; padding:16px 20px; border-color:#65e6ad55; color:#edf5ef; text-decoration:none; transition:border-color .2s,background .2s; }
 .nexus-dropzone-link:hover { border-color:#65e6ad; background:#1b2b22; }
 .nexus-dropzone-link > span { color:#88d9a5; font-size:10px; font-weight:850; letter-spacing:.14em; }
@@ -911,4 +884,52 @@ body::before {
 }
 @media (max-width: 420px) {
   .nexus-war-map-vote-grid { grid-template-columns:1fr; }
+}
+.nexus-mall-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; grid-column:1/-1; }
+.nexus-mall-heading h2 { margin:4px 0; }
+.nexus-mall-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:800; }
+.nexus-mall-heading p { margin:5px 0 0; color:#9cac9f; font-size:12px; }
+.nexus-mall-open-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:7px; max-width:540px; }
+.nexus-mall-customizer { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.nexus-mall-customizer input[type="text"] { min-width:180px; min-height:38px; padding:8px 10px; border:1px solid #d5e2d522; border-radius:7px; background:#0d1410; color:#edf5ef; }
+.nexus-mall-customizer label { display:flex; align-items:center; gap:5px; color:#9cac9f; font-size:10px; }
+.nexus-mall-customizer input[type="color"] { width:32px; height:30px; border:0; background:transparent; }
+.nexus-mall-map { grid-column:1/-1; overflow:hidden; padding:16px; border:1px solid #d5e2d51b; border-radius:12px; background:linear-gradient(90deg,transparent 48%,#314039 49%,#314039 51%,transparent 52%),linear-gradient(0deg,transparent 47%,#314039 48%,#314039 52%,transparent 53%),#101713; }
+.nexus-mall-map-title { display:flex; justify-content:space-between; margin-bottom:12px; color:#9cac9f; font-size:10px; font-weight:800; }
+.nexus-mall-map-title span { color:#65e6ad; }
+.nexus-mall-map-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.nexus-mall-storefront { min-width:0; padding:12px; border:1px solid #d5e2d525; border-radius:9px; background:#151e19f5; box-shadow:0 8px 22px #0003; }
+.nexus-mall-storefront > header { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid color-mix(in srgb,var(--mall-accent) 45%,transparent); }
+.nexus-mall-storefront > header > span { color:var(--mall-accent); font-size:9px; font-weight:850; }
+.nexus-mall-storefront > header > strong { overflow-wrap:anywhere; color:#edf5ef; font-size:15px; }
+.nexus-mall-storefront > header > small,.nexus-mall-product small,.nexus-casino-machine small { color:#9cac9f; font-size:10px; }
+.nexus-mall-products { display:grid; gap:8px; padding:10px 0; }
+.nexus-mall-product { display:grid; gap:8px; padding:9px; border:1px solid #d5e2d514; border-radius:7px; background:#0d141088; }
+.nexus-mall-product > div { display:grid; gap:4px; min-width:0; }
+.nexus-mall-product strong { overflow-wrap:anywhere; color:#dce9df; font-size:12px; }
+.nexus-mall-product .nexus-audio-preview { width:100%; }
+.nexus-mall-empty { margin:8px 0; color:#87998d; font-size:11px; }
+.nexus-mall-product-form { display:grid; grid-template-columns:minmax(0,1fr) 120px; gap:7px; padding-top:10px; border-top:1px solid #d5e2d51b; }
+.nexus-mall-product-form select { grid-column:1/-1; }
+.nexus-casino { margin:6px 0 10px; padding:10px 0; border-top:1px solid #d5e2d51b; border-bottom:1px solid #d5e2d51b; }
+.nexus-casino h4 { margin:0 0 8px; color:#dce9df; font-size:12px; }
+.nexus-casino-machines { display:grid; gap:7px; }
+.nexus-casino-machine { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:6px 10px; }
+.nexus-casino-machine > strong,.nexus-casino-machine > small { grid-column:1; }
+.nexus-casino-machine > button,.nexus-casino-machine > label { grid-column:2; grid-row:1/span 2; }
+.nexus-casino-machine > label { color:#9cac9f; font-size:10px; }
+.nexus-casino-machine select,.nexus-casino-bet input { padding:6px 8px; border:1px solid #d5e2d522; border-radius:6px; background:#0d1410; color:#edf5ef; }
+.nexus-casino-bankroll { margin-top:8px; color:#9cac9f; font-size:10px; }
+.nexus-casino-upgrades { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.nexus-casino-upgrades .nexus-button { padding:7px 9px; font-size:10px; }
+.nexus-casino-bet { display:flex; align-items:center; gap:8px; grid-column:1/-1; color:#9cac9f; font-size:11px; }
+.nexus-casino-bet input { width:110px; }
+@media (max-width: 760px) {
+  .nexus-mall-map-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .nexus-mall-heading { flex-direction:column; }
+  .nexus-mall-open-actions { justify-content:flex-start; }
+}
+@media (max-width: 480px) {
+  .nexus-mall-map-grid { grid-template-columns:1fr; }
+  .nexus-mall-map { padding:10px; }
 }

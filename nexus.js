@@ -8,7 +8,6 @@
   const sessionKey = 'blobtownSession';
   const maxChatLength = 180;
   const maxCodeLength = 4000;
-  const stockHistoryLimit = 40;
   const cloudAuth = firebaseMode ? firebaseApi.auth() : null;
   const cloudWorldRef = firebaseMode ? firebaseApi.database().ref(sharedPath) : null;
   const content = document.getElementById('content');
@@ -43,11 +42,28 @@
   const defaults = () => ({
     users: [],
     listings: [{id:'sample-1',name:'Neon alley poster',type:'art',price:120,owner:'Market'}],
+    mallBusinesses: [],
+    mallProducts: [],
     auctions: [],
     chat: [{user:'System',text:'Welcome to Nexus. Trade, chat, and spin the daily wheel.'}],
-    wheelClaims: {},
-    stockMarket: {price:100,history:[{price:100,at:Date.now()}],lastFluctuationAt:0,teamProfit:{vortex:0,krypton:0}}
+    wheelClaims: {}
   });
+
+  const mallBusinessTypes={
+    stand:{label:'Stand',price:1000,productLimit:3},
+    shop:{label:'Shop',price:4000,productLimit:30},
+    casino:{label:'Casino',price:10_000,productLimit:30},
+    supermarket:{label:'Supermarket',price:50_000,productLimit:200}
+  };
+  const casinoMachineTypes={
+    basic_slots:{label:'Basic slots',game:'slots',price:0},
+    compact_slots:{label:'Compact slots',game:'slots',price:4000},
+    deluxe_slots:{label:'Deluxe slots',game:'slots',price:7000},
+    roulette:{label:'Roulette',game:'roulette',price:8000},
+    blackjack:{label:'Blackjack',game:'blackjack',price:10_000}
+  };
+  const wrapColorParts=['receiver','barrel','grip','stock','optic','accent'];
+  const wrapColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d',stock:'#536257',optic:'#a5f06d',accent:'#d3b263'};
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
@@ -71,15 +87,6 @@
       next.chat=mergeChatMessages(next.chat,[...pendingChatMessages.values()]);
     }
     return next;
-  }
-
-  function currentTeamWeek(date=new Date()) {
-    const target=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));
-    const weekday=target.getUTCDay()||7;
-    target.setUTCDate(target.getUTCDate()+4-weekday);
-    const yearStart=new Date(Date.UTC(target.getUTCFullYear(),0,1));
-    const week=Math.ceil(((target-yearStart)/86400000+1)/7);
-    return target.getUTCFullYear()+'-W'+String(week).padStart(2,'0');
   }
 
   function codeFromMessage(value) {
@@ -311,27 +318,17 @@
       return source.filter(item=>item&&typeof item==='object'&&!Array.isArray(item)).slice(-limit);
     };
     return {
-      users: records(value && value.users, base.users, 500),
+      users: records(value && value.users, base.users, 500).map(user=>{
+        const {stockShares,stockCostBasis,...account}=user;
+        return account;
+      }),
       listings: records(value && value.listings, base.listings, 100),
+      mallBusinesses: records(value && value.mallBusinesses, base.mallBusinesses, 2000),
+      mallProducts: records(value && value.mallProducts, base.mallProducts, 10000),
       auctions: records(value && value.auctions, base.auctions, 100)
         .filter(item => item.status === 'sold' || item.status === 'unsold' || Number.isFinite(item.endsAt)),
       chat: records(value && value.chat, base.chat, 100),
-      wheelClaims: value && value.wheelClaims && typeof value.wheelClaims === 'object' ? value.wheelClaims : {},
-      stockMarket: {
-        price:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.price))
-          ? Math.max(1, Math.min(1_000_000, Math.round(Number(value.stockMarket.price)))) : base.stockMarket.price,
-        history:Array.isArray(value&&value.stockMarket&&value.stockMarket.history)
-          ? value.stockMarket.history.filter(point=>point&&Number.isFinite(Number(point.price)))
-            .slice(-stockHistoryLimit).map(point=>({price:Number(point.price),at:Number(point.at)||0}))
-          : [{price:Number(value&&value.stockMarket&&value.stockMarket.price)||base.stockMarket.price,at:Date.now()}],
-        lastFluctuationAt:Number(value&&value.stockMarket&&value.stockMarket.lastFluctuationAt)||0,
-        teamProfit:{
-          vortex:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.teamProfit && value.stockMarket.teamProfit.vortex))
-            ? Number(value.stockMarket.teamProfit.vortex) : 0,
-          krypton:Number.isFinite(Number(value && value.stockMarket && value.stockMarket.teamProfit && value.stockMarket.teamProfit.krypton))
-            ? Number(value.stockMarket.teamProfit.krypton) : 0
-        }
-      }
+      wheelClaims: value && value.wheelClaims && typeof value.wheelClaims === 'object' ? value.wheelClaims : {}
     };
   }
 
@@ -434,7 +431,7 @@
       });
     });
 
-    for (const collection of ['listings', 'auctions', 'chat']) {
+    for (const collection of ['listings', 'mallBusinesses', 'mallProducts', 'auctions', 'chat']) {
       const oldRecords = records(previous[collection]);
       const newRecords = records(value[collection]);
       const recordKey = (record, index) => pathKey(record.id || collection + '-' + index);
@@ -454,7 +451,7 @@
       });
     }
 
-    for (const key of ['wheelClaims', 'stockMarket']) {
+    for (const key of ['wheelClaims']) {
       if (changed(previous[key], value[key])) add(key, value[key]);
     }
     for (const [path, data, merge] of writes) {
@@ -489,97 +486,6 @@
       item.quantity=Number.isInteger(quantity)&&quantity>=0?quantity:1;
     }
     return user.inventory;
-  }
-
-  function stockHoldingsFor(user) {
-    user.stockShares = Number.isInteger(user.stockShares) && user.stockShares > 0 ? user.stockShares : 0;
-    user.stockCostBasis = Number.isFinite(Number(user.stockCostBasis)) && Number(user.stockCostBasis) > 0
-      ? Number(user.stockCostBasis) : 0;
-    return user;
-  }
-
-  function stockTeamSummary() {
-    const teams = world.stockMarket.teamProfit;
-    const positiveTotal = Math.max(0, teams.vortex) + Math.max(0, teams.krypton);
-    return ['vortex','krypton'].map(team => ({
-      id:team,
-      name:team === 'vortex' ? 'Vortex' : 'Krypton',
-      profit:teams[team],
-      percentage:positiveTotal > 0 ? Math.max(0, teams[team]) / positiveTotal * 100 : 0
-    }));
-  }
-
-  function recordStockPrice(market) {
-    if (!Array.isArray(market.history)) market.history=[];
-    market.history.push({price:Number(market.price),at:Date.now()});
-    market.history=market.history.slice(-stockHistoryLimit);
-  }
-
-  function renderStockMarket(user) {
-    const market = world.stockMarket;
-    const teams = stockTeamSummary();
-    const teamRows = teams.map(team => '<div class="nexus-team-score nexus-team-' + team.id + '">' +
-      '<div class="nexus-team-score-heading"><strong>' + team.name + '</strong><span>' + team.percentage.toFixed(1) + '%</span></div>' +
-      '<div class="nexus-team-score-bar"><span style="width:' + team.percentage.toFixed(1) + '%"></span></div>' +
-      '<small>Net profit ' + currency(team.profit) + '</small></div>').join('');
-    const holdingUser = user ? stockHoldingsFor(user) : null;
-    const holdingValue = holdingUser ? holdingUser.stockShares * market.price : 0;
-    const unrealizedProfit = holdingUser ? holdingValue - holdingUser.stockCostBasis : 0;
-    const assignedTeam = user && user.teamWeek===currentTeamWeek()&&
-      (user.team === 'vortex' || user.team === 'krypton');
-    const teamPicker = user && !assignedTeam
-      ? '<div class="nexus-stock-team-picker"><strong>Choose your team for this week</strong><p>Your team choice resets each week.</p>' +
-        '<button class="nexus-button nexus-team-vortex" type="button" data-action="join-team" data-team="vortex">Join Vortex</button>' +
-        '<button class="nexus-button nexus-team-krypton" type="button" data-action="join-team" data-team="krypton">Join Krypton</button></div>'
-      : user
-        ? '<p class="nexus-stock-team-label">Your team: <strong class="nexus-team-' + user.team + '">' +
-          (user.team === 'vortex' ? 'Vortex' : 'Krypton') + '</strong></p>'
-        : '<p class="nexus-wheel-help">Sign in to choose a team and trade shares.</p>';
-    const tradeControls = user && assignedTeam
-      ? '<label class="nexus-stock-quantity">Shares <input type="number" min="1" max="1000" value="1" data-stock-quantity></label>' +
-        '<button class="nexus-button nexus-stock-buy" type="button" data-action="stock-buy">Buy shares</button>' +
-        '<button class="nexus-button secondary nexus-stock-sell" type="button" data-action="stock-sell" ' +
-        (holdingUser.stockShares ? '' : 'disabled') + '>Sell shares</button>'
-      : '';
-    const graphPoints=Array.isArray(market.history)&&market.history.length?market.history:[{price:market.price,at:Date.now()}];
-    const prices=graphPoints.map(point=>point.price);
-    const low=Math.min(...prices),high=Math.max(...prices);
-    const points=graphPoints.map((point,index)=>{
-      const x=8+index*284/Math.max(1,graphPoints.length-1);
-      const y=78-(point.price-low)/(high-low||1)*66;
-      return x.toFixed(1)+','+y.toFixed(1);
-    }).join(' ');
-    const trend=prices[prices.length-1]>=prices[0]?'up':'down';
-    return '<section class="nexus-card nexus-stock-panel"><div class="nexus-stock-heading"><div><span>LIVE MARKET</span><h2>Nexus stock</h2></div>' +
-      '<div class="nexus-stock-price">' + currency(market.price) + '<small>per share</small></div></div>' +
-      '<div class="nexus-stock-chart-wrap"><svg class="nexus-stock-chart nexus-stock-'+trend+'" viewBox="0 0 300 88" role="img" aria-label="Randomly fluctuating Nexus stock price history"><polyline points="'+points+'"></polyline></svg><div class="nexus-stock-chart-range"><span>Recent price history</span><span>Updates about every 30 seconds</span></div></div>' +
-      '<p class="nexus-wheel-help">Each share costs the current price. Buying nudges the price up; selling nudges it down. The market also moves randomly about every 30 seconds.</p>' +
-      teamPicker + (user && assignedTeam
-        ? '<div class="nexus-stock-holdings"><span>' + holdingUser.stockShares + ' shares · value ' + currency(holdingValue) +
-          '</span><small>Unrealized P/L ' + currency(unrealizedProfit) + '</small></div><div class="nexus-stock-trade-controls">' + tradeControls + '</div>'
-        : '') +
-      '<div class="nexus-team-scoreboard"><h3>Team net trading profit</h3><p>Percentages show each team’s share of positive realized profit.</p>' +
-      teamRows + '</div></section>';
-  }
-
-  function renderShopTeamJoin(user) {
-    const assignedTeam=user&&user.teamWeek===currentTeamWeek()&&
-      (user.team==='vortex'||user.team==='krypton');
-    const teamContent=!user
-      ?'<p class="nexus-wheel-help">Sign in from Home to join Vortex or Krypton.</p>'
-      :assignedTeam
-        ?'<p class="nexus-stock-team-label">Your team: <strong class="nexus-team-'+user.team+'">'+
-          (user.team==='vortex'?'Vortex':'Krypton')+'</strong></p>'
-        :'<p class="nexus-wheel-help">Choose a team to join the frontline this week.</p>'+
-          '<div class="nexus-stock-trade-controls"><button class="nexus-button nexus-team-vortex" type="button" data-action="join-team" data-team="vortex">Join Vortex</button>'+
-          '<button class="nexus-button nexus-team-krypton" type="button" data-action="join-team" data-team="krypton">Join Krypton</button></div>';
-    return '<section class="nexus-card nexus-shop-team"><span class="nexus-shop-eyebrow">FRONTLINE ACCESS</span><h2>Join a team</h2>'+
-      teamContent+'</section>';
-  }
-
-  function refreshStockMarketUi() {
-    const panel=content.querySelector('.nexus-stock-panel');
-    if (panel&&world) panel.outerHTML=renderStockMarket(currentUser());
   }
 
   function quantityCost(quantity) {
@@ -844,6 +750,14 @@
           current == null ? normalize(defaults()) : current
         );
         world = normalize(result.snapshot.val());
+        await cloudWorldRef.child('stockMarket').remove();
+        const storedUsers=await cloudWorldRef.child('users').get();
+        const stockCleanup={};
+        Object.entries(storedUsers.val()||{}).forEach(([key,user])=>{
+          if (user&&Object.prototype.hasOwnProperty.call(user,'stockShares')) stockCleanup['users/'+key+'/stockShares']=null;
+          if (user&&Object.prototype.hasOwnProperty.call(user,'stockCostBasis')) stockCleanup['users/'+key+'/stockCostBasis']=null;
+        });
+        if (Object.keys(stockCleanup).length) await cloudWorldRef.update(stockCleanup);
         worldMode.textContent = 'Shared multiplayer world';
         subscribeToCloudWorld();
       } else {
@@ -855,7 +769,7 @@
         }
         world = saved ? normalize(saved) : normalize(defaults());
         worldMode.textContent = 'This browser only · not multiplayer';
-        if (!saved) await writeLocalWorld(world);
+        await writeLocalWorld(world);
       }
       lastSavedWorld = copyWorld(world);
       setStatus(lanMode || firebaseMode ? 'Connected to the shared Nexus world.' : 'Connected to your local Nexus world.');
@@ -1032,59 +946,6 @@
     settleExpiredAuctions();
   }
 
-  async function fluctuateStockPrice() {
-    if (!world) return;
-    const now=Date.now();
-    if (firebaseMode) {
-      const marketRef=cloudWorldRef.child('stockMarket');
-      let changed=false;
-      const result=await marketRef.transaction(current=>{
-        changed=false;
-        if (now-Number(current&&current.lastFluctuationAt||0)<1_000) return current;
-        const market=current&&typeof current==='object'?current:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
-        market.price=Math.max(1,Math.min(1_000_000,Math.round(Number(market.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
-        market.lastFluctuationAt=now;
-        if (!Array.isArray(market.history)) market.history=[];
-        market.history.push({price:market.price,at:now});
-        market.history=market.history.slice(-stockHistoryLimit);
-        changed=true;
-        return market;
-      });
-      if (changed&&result.committed) {
-        world.stockMarket=result.snapshot.val();
-        refreshStockMarketUi();
-      }
-      return;
-    }
-    if (lanMode) {
-      const path=sharedPath+'/stockMarket';
-      const response=await fetch('/api/data?path='+encodeURIComponent(path));
-      if (!response.ok) throw new Error((await response.text())||'Could not read Nexus stock data.');
-      const market=await response.json();
-      if (now-Number(market&&market.lastFluctuationAt||0)<1_000) return;
-      const next=market&&typeof market==='object'?market:{price:100,history:[],teamProfit:{vortex:0,krypton:0}};
-      next.price=Math.max(1,Math.min(1_000_000,Math.round(Number(next.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
-      next.lastFluctuationAt=now;
-      if (!Array.isArray(next.history)) next.history=[];
-      next.history.push({price:next.price,at:now});
-      next.history=next.history.slice(-stockHistoryLimit);
-      const save=await fetch('/api/data?path='+encodeURIComponent(path),{
-        method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)
-      });
-      if (!save.ok) throw new Error((await save.text())||'Could not save the Nexus stock change.');
-      world.stockMarket=next;
-      refreshStockMarketUi();
-      return;
-    }
-    if (now-Number(world.stockMarket.lastFluctuationAt||0)<1_000) return;
-    world.stockMarket.price=Math.max(1,Math.min(1_000_000,Math.round(Number(world.stockMarket.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
-    world.stockMarket.lastFluctuationAt=now;
-    recordStockPrice(world.stockMarket);
-    await writeLocalWorld(world);
-    lastSavedWorld=copyWorld(world);
-    refreshStockMarketUi();
-  }
-
   function inventoryUrl() {
     return './inventory.html' + (lanMode ? '?lan=1' : '');
   }
@@ -1102,10 +963,17 @@
         ? '<button class="nexus-button secondary" type="button" data-action="export-inventory" data-id="' +
           escapeHtml(item.id) + '" aria-label="Export ' + escapeHtml(item.name) + '">Export</button>'
         : '';
+      const wrapColors=item.wrap&&item.wrap.weaponColors?item.wrap.weaponColors:{};
+      const wrapPreview=Object.keys(wrapColors).length
+        ?'<div class="nexus-wrap-swatches">'+wrapColorParts.map(part=>{
+          const color=/^#[0-9a-f]{6}$/i.test(wrapColors[part]||'')?wrapColors[part]:wrapColorDefaults[part];
+          return '<i title="'+part+'" style="--wrap-color:'+color+'"></i>';
+        }).join('')+'</div>':'';
+      const equipWrap=item.wrap?'<button class="nexus-button secondary" type="button" data-action="equip-wrap" data-id="'+escapeHtml(item.id)+'">Equip wrap</button>':'';
       return '<div class="nexus-item"><div><strong>' + escapeHtml(item.name) +
         '</strong><small>' + escapeHtml(item.type || 'item') + ' · Quantity ' + Number(item.quantity || 1) +
         (item.description ? ' · ' + escapeHtml(item.description) : '') +
-        '</small>' + preview + '</div><div class="nexus-item-actions">' + exportButton +
+        '</small>' + preview + wrapPreview + '</div><div class="nexus-item-actions">' + equipWrap + exportButton +
         '<button class="nexus-button secondary" type="button" data-action="edit-inventory" data-id="' +
         escapeHtml(item.id) + '">Edit</button><button class="nexus-button secondary" type="button" data-action="remove-inventory" data-id="' +
         escapeHtml(item.id) + '" aria-label="Remove ' + escapeHtml(item.name) + ' from inventory">Remove</button></div></div>';
@@ -1133,6 +1001,9 @@
       '<input class="nexus-art-text" type="text" maxlength="200" placeholder="Type text, choose the Text tool, then click the canvas" data-art-control="text">' +
       '<div class="nexus-art-save"><input type="text" maxlength="32" placeholder="Artwork name" data-art-name>' +
       '<button class="nexus-button" type="button" data-action="save-art">Save artwork to inventory</button></div></section>' +
+      '<section class="nexus-wrap-maker"><h3>Weapon Wrap Maker</h3><p>Build a six-part weapon wrap, then equip it in Dropzone or sell it from a Mall storefront.</p><div class="nexus-wrap-colors">' +
+      wrapColorParts.map(part=>'<label>'+escapeHtml(part)+'<input type="color" value="'+wrapColorDefaults[part]+'" data-wrap-color="'+part+'"></label>').join('')+
+      '</div><label class="nexus-wrap-pattern">Pattern<select data-wrap-pattern><option value="solid">Solid</option><option value="stripes">Stripes</option><option value="digital">Digital</option></select></label><div class="nexus-art-save"><input type="text" maxlength="32" placeholder="Wrap name" data-wrap-name><button class="nexus-button" type="button" data-action="save-wrap">Save weapon wrap</button></div></section>'+
       '<div class="nexus-media-import"><div><label for="nexus-audio-file"><strong>Import audio</strong></label><small>MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, or WebM · up to 10 MB</small><input id="nexus-audio-file" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm" data-media-import="audio"></div>' +
       '<div><label for="nexus-video-file"><strong>Import video</strong></label><small>MP4, WebM, OGG, MOV, or MPEG · up to 10 MB</small><input id="nexus-video-file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.mov,.mpeg" data-media-import="video"></div></div></section>' +
       '<section class="nexus-card"><h2>Create an auction</h2><p class="nexus-wheel-help">Choose one item from your inventory, a starting bid, and how long the auction runs.</p>' +
@@ -1142,6 +1013,39 @@
       '<div class="nexus-auction-duration"><label>Duration <input name="duration" type="number" min="1" value="1" required></label>' +
       '<select name="durationUnit" aria-label="Duration unit"><option value="minutes">minutes</option><option value="hours" selected>hours</option><option value="days">days</option></select></div>' +
       '<button class="nexus-button" ' + (auctionOptions ? '' : 'disabled') + '>Start auction</button></form></section>';
+  }
+
+  function renderMall(user) {
+    const businesses=world.mallBusinesses.slice().sort((left,right)=>Number(left.createdAt||0)-Number(right.createdAt||0));
+    const businessTiles=businesses.map((business,index)=>{
+      const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
+      const owned=!!user&&business.owner===user.username;
+      const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
+      const productMarkup=products.map(product=>{
+        const itemData=product.itemData||{};
+        const canAfford=user&&Number(user.balance||0)>=Number(product.price||0);
+        const ownProduct=user&&business.owner===user.username;
+        return '<article class="nexus-mall-product"><div><strong>'+escapeHtml(product.name)+'</strong><small>'+escapeHtml(product.type||'item')+' · '+currency(product.price)+' · '+Number(product.stock)+' available</small>'+mediaPreview(itemData.media,product.name)+'</div><button class="nexus-button" type="button" data-action="buy-mall-product" data-id="'+escapeHtml(product.id)+'" '+(!user||ownProduct||!canAfford?'disabled':'')+'>'+(ownProduct?'Your product':!user?'Sign in to buy':!canAfford?'Not enough Sektorium':'Buy')+'</button></article>';
+      }).join('')||'<p class="nexus-mall-empty">No products on display.</p>';
+      let casinoMarkup='';
+      if (business.type==='casino') {
+        const machines=Array.isArray(business.machines)?business.machines:[];
+        casinoMarkup='<section class="nexus-casino"><h4>Games</h4><div class="nexus-casino-machines">'+machines.map(machine=>{
+          const config=casinoMachineTypes[machine.type]||casinoMachineTypes.basic_slots;
+          const rouletteChoice=config.game==='roulette'?'<label>Bet on <select data-roulette-choice><option value="red">Red</option><option value="black">Black</option></select></label>':'';
+          return '<article class="nexus-casino-machine"><strong>'+escapeHtml(machine.name||config.label)+'</strong><small>'+escapeHtml(config.label)+'</small>'+rouletteChoice+'<button class="nexus-button" type="button" data-action="play-casino" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'" data-game="'+escapeHtml(config.game)+'" '+(!user||user.username===business.owner?'disabled':'')+'>'+(user&&user.username===business.owner?'Owner cannot play':'Play')+'</button></article>';
+        }).join('')+'</div>'+(owned?'<div class="nexus-casino-bankroll">House reserve · '+currency(business.bankroll||0)+'</div><div class="nexus-casino-upgrades">'+Object.entries(casinoMachineTypes).filter(([id,machine])=>id!=='basic_slots').map(([id,machine])=>'<button class="nexus-button secondary" type="button" data-action="buy-casino-machine" data-business-id="'+escapeHtml(business.id)+'" data-machine="'+id+'">Add '+machine.label+' · '+machine.price.toLocaleString()+'</button>').join('')+'</div>':'')+'</section>';
+      }
+      const addProduct=owned
+        ?'<form class="nexus-form nexus-mall-product-form" data-form="mall-product" data-business-id="'+escapeHtml(business.id)+'"><select name="itemId" required '+(user.inventory&&user.inventory.length?'':'disabled')+'>'+inventoryFor(user).filter(item=>Number(item.quantity||0)>0).map(item=>'<option value="'+escapeHtml(item.id)+'">'+escapeHtml(item.name)+' · '+Number(item.quantity)+' available</option>').join('')+'</select><input name="price" type="number" min="1" max="999999" placeholder="Price in Sektorium" required><button class="nexus-button" '+(products.length>=type.productLimit||!user.inventory.length?'disabled':'')+'>List in this business · '+products.length+'/'+type.productLimit+'</button></form>'
+        :'';
+      const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
+      return '<article class="nexus-mall-storefront" style="--mall-index:'+index+';--mall-accent:'+accent+'"><header><span>'+escapeHtml(type.label.toUpperCase())+'</span><strong>'+escapeHtml(business.name)+'</strong><small>Owned by '+escapeHtml(business.owner)+' · '+products.length+'/'+type.productLimit+' products</small></header><div class="nexus-mall-products">'+productMarkup+'</div>'+casinoMarkup+addProduct+'</article>';
+    }).join('')||'<p class="nexus-mall-empty">The mall is open, but no businesses have opened yet.</p>';
+    const businessCustomizer=user?'<div class="nexus-mall-customizer"><input type="text" maxlength="32" placeholder="Business name (optional)" data-mall-business-name><label>Brand color <input type="color" value="#65e6ad" data-mall-business-accent></label></div>':'';
+    const purchaseButtons=user?Object.entries(mallBusinessTypes).map(([type,config])=>'<button class="nexus-button secondary" type="button" data-action="buy-business" data-business-type="'+type+'">Open a '+config.label+' · '+config.price.toLocaleString()+'</button>').join(''):'<p class="nexus-wheel-help">Sign in to open a business or buy from local owners.</p>';
+    const betControls=user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>';
+    return '<section class="nexus-mall-heading"><div><span>SEKTOR · SHARED MARKETPLACE</span><h2>The Mall</h2><p>Open a storefront, browse local goods, or play at a casino.</p></div><div class="nexus-mall-open-actions">'+businessCustomizer+purchaseButtons+'</div></section>'+betControls+'<section class="nexus-mall-map" aria-label="Mall directory map"><div class="nexus-mall-map-title">MALL DIRECTORY <span>'+businesses.length+' BUSINESSES</span></div><div class="nexus-mall-map-grid">'+businessTiles+'</div></section>';
   }
 
   function renderChatPane(scrollState) {
@@ -1226,17 +1130,18 @@
       : '<div class="nexus-empty">No items are listed yet.</div>';
     const messages = world.chat.slice(-30).map(renderChatMessage).join('') || '<div class="nexus-empty">No messages yet.</div>';
     const shopTab = activeTab === 'shop';
+    const mallTab = activeTab === 'mall';
     content.innerHTML = '<section class="nexus-welcome"><span>SEKTOR · SOCIAL WORLD</span><h1>' +
-      (shopTab ? 'The Nexus shop.' : 'Welcome to Nexus.') + '</h1><p>' +
-      (shopTab ? 'Join a team and watch the frontline live.' : 'Trade, chat, and play in the shared world.') +
+      (mallTab ? 'The Mall.' : shopTab ? 'The Nexus shop.' : 'Welcome to Nexus.') + '</h1><p>' +
+      (mallTab ? 'Browse local storefronts and open your own business.' : shopTab ? 'Browse the marketplace and watch the frontline live.' : 'Trade, chat, and play in the shared world.') +
       '</p></section><nav class="nexus-tabs" role="tablist" aria-label="Nexus sections">' +
-      '<button class="nexus-tab' + (shopTab ? '' : ' active') + '" type="button" role="tab" aria-selected="' + String(!shopTab) + '" data-nexus-tab="home"><span>⌂</span> Home</button>' +
+      '<button class="nexus-tab' + (!shopTab&&!mallTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(!shopTab&&!mallTab) + '" data-nexus-tab="home"><span>⌂</span> Home</button>' +
       '<button class="nexus-tab' + (shopTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(shopTab) + '" data-nexus-tab="shop"><span>◇</span> Shop</button>' +
+      '<button class="nexus-tab' + (mallTab ? ' active' : '') + '" type="button" role="tab" aria-selected="' + String(mallTab) + '" data-nexus-tab="mall"><span>▦</span> Mall</button>' +
       '<a class="nexus-tab" href="' + escapeHtml(dropzoneUrl()) + '"><span>⚔</span> Dropzone</a>' +
-      '</nav>' + (shopTab
-          ? renderShopTeamJoin(user) +
+      '</nav>' + (mallTab ? renderMall(user) : shopTab
+          ?
             '<section class="nexus-card nexus-spectator-panel" data-nexus-war-spectator><details class="nexus-spectator-details" data-war-spectator-details'+(spectatorExpanded?' open':'')+'><summary class="nexus-spectator-summary"><div><span>LIVE FRONTLINE</span><h2>Spectator view</h2></div></summary><div class="nexus-spectator-content"><label>Watch<select data-war-spectator-select aria-label="Choose a live player to watch"><option value="">Loading players…</option></select></label><p class="nexus-spectator-status" data-war-spectator-status role="status" aria-live="polite">Connecting to the frontline…</p><canvas class="nexus-war-canvas nexus-spectator-canvas" width="1200" height="640" aria-label="Read-only live view of the Dropzone battlefield"></canvas></div></details></section>' +
-            renderStockMarket(user) +
             '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
             '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
             (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in from Home to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
@@ -1302,7 +1207,24 @@
     let chatTextToRestore='';
     let pendingChatMessageId='';
     try {
-      if (form.dataset.form === 'auth') {
+      if (form.dataset.form === 'mall-product') {
+        if (!user) throw new Error('Sign in to stock a Mall business.');
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user.username);
+        if (!business) throw new Error('You do not own this Mall business.');
+        const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
+        const currentProducts=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
+        if (currentProducts.length>=type.productLimit) throw new Error('This business is at its '+type.productLimit+' product limit.');
+        const item=inventoryFor(user).find(entry=>entry.id===formData.get('itemId'));
+        const price=Number(formData.get('price'));
+        if (!item||Number(item.quantity||0)<1) throw new Error('Choose an item that is in your inventory.');
+        if (!Number.isInteger(price)||price<1||price>999999) throw new Error('Enter a price from 1 to 999999.');
+        const itemData={name:item.name,type:item.type||'item',description:item.description||'',media:item.media||'',...(item.wrap?{wrap:item.wrap}:{})};
+        item.quantity=Number(item.quantity)-1;
+        if (item.quantity===0) user.inventory=inventoryFor(user).filter(entry=>entry.id!==item.id);
+        world.mallProducts.push({id:'mall-product-'+Date.now()+'-'+Math.random().toString(16).slice(2),
+          businessId:business.id,owner:user.username,name:item.name,type:item.type||'item',price,stock:1,itemData,createdAt:Date.now()});
+        await persist(item.name+' listed at '+business.name+'.');
+      } else if (form.dataset.form === 'auth') {
         captureAuthDraft(form);
         const username = String(formData.get('username') || '').trim().replace(/[^a-zA-Z0-9_]/g, '').slice(0,20);
         const password = String(formData.get('password') || '');
@@ -1347,7 +1269,7 @@
         const price = Number(formData.get('price'));
         if (!item || Number(item.quantity || 0) < 1) throw new Error('Choose an item that is still in your inventory.');
         if (!Number.isInteger(price) || price < 1 || price > 99999) throw new Error('Enter a price from 1 to 99999.');
-        const itemData = {name:item.name,type:item.type || 'item',description:item.description || '',media:item.media || ''};
+        const itemData = {name:item.name,type:item.type || 'item',description:item.description || '',media:item.media || '',...(item.wrap?{wrap:item.wrap}:{})};
         item.quantity = Number(item.quantity) - 1;
         if (item.quantity === 0) user.inventory = inventoryFor(user).filter(entry => entry.id !== item.id);
         world.listings.push({
@@ -1371,7 +1293,7 @@
         if (!item || Number(item.quantity || 0) < 1) throw new Error('Choose an item that is still in your inventory.');
         if (!Number.isInteger(startingBid) || startingBid < 1 || startingBid > 99999) throw new Error('Enter a starting bid from 1 to 99999.');
         if (!Number.isInteger(duration) || duration < 1 || !Number.isFinite(durationMs) || durationMs > 7 * 86_400_000) throw new Error('Choose a duration from 1 minute up to 7 days.');
-        const itemData = {name:item.name,type:item.type || 'item',description:item.description || '',media:item.media || ''};
+        const itemData = {name:item.name,type:item.type || 'item',description:item.description || '',media:item.media || '',...(item.wrap?{wrap:item.wrap}:{})};
         item.quantity = Number(item.quantity) - 1;
         if (item.quantity === 0) user.inventory = inventoryFor(user).filter(entry => entry.id !== item.id);
         world.auctions.push({
@@ -1546,7 +1468,7 @@
   content.addEventListener('click', async event => {
     const tab = event.target.closest('[data-nexus-tab]');
     if (tab && !inventoryPage) {
-      activeTab = tab.dataset.nexusTab === 'shop' ? 'shop' : 'home';
+      activeTab = ['shop','mall'].includes(tab.dataset.nexusTab) ? tab.dataset.nexusTab : 'home';
       render();
       return;
     }
@@ -1573,45 +1495,88 @@
         setStatus(method === 'tab'
           ? 'Your file is open in a new tab. Download it there.'
           : 'Export started for ' + String(item.name || 'your file') + '.');
-      } else if (action === 'join-team') {
-        if (!user) throw new Error('Sign in before choosing a team.');
-        const team = button.dataset.team;
-        if (user.teamWeek===currentTeamWeek()&&(user.team === 'vortex' || user.team === 'krypton'))
-          throw new Error('Your team is already set for this week.');
-        if (team !== 'vortex' && team !== 'krypton') throw new Error('Choose Vortex or Krypton.');
-        user.team = team;
-        user.teamWeek=currentTeamWeek();
-        await persist('You joined ' + (team === 'vortex' ? 'Vortex' : 'Krypton') + ' for this week.');
-      } else if (action === 'stock-buy' || action === 'stock-sell') {
-        if (!user) throw new Error('Sign in before trading stock.');
-        if (user.teamWeek!==currentTeamWeek()||(user.team !== 'vortex' && user.team !== 'krypton'))
-          throw new Error('Choose Vortex or Krypton for this week before trading stock.');
-        const stockPanel = button.closest('.nexus-stock-panel');
-        const quantity = Number(stockPanel && stockPanel.querySelector('[data-stock-quantity]')?.value);
-        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Choose a whole number of shares from 1 to 1000.');
-        const market = world.stockMarket;
-        const price = market.price;
-        const holdings = stockHoldingsFor(user);
-        if (action === 'stock-buy') {
-          const cost = price * quantity;
-          if (Number(user.balance || 0) < cost) throw new Error('You need ' + cost + ' Sektorium to buy ' + quantity + ' shares.');
-          if (holdings.stockShares + quantity > 1_000_000) throw new Error('Your stock holdings cannot exceed 1,000,000 shares.');
-          user.balance = Number(user.balance || 0) - cost;
-          holdings.stockShares += quantity;
-          holdings.stockCostBasis += cost;
-          await persist('Bought ' + quantity + ' shares at ' + price + ' Sektorium each.');
+      } else if (action === 'buy-business') {
+        if (!user) throw new Error('Sign in to open a Mall business.');
+        const type=button.dataset.businessType;
+        const config=mallBusinessTypes[type];
+        if (!config) throw new Error('Choose a valid business type.');
+        if (Number(user.balance||0)<config.price) throw new Error('You need '+config.price.toLocaleString()+' Sektorium to open a '+config.label+'.');
+        user.balance=Number(user.balance||0)-config.price;
+        const index=world.mallBusinesses.filter(business=>business.type===type).length+1;
+        const customName=String(content.querySelector('[data-mall-business-name]')?.value||'').trim();
+        const customAccent=String(content.querySelector('[data-mall-business-accent]')?.value||'#65e6ad');
+        const business={id:'mall-'+Date.now()+'-'+Math.random().toString(16).slice(2),type,
+          name:(customName||user.username+'\'s '+config.label+' '+index).slice(0,32),owner:user.username,
+          accent:/^#[0-9a-f]{6}$/i.test(customAccent)?customAccent:'#65e6ad',
+          productLimit:config.productLimit,products:[],createdAt:Date.now(),
+          ...(type==='casino'?{bankroll:3000,machines:[{id:'machine-'+Date.now(),type:'basic_slots',name:'Lucky Seven'}]}:{})};
+        world.mallBusinesses.push(business);
+        await persist('Your '+config.label+' is open in the Mall.');
+      } else if (action === 'buy-casino-machine') {
+        if (!user) throw new Error('Sign in to manage a casino.');
+        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.businessId&&entry.owner===user.username&&entry.type==='casino');
+        const machineType=casinoMachineTypes[button.dataset.machine];
+        if (!business||!machineType||button.dataset.machine==='basic_slots') throw new Error('That casino machine is unavailable.');
+        if (Number(user.balance||0)<machineType.price) throw new Error('You need '+machineType.price.toLocaleString()+' Sektorium to add that machine.');
+        user.balance=Number(user.balance||0)-machineType.price;
+        business.machines=Array.isArray(business.machines)?business.machines:[];
+        business.machines.push({id:'machine-'+Date.now()+'-'+Math.random().toString(16).slice(2),type:button.dataset.machine,name:machineType.label});
+        await persist(machineType.label+' added to your casino.');
+      } else if (action === 'buy-mall-product') {
+        if (!user) throw new Error('Sign in to buy Mall products.');
+        const product=world.mallProducts.find(entry=>entry.id===button.dataset.id);
+        const business=product&&world.mallBusinesses.find(entry=>entry.id===product.businessId);
+        if (!product||!business||Number(product.stock)<1) throw new Error('That product is sold out.');
+        if (business.owner===user.username) throw new Error('You cannot buy your own product.');
+        const buyer=world.users.find(entry=>entry.username===user.username);
+        const price=Number(product.price||0);
+        if (Number(buyer.balance||0)<price) throw new Error('You do not have enough Sektorium.');
+        buyer.balance=Number(buyer.balance||0)-price;
+        const seller=world.users.find(entry=>entry.username===business.owner);
+        if (seller) seller.balance=Number(seller.balance||0)+price;
+        product.stock=Number(product.stock)-1;
+        const productData=product.itemData||{};
+        inventoryFor(buyer).push({id:'inventory-'+Date.now()+'-'+Math.random().toString(16).slice(2),
+          name:productData.name||product.name,quantity:1,type:productData.type||'item',
+          description:productData.description||'Purchased at '+business.name+'.',
+          media:productData.media||'',...(productData.wrap?{wrap:productData.wrap}:{})});
+        world.chat.push({user:'Mall',text:user.username+' bought '+product.name+' at '+business.name+'.'});
+        await persist('Purchase complete. '+product.name+' was added to your inventory.');
+      } else if (action === 'play-casino') {
+        if (!user) throw new Error('Sign in to play at the casino.');
+        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.businessId&&entry.type==='casino');
+        const machine=business&&business.machines?.find(entry=>entry.id===button.dataset.machineId);
+        if (!business||!machine||business.owner===user.username) throw new Error('This casino game is unavailable to the owner.');
+        const bet=Number(content.querySelector('[data-mall-bet]')?.value);
+        const gambler=world.users.find(entry=>entry.username===user.username);
+        if (!Number.isInteger(bet)||bet<10||bet>5000) throw new Error('Choose a whole-number wager from 10 to 5000.');
+        if (Number(gambler.balance||0)<bet) throw new Error('You do not have enough Sektorium for that wager.');
+        const game=casinoMachineTypes[machine.type]?.game||'slots';
+        let payout=0,result='No win this round.';
+        if (game==='slots') {
+          const symbols=Array.from({length:3},()=>Math.floor(Math.random()*6));
+          const counts=symbols.map(symbol=>symbols.filter(value=>value===symbol).length);
+            const multiplier=Math.max(...counts)===3?(machine.type==='deluxe_slots'?20:10):Math.max(...counts)===2?2:0;
+          payout=bet*multiplier;
+          result='Slots '+symbols.map(symbol=>['◆','●','7','★','♣','♦'][symbol]).join('  ')+' · '+(multiplier?'payout '+payout.toLocaleString():'no win');
+        } else if (game==='roulette') {
+          const rouletteChoice=button.closest('.nexus-casino-machine')?.querySelector('[data-roulette-choice]')?.value;
+          if (!['red','black'].includes(rouletteChoice)) throw new Error('Choose red or black before playing roulette.');
+          const roll=Math.floor(Math.random()*37),color=roll===0?'green':roll%2?'red':'black';
+          if (color===rouletteChoice) payout=bet*2;
+          result='Roulette landed '+roll+' '+color+'. '+(payout?'Payout '+payout.toLocaleString():'No win this round.');
         } else {
-          if (quantity > holdings.stockShares) throw new Error('You only own ' + holdings.stockShares + ' shares.');
-          const proceeds = price * quantity;
-          const costBasis = holdings.stockCostBasis * quantity / holdings.stockShares;
-          const profit = Math.round((proceeds - costBasis) * 100) / 100;
-          user.balance = Number(user.balance || 0) + proceeds;
-          holdings.stockShares -= quantity;
-          holdings.stockCostBasis = Math.max(0, Math.round((holdings.stockCostBasis - costBasis) * 100) / 100);
-          if (!holdings.stockShares) holdings.stockCostBasis = 0;
-          market.teamProfit[user.team] = Math.round((market.teamProfit[user.team] + profit) * 100) / 100;
-          await persist('Sold ' + quantity + ' shares. Realized net ' + (profit >= 0 ? 'profit: ' : 'loss: ') + Math.abs(profit) + ' Sektorium.');
+          const playerTotal=2+Math.floor(Math.random()*20),dealerTotal=2+Math.floor(Math.random()*20);
+          payout=playerTotal>dealerTotal?bet*2:playerTotal===dealerTotal?bet:0;
+          result='Blackjack · You '+playerTotal+' / House '+dealerTotal+'. '+(payout?'Payout '+payout.toLocaleString():'No win this round.');
         }
+        gambler.balance=Number(gambler.balance||0)-bet;
+        business.bankroll=Number(business.bankroll||0)+bet;
+        const paid=Math.min(payout,business.bankroll);
+        business.bankroll-=paid;
+        gambler.balance+=paid;
+        world.chat.push({user:'Casino',text:user.username+' wagered '+bet+' at '+business.name+': '+result});
+        await persist(result+' House reserve '+Number(business.bankroll).toLocaleString()+'.');
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
         if (!code) throw new Error('The code block could not be found.');
@@ -1684,6 +1649,25 @@
           await editor.requestFullscreen();
           fullscreenButton.textContent = 'Exit fullscreen';
         }
+      } else if (action === 'save-wrap') {
+        if (!user) throw new Error('Sign in to save a weapon wrap.');
+        const colors=Object.fromEntries(wrapColorParts.map(part=>[part,
+          String(content.querySelector('[data-wrap-color="'+part+'"]')?.value||'').toLowerCase()]));
+        if (Object.values(colors).some(color=>!/^#[0-9a-f]{6}$/.test(color))) throw new Error('Choose a valid color for every wrap part.');
+        const name=String(content.querySelector('[data-wrap-name]')?.value||'').trim()||'Custom weapon wrap';
+        const pattern=String(content.querySelector('[data-wrap-pattern]')?.value||'solid');
+        inventoryFor(user).push({id:'inventory-'+Date.now()+'-'+Math.random().toString(16).slice(2),
+          name:name.slice(0,32),quantity:1,type:'wrap',description:'Custom '+pattern+' Dropzone weapon wrap.',
+          wrap:{weaponColors:colors,pattern}});
+        await persist('Weapon wrap saved to your inventory.');
+      } else if (action === 'equip-wrap') {
+        if (!user) throw new Error('Sign in to equip a weapon wrap.');
+        const item=inventoryFor(user).find(entry=>entry.id===button.dataset.id&&entry.wrap?.weaponColors);
+        if (!item) throw new Error('That weapon wrap is no longer in your inventory.');
+        const savedProgress=user.dropzone&&typeof user.dropzone==='object'?user.dropzone:{};
+        user.dropzone={...savedProgress,weaponColor:'',weaponWrap:{pattern:item.wrap.pattern||'solid'},
+          weaponColors:{...(savedProgress.weaponColors||{}),...item.wrap.weaponColors}};
+        await persist(item.name+' equipped for Dropzone.');
       } else if (action === 'save-art') {
         if (!user) throw new Error('Sign in to save artwork to your inventory.');
         const canvas = content.querySelector('[data-art-canvas]');
@@ -1751,7 +1735,8 @@
           quantity:1,
           type:listing.itemData && listing.itemData.type || listing.type || 'item',
           description:listing.itemData && listing.itemData.description || 'Purchased from the Nexus marketplace.',
-          media:listing.itemData && listing.itemData.media || ''
+          media:listing.itemData && listing.itemData.media || '',
+          ...(listing.itemData&&listing.itemData.wrap?{wrap:listing.itemData.wrap}:{})
         });
         world.listings = world.listings.filter(item => item.id !== listing.id);
         world.chat.push({user:'Market',text:user.username + ' bought ' + listing.name + '.'});
@@ -1789,14 +1774,7 @@
     if (fullscreenButton && editor) fullscreenButton.textContent = document.fullscreenElement === editor ? 'Exit fullscreen' : 'Fullscreen';
   });
   setInterval(updateAuctionCountdowns, 1000);
-  const stockFluctuationTimer=setInterval(()=>{
-    fluctuateStockPrice().catch(error=>{
-      console.error('[Nexus] Could not update the stock price.',error);
-      if (world) setStatus('The stock graph could not be updated.',true);
-    });
-  },1000);
   window.addEventListener('pagehide', () => {
-    clearInterval(stockFluctuationTimer);
     if (liveEvents) liveEvents.close();
     if (cloudWorldHandler) cloudWorldRef.off('value', cloudWorldHandler);
   });
