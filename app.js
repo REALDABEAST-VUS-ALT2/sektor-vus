@@ -144,16 +144,18 @@ function selectPrivateMessages() {
   ref.on('child_added',state.dmHandler);
 }
 async function sendPrivateMessage(text) {
-  if (!state.dmFriend || !state.user || (!text&&!pendingImage&&!pendingAudio)) return;
+  if (!state.dmFriend || !state.user || (!text&&!pendingImage&&!pendingAudio&&!pendingFile)) return;
   const friend=state.dmFriend;
   const payload={fromAccountKey:state.user.key,name:state.user.username,avatar:state.user.avatar||'',
     key:state.user.key,text,image:pendingImage||'',audioData:pendingAudio||'',audioName:pendingAudioName||'',
+    fileData:pendingFile?.data||'',fileName:pendingFile?.name||'',fileType:pendingFile?.type||'',
     ts:firebase.database.ServerValue.TIMESTAMP};
   try {
     await db.ref('dms/'+friendConversationId(friend.key)+'/messages').push(payload);
     if (state.dmFriend?.key===friend.key) {
-      els.messageInput.value='';pendingImage='';pendingAudio='';pendingAudioName='';replyTo=null;
+      els.messageInput.value='';pendingImage='';pendingAudio='';pendingAudioName='';pendingFile=null;replyTo=null;
       els.imageInput.value='';els.imageButton.textContent='＋';els.audioInput.value='';els.audioButton.textContent='♪';
+      fileInput.value='';fileButton.textContent='▤';
       els.mentionSuggestions.hidden=true;
     }
   } catch(error) { els.channelTopic.textContent='Message failed. Check your connection and retry.';showError('Could not send that private message.'); }
@@ -388,6 +390,17 @@ const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUU
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
 els.audioInput = $('audioInput');
+const fileInput = document.createElement('input');
+fileInput.type = 'file';
+fileInput.hidden = true;
+fileInput.setAttribute('aria-label', 'Choose a file to attach');
+els.messageForm.appendChild(fileInput);
+const fileButton = document.createElement('button');
+fileButton.type = 'button';
+fileButton.title = 'Attach a file (up to 4 MB)';
+fileButton.setAttribute('aria-label', fileButton.title);
+fileButton.textContent = '▤';
+els.messageForm.insertBefore(fileButton, els.messageForm.querySelector('button[type="submit"]'));
 els.friendHome = $('friendHome');
 els.appView = $('appView');
 els.audioButton = $('audioButton');
@@ -431,7 +444,7 @@ function updateEditModeUi() {
     els.editModeBtn.classList.toggle('active', enabled);
   }
   if (els.ownerTools) els.ownerTools.hidden = !owner;
-  if (els.serverSettings) els.serverSettings.disabled = !owner;
+  if (els.serverSettings) els.serverSettings.disabled = false;
   if (els.addChannel) els.addChannel.disabled = !owner;
   if (els.rank) els.rank.disabled = !owner;
   if (els.announcementInput) els.announcementInput.disabled = !owner;
@@ -440,9 +453,37 @@ function updateEditModeUi() {
 let pendingImage = '';
 let pendingAudio = '';
 let pendingAudioName = '';
+let pendingFile = null;
 let replyTo = null;
 const REACTION_EMOJIS = ['👍','❤️','😂','😮','😢','🎉','🔥','👏','✅','💯'];
 const messageCache = {};
+const pingedMessages = new Set();
+let pingAudioContext = null;
+function playMentionPing() {
+  try {
+    const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioContextClass) return;
+    pingAudioContext = pingAudioContext || new AudioContextClass();
+    if (pingAudioContext.state === 'suspended') pingAudioContext.resume().catch(() => {});
+    const oscillator = pingAudioContext.createOscillator();
+    const volume = pingAudioContext.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, pingAudioContext.currentTime);
+    oscillator.frequency.setValueAtTime(1175, pingAudioContext.currentTime + .08);
+    volume.gain.setValueAtTime(.0001, pingAudioContext.currentTime);
+    volume.gain.exponentialRampToValueAtTime(.12, pingAudioContext.currentTime + .015);
+    volume.gain.exponentialRampToValueAtTime(.0001, pingAudioContext.currentTime + .22);
+    oscillator.connect(volume);
+    volume.connect(pingAudioContext.destination);
+    oscillator.start();
+    oscillator.stop(pingAudioContext.currentTime + .23);
+  } catch (error) {}
+}
+const unlockMentionAudio = () => {
+  if (pingAudioContext?.state === 'suspended') pingAudioContext.resume().catch(() => {});
+};
+document.addEventListener('pointerdown', unlockMentionAudio);
+document.addEventListener('keydown', unlockMentionAudio);
 function closeYoutubePopup() { els.youtubePopup.hidden = true; }
 function formatMusicTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -733,10 +774,6 @@ async function clearSubscriptions() {
   state.gameRef=state.gameHandler=null;
   unreadChannelWatchers.forEach(watcher=>watcher.ref.off('child_added',watcher.handler));
   unreadChannelWatchers.clear();unreadChannels={};
-  if (state.presenceRef) {
-    try { await state.presenceRef.onDisconnect().cancel(); } catch(error) {}
-    try { await state.presenceRef.remove(); } catch(error) {}
-  }
   state.metaRef=state.metaHandler=state.presenceListRef=state.presenceHandler=
     state.unsubMessages=state.presenceRef=null;
 }
@@ -1605,7 +1642,7 @@ function selectMessages(channelId) {
 }
 function isValidMessage(message) {
   return !!(message && typeof message === 'object' && message.key && message.name &&
-    (message.text || message.image || message.audioData));
+    (message.text || message.image || message.audioData || message.fileData));
 }
 window.addEventListener('storage', event => {
   if (!event.key || !state.server) return;
@@ -1645,12 +1682,19 @@ function renderMessage(message) {
   item.dataset.messageId = message.id || '';
   messageCache[message.id] = message;
   const image = message.image ? '<img class="message-image" src="' + esc(message.image) + '" alt="Image shared by ' + esc(message.name) + '">' : '';
+  const fileData = typeof message.fileData === 'string' && /^data:[^,]+;base64,/.test(message.fileData) ? message.fileData : '';
+  const file = fileData ? '<a class="message-file" href="' + esc(fileData) + '" download="' + esc(message.fileName || 'attachment') + '">Download ' + esc(message.fileName || 'attachment') + '</a>' : '';
   const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : '';
   const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join('');
   const rank = rankForMember(message.key, message.name);
   const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
-  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  const escapedUsername = String(state.user.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (state.server && !existing && !ownMessage && !pingedMessages.has(message.id) && new RegExp('(^|\\s):@' + escapedUsername + '(?=$|\\s|[,.!?])', 'i').test(message.text || '')) {
+    pingedMessages.add(message.id);
+    playMentionPing();
+  }
   const inviteCode = serverInviteCode(message.text);
   if (inviteCode) {
     const invite = document.createElement('div');
@@ -1721,7 +1765,7 @@ async function deleteMessage(item, message) {
 }
 async function toggleReaction(message, emoji) { if (!message.id) { showError('This message is still loading. Try again.'); return; } const reactions = {...(message.reactions || {})}; const users = {...(reactions[emoji] || {})}; if (users[state.user.key]) delete users[state.user.key]; else users[state.user.key] = true; if (Object.keys(users).length) reactions[emoji] = users; else delete reactions[emoji]; try { await saveMessage(message, {reactions}); } catch (error) { showError('Could not update reaction.'); } }
 function startEdit(item, message) { const text = item.querySelector('.message-text'); const original = message.text; const input = document.createElement('textarea'); input.className = 'edit-input'; input.value = original; input.rows = 2; text.replaceWith(input); input.focus(); input.onkeydown = async event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const value = input.value.trim(); if (value) await saveMessage(message, {text:value, edited:true}); } if (event.key === 'Escape') selectMessages(state.channel); }; }
-function mentionMatches() { const match = els.messageInput.value.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/); if (!match) { els.mentionSuggestions.hidden = true; return; } const query = match[1].toLowerCase(); const members = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().startsWith(query)).slice(0,6); els.mentionSuggestions.innerHTML = ''; members.forEach(member => { const option = document.createElement('button'); option.type = 'button'; option.className = 'mention-option'; option.textContent = '@' + member.name; option.onclick = () => { els.messageInput.value = els.messageInput.value.slice(0, els.messageInput.value.length - match[1].length) + member.name + ' '; els.mentionSuggestions.hidden = true; els.messageInput.focus(); }; els.mentionSuggestions.appendChild(option); }); els.mentionSuggestions.hidden = !members.length; }
+function mentionMatches() { if (!state.server) { els.mentionSuggestions.hidden = true; return; } const match = els.messageInput.value.match(/(?:^|\s)(:@|@)([a-zA-Z0-9_]*)$/); if (!match) { els.mentionSuggestions.hidden = true; return; } const query = match[2].toLowerCase(); const members = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().startsWith(query)).slice(0,6); els.mentionSuggestions.innerHTML = ''; members.forEach(member => { const option = document.createElement('button'); option.type = 'button'; option.className = 'mention-option'; option.textContent = match[1] + member.name; option.onclick = () => { els.messageInput.value = els.messageInput.value.slice(0, els.messageInput.value.length - match[2].length) + member.name + ' '; els.mentionSuggestions.hidden = true; els.messageInput.focus(); }; els.mentionSuggestions.appendChild(option); }); els.mentionSuggestions.hidden = !members.length; }
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
 function renderMembers(data) { const members = Object.values(data || {}).filter(member => member && typeof member === 'object'); state.serverMembers = Object.fromEntries(members.map(member => [member.key || member.name, member])); els.memberCount.textContent = members.length; els.membersList.innerHTML = ''; members.forEach(member => { const row = document.createElement('div'); row.className = 'member'; const rank = rankForMember(member.key, member.name); const rankText = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '<span class="member-rank">Member</span>'; row.innerHTML = avatarMarkup(member, 'member-avatar') + '<div><div class="member-name">' + esc(member.name || 'Member') + '</div><div class="member-rank">' + rankText + '</div></div>'; els.membersList.appendChild(row); }); }
 const RTC_CONFIG = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
@@ -1947,9 +1991,53 @@ function openRankModal() { if (!state.server || state.server.ownerKey !== state.
     '<div class="rank-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 8px;">' + presetRanks.map(preset => '<button type="button" class="modal-secondary" data-rank-preset="' + esc(preset.name) + '" style="width:auto; margin:0; padding:7px 10px; border-radius:999px;">' + esc(preset.name) + '</button>').join('') + '</div>' +
     '<label class="modal-label" for="rankName">Rank name</label><input id="rankName" class="modal-input" maxlength="20" placeholder="Moderator, VIP, Member"><label class="modal-label" for="rankColor">Rank color</label><input id="rankColor" class="modal-color" type="color" value="#9aa5b4"><label class="rank-check"><input id="rankManage" type="checkbox"> Can manage channels and members</label><label class="rank-check"><input id="rankAnnounce" type="checkbox"> Can publish announcements</label><button id="clearRank" class="modal-secondary"' + (members.length ? '' : ' disabled') + '>Remove rank</button><div id="modalError" class="error"></div><button id="saveRank" class="primary-btn"' + (members.length ? '' : ' disabled') + '>Save custom rank</button>';
   els.modal.hidden = false; const memberSelect = document.getElementById('rankMember'); const rankNameInput = document.getElementById('rankName'); const rankColorInput = document.getElementById('rankColor'); const rankManageInput = document.getElementById('rankManage'); const rankAnnounceInput = document.getElementById('rankAnnounce'); const fillRank = () => { const existing = state.server.ranks && state.server.ranks[memberSelect.value]; const rank = typeof existing === 'object' ? existing : null; rankNameInput.value = rank ? rank.name : (typeof existing === 'string' ? existing : ''); rankColorInput.value = rank && rank.color || '#9aa5b4'; rankManageInput.checked = !!(rank && rank.permissions && rank.permissions.manage); rankAnnounceInput.checked = !!(rank && rank.permissions && rank.permissions.announce); }; const applyPreset = (preset) => { rankNameInput.value = preset.name; rankColorInput.value = preset.color; rankManageInput.checked = !!preset.permissions.manage; rankAnnounceInput.checked = !!preset.permissions.announce; }; Array.from(document.querySelectorAll('[data-rank-preset]')).forEach(button => { const presetName = button.getAttribute('data-rank-preset'); const preset = presetRanks.find(item => item.name === presetName); if (preset) button.onclick = () => applyPreset(preset); }); memberSelect.onchange = fillRank; fillRank(); document.getElementById('saveRank').onclick = async () => { const memberKey = memberSelect.value; const rankName = rankNameInput.value.trim(); const rank = {name:rankName.slice(0,20),color:rankColorInput.value,permissions:{manage:rankManageInput.checked,announce:rankAnnounceInput.checked}}; if (!memberKey || !rankName) { document.getElementById('modalError').textContent = 'Choose a member and enter a rank name.'; return; } try { state.server.ranks = state.server.ranks || {}; state.server.ranks[memberKey] = rank; if (state.server.localOnly) { saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else { await db.ref('serverMeta/' + state.server.code + '/ranks/' + memberKey).set(rank); } renderMembers(state.serverMembers); els.modal.hidden = true; } catch (error) { document.getElementById('modalError').textContent = 'Could not save this rank.'; } }; document.getElementById('clearRank').onclick = async () => { const memberKey = memberSelect.value; if (!memberKey) { document.getElementById('modalError').textContent = 'Choose a member to remove.'; return; } try { if (!state.server.ranks) state.server.ranks = {}; delete state.server.ranks[memberKey]; if (state.server.localOnly) { saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else { await db.ref('serverMeta/' + state.server.code + '/ranks/' + memberKey).remove(); } renderMembers(state.serverMembers); els.modal.hidden = true; } catch (error) { document.getElementById('modalError').textContent = 'Could not remove this rank.'; } }; }
+async function leaveCurrentServer(server) {
+  if (!server || server.ownerKey === state.user.key) return;
+  try {
+    if (!server.localOnly && state.presenceRef && state.server?.code === server.code) {
+      try { await state.presenceRef.onDisconnect().cancel(); } catch (error) {}
+      await state.presenceRef.remove();
+    }
+    await clearSubscriptions();
+    const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]')
+      .filter(code => String(code).toUpperCase() !== String(server.code).toUpperCase());
+    localStorage.setItem('vusServersJoined', JSON.stringify(joined));
+    state.servers = state.servers.filter(item => item.code !== server.code);
+    state.server = null;
+    state.channel = '';
+    state.lastServerCode = '';
+    els.modal.hidden = true;
+    renderServerRail();
+    if (state.servers.length) {
+      await selectServer(state.servers[0].code);
+      return;
+    }
+    els.serverName.textContent = 'Select a server';
+    els.serverCode.textContent = '';
+    els.serverSettings.hidden = true;
+    els.editModeBtn.hidden = true;
+    els.textChannels.replaceChildren();
+    els.voiceChannels.replaceChildren();
+    els.messages.innerHTML = '<div class="empty-state">Select a server to start talking.</div>';
+    els.messageForm.hidden = true;
+    els.memberCount.textContent = '0';
+    els.membersList.replaceChildren();
+  } catch (error) {
+    showError('Could not leave that server.');
+  }
+}
+
 function openServerSettings() {
-  if (!isServerOwner()) return;
+  if (!state.server) return;
   const server = state.server;
+  if (!isServerOwner()) {
+    els.modalTitle.textContent = 'Leave server';
+    els.modalBody.innerHTML = '<p class="modal-copy">Leave <strong>' + esc(server.name) + '</strong>? You can rejoin later with an invite code.</p><div class="modal-actions"><button id="cancelLeaveServer" class="modal-secondary" type="button">Cancel</button><button id="confirmLeaveServer" class="modal-danger" type="button">Leave server</button></div>';
+    document.getElementById('cancelLeaveServer').onclick = () => { els.modal.hidden = true; };
+    document.getElementById('confirmLeaveServer').onclick = () => leaveCurrentServer(server);
+    els.modal.hidden = false;
+    return;
+  }
   els.modalTitle.textContent = 'Customize server';
   els.modalBody.innerHTML = '<label class="modal-label" for="settingsServerName">Server name</label><input id="settingsServerName" class="modal-input" maxlength="32"><label class="modal-label" for="settingsDescription">Description</label><input id="settingsDescription" class="modal-input" maxlength="80" placeholder="What is this server about?"><label class="modal-label" for="settingsAccent">Accent color</label><input id="settingsAccent" class="modal-color" type="color"><label class="modal-label" for="settingsIcon">Server icon</label><input id="settingsIcon" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveServerSettings" class="primary-btn">Save changes</button><hr><button id="deleteServer" class="modal-danger" type="button">Delete server</button>';
   const nameInput = document.getElementById('settingsServerName');
@@ -2251,13 +2339,44 @@ els.audioInput.addEventListener('change', () => {
   if (file.size > 8 * 1024 * 1024) { showError('Audio files must be 8 MB or smaller.'); return; }
   const reader = new FileReader(); reader.onload = () => { pendingAudio = reader.result; pendingAudioName = file.name; els.audioButton.textContent = '✓'; }; reader.readAsDataURL(file); els.audioInput.value = '';
 });
+fileButton.onclick = () => fileInput.click();
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { showError('Files must be 4 MB or smaller.'); fileInput.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result !== 'string') { showError('Could not prepare that file.'); return; }
+    pendingFile = {data:reader.result,name:file.name,type:file.type || 'application/octet-stream'};
+    fileButton.textContent = '✓';
+  };
+  reader.onerror = () => showError('Could not prepare that file.');
+  reader.readAsDataURL(file);
+});
 els.messageForm.addEventListener('submit', async event => {
-  if (!pendingAudio||state.dmFriend) return;
+  if ((!pendingAudio && !pendingFile) || state.dmFriend) return;
   event.preventDefault();
+  event.stopImmediatePropagation();
   const text = els.messageInput.value.trim(); const channel = channels().find(item => item.id === state.channel);
   if (!state.server || !channel || channel.type === 'announcement') return;
-  if (channel.audio === false) { showError('Audio attachments are disabled in this channel.'); return; }
-  try { await db.ref('serverMessages/' + state.server.code + '/' + safe(state.channel)).push({id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,image:'',audioData:pendingAudio,audioName:pendingAudioName,ts:firebase.database.ServerValue.TIMESTAMP}); pendingAudio = ''; pendingAudioName = ''; els.audioButton.textContent = '♪'; els.messageInput.value = ''; } catch (error) { showError('Could not send that audio file.'); }
+  if (pendingAudio && channel.audio === false) { showError('Audio attachments are disabled in this channel.'); return; }
+  const payload = {id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,
+    image:pendingImage || '',audioData:pendingAudio || '',audioName:pendingAudioName || '',
+    fileData:pendingFile?.data || '',fileName:pendingFile?.name || '',fileType:pendingFile?.type || '',
+    replyTo,ts:firebase.database.ServerValue.TIMESTAMP};
+  try {
+    if (state.server.localOnly) {
+      const key = 'vusMessages_' + state.server.code + '_' + safe(state.channel);
+      const messages = JSON.parse(localStorage.getItem(key) || '[]');
+      payload.ts = Date.now();
+      messages.push(payload);
+      localStorage.setItem(key, JSON.stringify(messages));
+      renderMessage(payload);
+    } else await db.ref('serverMessages/' + state.server.code + '/' + safe(state.channel)).push(payload);
+    pendingAudio = ''; pendingAudioName = ''; pendingFile = null; pendingImage = ''; replyTo = null;
+    els.audioButton.textContent = '♪'; fileButton.textContent = '▤'; els.imageButton.textContent = '＋';
+    els.messageInput.value = ''; fileInput.value = ''; els.audioInput.value = ''; els.imageInput.value = '';
+  } catch (error) { showError('Could not send that attachment.'); }
 }, true);
 new MutationObserver(() => {
   document.querySelectorAll('#messages .message').forEach(item => { if (item.dataset.audioReady) return; const message = messageCache[item.dataset.messageId]; if (!message || !message.audioData) return; item.dataset.audioReady = 'true'; const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'metadata'; audio.src = message.audioData; audio.title = message.audioName || 'Audio attachment'; audio.className = 'message-audio'; item.querySelector('.message-content').appendChild(audio); });

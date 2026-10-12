@@ -195,7 +195,10 @@ body { letter-spacing:.005em; }
 .games-panel { flex:1; overflow:auto; padding:28px; background:linear-gradient(180deg,rgba(101,230,173,.035),transparent 45%); }
 .message-form #audioButton { width:38px; height:38px; padding:0; border:0; border-radius:8px; background:#3a4250; color:var(--accent); font-size:20px; cursor:pointer; }
 .message-form #audioButton:hover { background:#465168; }
+.message-form button[aria-label^="Attach a file"] { width:38px; min-width:38px; height:38px; padding:0; border-radius:8px; background:#3a4250; color:var(--accent); }
+.message-form button[aria-label^="Attach a file"]:hover { background:#465168; }
 .message-audio { display:block; width:min(360px,100%); margin-top:8px; height:34px; }
+.message-file { display:inline-flex; max-width:100%; margin-top:8px; color:var(--accent); overflow-wrap:anywhere; }
 .audio-channel-option { display:flex; align-items:center; gap:8px; margin:10px 0 2px; color:#aeb9c7; font-size:12px; }
 .audio-channel-option input { accent-color:var(--accent); }
 .games-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; color:#edf7f2; }

@@ -4,6 +4,7 @@
   const firebaseMode = !lanMode && !!(firebaseApi && firebaseApi.apps && firebaseApi.apps.length);
   const sharedPath = 'nexus/sharedWorld';
   const localDataKey = 'blobtownEconomy';
+  const localRevisionKey = localDataKey + '.revision';
   const sessionKey = 'blobtownSession';
   const maxChatLength = 180;
   const maxCodeLength = 4000;
@@ -37,6 +38,7 @@
   let chatSending = false;
   let authDraft={username:'',password:''};
   const pendingChatMessages=new Map();
+  const localWorldChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('nexus-local-world') : null;
 
   const defaults = () => ({
     users: [],
@@ -347,6 +349,121 @@
     }
   }
 
+  function openLocalWorldDatabase() {
+    return new Promise((resolve, reject) => {
+      if (!globalThis.indexedDB) return reject(new Error('IndexedDB is unavailable in this browser.'));
+      const request = indexedDB.open('nexus-world', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('worlds');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open the local Nexus database.'));
+    });
+  }
+
+  async function readLocalWorld() {
+    try {
+      const database = await openLocalWorldDatabase();
+      const value = await new Promise((resolve, reject) => {
+        const transaction = database.transaction('worlds', 'readonly');
+        const request = transaction.objectStore('worlds').get(localDataKey);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error || new Error('Could not read the local Nexus database.'));
+      });
+      database.close();
+      if (value) return value;
+      const legacy = JSON.parse(localStorage.getItem(localDataKey) || 'null');
+      if (legacy) await writeLocalWorld(legacy);
+      return legacy;
+    } catch (error) {
+      console.error('[Nexus] IndexedDB read failed.', error);
+      return JSON.parse(localStorage.getItem(localDataKey) || 'null');
+    }
+  }
+
+  async function writeLocalWorld(value) {
+    const database = await openLocalWorldDatabase();
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction('worlds', 'readwrite');
+      transaction.objectStore('worlds').put(value, localDataKey);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error('Could not save the local Nexus database.'));
+      transaction.onabort = () => reject(transaction.error || new Error('The local Nexus save was cancelled.'));
+    });
+    database.close();
+    localWorldChannel?.postMessage('updated');
+    try { localStorage.setItem(localRevisionKey, String(Date.now())); } catch (error) {}
+  }
+
+  async function persistFirebaseWorld(value) {
+    const previous = lastSavedWorld || {};
+    const formatSnapshot = await cloudWorldRef.child('_recordFormat').get();
+    const migratingRecords = formatSnapshot.val() !== 1;
+    const writes = [];
+    const changed = (left, right) => JSON.stringify(left) !== JSON.stringify(right);
+    const add = (path, data, merge = false) => writes.push([path, data, merge]);
+    const records = input => Array.isArray(input) ? input :
+      input && typeof input === 'object' ? Object.values(input) : [];
+    const pathKey = value => String(value).replace(/[.#$\[\]/]/g, '_');
+
+    const oldUsers = records(previous.users);
+    const newUsers = records(value.users);
+    newUsers.forEach((user, index) => {
+      const oldUser = oldUsers[index] || {};
+      const userUpdates = {};
+      for (const key of new Set([...Object.keys(oldUser), ...Object.keys(user)])) {
+        if (key === 'inventory') continue;
+        const nextValue = Object.prototype.hasOwnProperty.call(user, key) ? user[key] : null;
+        if (changed(oldUser[key], nextValue)) userUpdates[pathKey(key)] = nextValue;
+      }
+      if (Object.keys(userUpdates).length) add('users/' + index, userUpdates, true);
+      const oldInventory = records(oldUser.inventory);
+      const newInventory = records(user.inventory);
+      const itemKey = (item, itemIndex) => pathKey(item.id || 'item-' + itemIndex);
+      const nextItems = new Map(newInventory.map((item, itemIndex) => [itemKey(item, itemIndex), item]));
+      oldInventory.forEach((item, itemIndex) => {
+        const key = migratingRecords && Array.isArray(oldUser.inventory) ? String(itemIndex) : itemKey(item, itemIndex);
+        if (migratingRecords && Array.isArray(oldUser.inventory) || !nextItems.has(key)) {
+          add('users/' + index + '/inventory/' + key, null);
+        }
+      });
+      newInventory.forEach((item, itemIndex) => {
+        const key = itemKey(item, itemIndex);
+        const oldItem = oldInventory.find((entry, oldIndex) => itemKey(entry, oldIndex) === key);
+        if (migratingRecords && Array.isArray(oldUser.inventory) || changed(oldItem, item)) {
+          add('users/' + index + '/inventory/' + key, item);
+        }
+      });
+    });
+
+    for (const collection of ['listings', 'auctions', 'chat']) {
+      const oldRecords = records(previous[collection]);
+      const newRecords = records(value[collection]);
+      const recordKey = (record, index) => pathKey(record.id || collection + '-' + index);
+      const nextRecords = new Map(newRecords.map((record, index) => [recordKey(record, index), record]));
+      oldRecords.forEach((record, index) => {
+        const key = migratingRecords && Array.isArray(previous[collection]) ? String(index) : recordKey(record, index);
+        if (migratingRecords && Array.isArray(previous[collection]) || !nextRecords.has(key)) {
+          add(collection + '/' + key, null);
+        }
+      });
+      newRecords.forEach((record, index) => {
+        const key = recordKey(record, index);
+        const oldRecord = oldRecords.find((entry, oldIndex) => recordKey(entry, oldIndex) === key);
+        if (migratingRecords && Array.isArray(previous[collection]) || changed(oldRecord, record)) {
+          add(collection + '/' + key, record);
+        }
+      });
+    }
+
+    for (const key of ['wheelClaims', 'stockMarket']) {
+      if (changed(previous[key], value[key])) add(key, value[key]);
+    }
+    for (const [path, data, merge] of writes) {
+      const reference = cloudWorldRef.child(path);
+      await (merge ? reference.update(data) : reference.set(data));
+    }
+    if (migratingRecords) await cloudWorldRef.child('_recordFormat').set(1);
+  }
+
   function currentUser() {
     const session = currentSession();
     return session && world ? world.users.find(user => user.username === session.username) || null : null;
@@ -361,7 +478,10 @@
   }
 
   function inventoryFor(user) {
-    if (!Array.isArray(user.inventory)) user.inventory = [];
+    if (!Array.isArray(user.inventory)) {
+      user.inventory = user.inventory && typeof user.inventory === 'object'
+        ? Object.values(user.inventory) : [];
+    }
     user.inventory=user.inventory.filter(item=>item&&typeof item==='object'&&!Array.isArray(item));
     for (const item of user.inventory) {
       if (!item.id) item.id='inventory-'+Date.now()+'-'+Math.random().toString(16).slice(2);
@@ -729,13 +849,13 @@
       } else {
         let saved = null;
         try {
-          saved = JSON.parse(localStorage.getItem(localDataKey) || 'null');
+          saved = await readLocalWorld();
         } catch (error) {
           throw new Error('Saved Nexus data could not be read from this browser.');
         }
         world = saved ? normalize(saved) : normalize(defaults());
         worldMode.textContent = 'This browser only · not multiplayer';
-        if (!saved) localStorage.setItem(localDataKey, JSON.stringify(world));
+        if (!saved) await writeLocalWorld(world);
       }
       lastSavedWorld = copyWorld(world);
       setStatus(lanMode || firebaseMode ? 'Connected to the shared Nexus world.' : 'Connected to your local Nexus world.');
@@ -792,10 +912,10 @@
     });
   }
 
-  window.addEventListener('storage', event => {
-    if (lanMode || firebaseMode || event.storageArea !== localStorage || event.key !== localDataKey || !event.newValue || !world) return;
+  async function reloadLocalWorld() {
+    if (lanMode || firebaseMode || !world) return;
     try {
-      const value = JSON.parse(event.newValue);
+      const value = await readLocalWorld();
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new Error('Saved Nexus data has an invalid format.');
       }
@@ -806,7 +926,12 @@
       console.error('[Nexus] Could not apply a saved update from another page.', error);
       setStatus('An update from another Nexus page could not be loaded.', true);
     }
+  }
+
+  window.addEventListener('storage', event => {
+    if (event.storageArea === localStorage && event.key === localRevisionKey) reloadLocalWorld();
   });
+  localWorldChannel?.addEventListener('message', reloadLocalWorld);
 
   async function persist(successMessage) {
     const next = normalize(world);
@@ -814,8 +939,8 @@
     world = next;
     try {
       if (lanMode) await requestWorld('PUT', world);
-      else if (firebaseMode) await cloudWorldRef.set(world);
-      else localStorage.setItem(localDataKey, JSON.stringify(world));
+      else if (firebaseMode) await persistFirebaseWorld(world);
+      else await writeLocalWorld(world);
       lastSavedWorld = copyWorld(world);
       setStatus(successMessage);
       render();
@@ -849,11 +974,11 @@
         }
       } else if (firebaseMode) {
         settleExpiredAuctionsInWorld(world, Date.now());
-        await cloudWorldRef.set(world);
+        await persistFirebaseWorld(world);
         lastSavedWorld = copyWorld(world);
       } else {
         settleExpiredAuctionsInWorld(world, Date.now());
-        localStorage.setItem(localDataKey, JSON.stringify(world));
+        await writeLocalWorld(world);
         lastSavedWorld = copyWorld(world);
       }
       render();
@@ -955,7 +1080,7 @@
     world.stockMarket.price=Math.max(1,Math.min(1_000_000,Math.round(Number(world.stockMarket.price||100)*(1+(Math.random()<.5?-1:1)*(0.01+Math.random()*.04)))));
     world.stockMarket.lastFluctuationAt=now;
     recordStockPrice(world.stockMarket);
-    localStorage.setItem(localDataKey,JSON.stringify(world));
+    await writeLocalWorld(world);
     lastSavedWorld=copyWorld(world);
     refreshStockMarketUi();
   }
@@ -1336,7 +1461,7 @@
           setStatus('Message sent.');
           renderChatPane();
         } else {
-          localStorage.setItem(localDataKey,JSON.stringify(world));
+          await writeLocalWorld(world);
           lastSavedWorld=copyWorld(world);
           setStatus('Message sent.');
           renderChatPane();
