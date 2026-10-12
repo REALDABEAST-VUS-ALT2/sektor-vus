@@ -1443,7 +1443,7 @@
     const initialAnnouncement=newestAnnouncement(warState&&warState.announcements);
     lastAnnouncementId=initialAnnouncement?initialAnnouncement[0]:'';
     await refreshAccount();
-    const activePlayer=await mutatePlayer(player => {
+    let activePlayer=await mutatePlayer(player => {
       const initial = playerDefaults();
       const level=accountData.dropzone.level;
       const selectedWeapon=player&&weapons[player.weapon]&&weapons[player.weapon].slot!=='secondary'&&
@@ -1466,6 +1466,9 @@
         activeWeaponSlot:player&&player.activeWeaponSlot==='secondary'?'secondary':'primary',
         online:true,lastSeen:Date.now()};
     });
+    if (!activePlayer) activePlayer=await mutatePlayer(player=>player||playerDefaults());
+    if (!activePlayer||typeof activePlayer!=='object')
+      throw new Error('Dropzone received an empty player record. Reconnect to the frontline and try again.');
     localPosition={x:Number(activePlayer.x),y:Number(activePlayer.y)};
     lastPositionWritePosition={...localPosition};
     cameraPosition={...localPosition};
