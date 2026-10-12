@@ -45,6 +45,8 @@
     'Pistol':{damage:30,rate:260,mag:15,range:520,spread:.025,recoil:.02,reload:1250,model:'pistol'}
   };
   const primaryUnlocks=[
+    {id:'ar_gale',name:'Gale 5.56',type:'Assault rifle',level:1,damage:21,rate:135,mag:32,range:720,spread:.034},
+    {id:'smg_comet',name:'Comet-9',type:'Submachine gun',level:1,damage:13,rate:72,mag:40,range:420,spread:.082},
     {id:'shot_breach',name:'Breach-8',type:'Shotgun',level:2},
     {id:'smg_mako',name:'Mako-9',type:'Submachine gun',level:3},
     {id:'lmg_atlas',name:'Atlas 60',type:'Light machine gun',level:4},
@@ -98,7 +100,7 @@
     {id:'dmr_vantage',name:'Vantage DMR',type:'Marksman rifle',level:68},
     {id:'lmg_titan',name:'Titan 120',type:'Light machine gun',level:72},
     {id:'sniper_ghostwake',name:'Ghostwake .50',type:'Sniper rifle',level:76},
-    {id:'special_ion',name:'Ion Lance',type:'Special',level:80},
+    {id:'special_ion',name:'Ion Lance',type:'Sniper rifle',level:80,damage:72,rate:520,mag:12,range:1320,spread:.006,burstRounds:3},
     {id:'ar_halcyon',name:'Halcyon 8.6',type:'Assault rifle',level:84},
     {id:'smg_needlepoint',name:'Needlepoint 12',type:'Submachine gun',level:88},
     {id:'shot_vulcan',name:'Vulcan 12',type:'Shotgun',level:92},
@@ -120,10 +122,11 @@
   for (const [index,entry] of primaryUnlocks.entries()) {
     const profile=weaponProfiles[entry.type],variant=index%3;
     weapons[entry.id]={...profile,name:entry.name,type:entry.type,level:entry.level,slot:'primary',
-      damage:Math.round(profile.damage+variant*2+Math.floor(entry.level/15)),
-      rate:Math.round(profile.rate*rateVariants[variant]),
-      mag:profile.mag+variant*(entry.type==='Light machine gun'?5:2),
-      range:profile.range+variant*15,spread:profile.spread*spreadVariants[variant],
+      damage:entry.damage??Math.round(profile.damage+variant*2+Math.floor(entry.level/15)),
+      rate:entry.rate??Math.round(profile.rate*rateVariants[variant]),
+      mag:entry.mag??profile.mag+variant*(entry.type==='Light machine gun'?5:2),
+      range:entry.range??profile.range+variant*15,spread:entry.spread??profile.spread*spreadVariants[variant],
+      ...(entry.burstRounds?{burstRounds:entry.burstRounds}:{}),
       ...(entry.type==='Shotgun'?{pellets:[2,4,8][shotgunIndex++%3]}:{})};
   }
   const secondaryWeapons={
@@ -183,8 +186,14 @@
     optic_holo:{name:'Holographic sight',effect:'Improves aiming precision',spread:.78,cost:600},
     bolt_fast:{name:'Polished bolt',effect:'Faster cycling and reload',rate:.9,reload:.88,cost:850},
     barrel_ported:{name:'Ported barrel',effect:'Reduces recoil, increases spread',recoil:.78,spread:1.08,cost:750},
-    burst_triple:{name:'Three-round burst kit',effect:'Fires three rounds per trigger',
-      types:['Assault rifle','Marksman rifle'],burstRounds:3,cost:900},
+    burst_triple:{name:'Three-round burst kit',effect:'Fires three rounds in sequence per trigger',
+      types:['Assault rifle','Marksman rifle','Sniper rifle'],burstRounds:3,cost:0},
+    ion_vulcan:{name:'Ion Vulcan Minigun',effect:'Full-auto conversion · 300 rounds · cannot reload · extreme spread',
+      types:['Sniper rifle'],ionVulcan:true,mag:300,damage:9,rate:78,spread:.27,recoil:.095,cost:0},
+    underbarrel_reserve:{name:'Underbarrel reserve cell',effect:'Adds 50% ammo capacity to underbarrel attachments',
+      types:['Assault rifle','Submachine gun','Carbine','Light machine gun','Marksman rifle'],underbarrelAmmo:1.5,cost:0},
+    underbarrel_ammo_pouch:{name:'Underbarrel ammo pouch',effect:'Doubles ammo capacity for underbarrel attachments',
+      types:['Assault rifle','Submachine gun','Carbine','Light machine gun','Marksman rifle'],underbarrelAmmo:2,cost:0},
     underbarrel_frag:{name:'Mini grenade launcher',effect:'Tab launches a timed explosive',
       types:['Assault rifle','Submachine gun','Light machine gun','Marksman rifle'],
       utility:'underbarrelFrag',utilityCooldown:6500,ammo:2,cost:950},
@@ -594,6 +603,24 @@
     if (destroyedTurret) setStatus('Enemy sentry destroyed.');
   }
 
+  async function hitPlateBox(id,damage,attacker) {
+    let destroyed=false;
+    const updated=await updateWar('plateBoxes/'+id,current=>{
+      destroyed=false;
+      if (!current||current.team===attacker.team) return current;
+      const hp=Math.max(0,Number(current.hp||120)-damage);
+      destroyed=hp===0;
+      return destroyed?null:{...current,hp};
+    });
+    if (updated&&warState) warState.plateBoxes[id]=updated;
+    else if (warState?.plateBoxes) delete warState.plateBoxes[id];
+    if (destroyed) {
+      showGameNotice('Enemy plate box destroyed · +25 XP.','objective');
+      try { await grantXpByName(attacker.name,25,'enemy plate box destroyed'); }
+      catch(error) { setStatus('Plate box destroyed, but XP could not be saved: '+error.message,true); }
+    }
+  }
+
   function freshWar() {
     const startedAt=Date.now();
     return {
@@ -623,6 +650,7 @@
       voiceSignals:{},
       vehicles:{},
       turrets:{},
+      plateBoxes:{},
       drones:{},
       smokes:{},
       burns:{},
@@ -812,6 +840,7 @@
   }
 
   function normalizeProgress(value) {
+    const freeAttachments=['burst_triple','ion_vulcan','underbarrel_reserve','underbarrel_ammo_pouch'];
     const owned=Array.isArray(value && value.ownedAttachments)
       ? [...new Set(value.ownedAttachments.filter(id=>Object.prototype.hasOwnProperty.call(attachments,id)))]
       : [];
@@ -820,12 +849,52 @@
     const savedColors=value&&value.weaponColors&&typeof value.weaponColors==='object'?value.weaponColors:{};
     const weaponColors=Object.fromEntries(weaponColorParts.map(part=>[part,
       /^#[0-9a-f]{6}$/i.test(savedColors[part]||'')?savedColors[part]:weaponColor]));
-    return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:owned,weaponColor,weaponColors};
+    return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:[...new Set([...freeAttachments,...owned])],weaponColor,weaponColors};
   }
 
-  function accountWorldFromLocal() {
+  async function writeLocalAccountWorld(value) {
+    if (!globalThis.indexedDB) {
+      localStorage.setItem(localWorldKey, JSON.stringify(value));
+      return;
+    }
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('nexus-world', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('worlds');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open the local Nexus database.'));
+    });
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction('worlds', 'readwrite');
+      transaction.objectStore('worlds').put(value, localWorldKey);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error('Could not save the local Nexus account.'));
+      transaction.onabort = () => reject(transaction.error || new Error('The local Nexus save was cancelled.'));
+    });
+    database.close();
+    try { localStorage.setItem(localWorldKey + '.revision', String(Date.now())); } catch (error) {}
+  }
+
+  async function accountWorldFromLocal() {
     try {
-      const value=JSON.parse(localStorage.getItem(localWorldKey)||'null');
+      let value = null;
+      if (globalThis.indexedDB) {
+        const database = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('nexus-world', 1);
+          request.onupgradeneeded = () => request.result.createObjectStore('worlds');
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error('Could not open the local Nexus database.'));
+        });
+        value = await new Promise((resolve, reject) => {
+          const request = database.transaction('worlds', 'readonly').objectStore('worlds').get(localWorldKey);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error || new Error('Could not read the local Nexus account.'));
+        });
+        database.close();
+      }
+      if (!value) {
+        value = JSON.parse(localStorage.getItem(localWorldKey)||'null');
+        if (value) await writeLocalAccountWorld(value);
+      }
       if (!value || !Array.isArray(value.users)) throw new Error('No saved Nexus account was found in this browser.');
       return value;
     } catch(error) {
@@ -864,15 +933,21 @@
       const entry=entries.find(([,user])=>user&&String(user.username).toLowerCase()===String(username).toLowerCase());
       if (!entry) throw new Error('Your Nexus account could not be found. Reconnect to Nexus and try again.');
       const cachedUser=entry[1];
-      const result=await firebaseApi.database().ref(sharedPath+'/users/'+entry[0]).transaction(current=>{
-        const source=current&&typeof current==='object'?current:cachedUser;
-        if (!source||typeof source!=='object') return;
-        const next=JSON.parse(JSON.stringify(source));
-        updater(next);
-        return next;
-      });
-      if (!result.committed) throw new Error('Firebase cancelled the account update. Check your connection and retry the purchase.');
-      const user=result.snapshot.val();
+      const nextUser=JSON.parse(JSON.stringify(cachedUser));
+      updater(nextUser);
+      if (JSON.stringify(nextUser.inventory) !== JSON.stringify(cachedUser.inventory)) {
+        throw new Error('Inventory changes must be saved from Nexus.');
+      }
+      const updates={};
+      for (const key of new Set([...Object.keys(cachedUser),...Object.keys(nextUser)])) {
+        if (key==='inventory' || JSON.stringify(cachedUser[key])===JSON.stringify(nextUser[key])) continue;
+        updates[key]=Object.prototype.hasOwnProperty.call(nextUser,key)?nextUser[key]:null;
+      }
+      if (Object.keys(updates).length) {
+        await firebaseApi.database().ref(sharedPath+'/users/'+entry[0]).update(updates);
+      }
+      const user={...cachedUser,...updates};
+      Object.keys(user).forEach(key=>{if(user[key]===null) delete user[key];});
       if (String(username).toLowerCase()===playerName.toLowerCase()) accountData=user;
       return user;
     }
@@ -884,7 +959,7 @@
         method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)
       });
       if (!response.ok) throw new Error((await response.text())||'Could not save the shared Nexus account.');
-    } else localStorage.setItem(localWorldKey,JSON.stringify(next));
+    } else await writeLocalAccountWorld(next);
     if (String(username).toLowerCase()===playerName.toLowerCase()) accountData=user;
     return user;
   }
@@ -992,8 +1067,8 @@
       voteEndsAt:Number(value.voteEndsAt)||0,
       mapVotes:value.mapVotes&&typeof value.mapVotes==='object'?value.mapVotes:{},
       players:Object.fromEntries(Object.entries(players).map(([key,player])=>[key,player?{
-        armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
-        smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
+        armorPlates:0,armorHp:0,armorSatchel:false,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
+        smokeCharges:2,stimCharges:2,flashCharges:2,plateBoxCharges:1,grenadeCharges:2,stickyCharges:2,claymoreCharges:1,
         grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
           tactical:'smoke',lethal:'grenade',secondary:'pistol_sidekick',secondaryAmmo:15,attachmentAmmo:{},
           activeWeaponSlot:'primary',downed:false,downedAt:0,vehiclePad:'',vehicleAmmo:0,
@@ -1013,6 +1088,8 @@
       voiceSignals:value.voiceSignals&&typeof value.voiceSignals==='object'&&!Array.isArray(value.voiceSignals)
         ?value.voiceSignals:{},
       lootBoxes:{...base.lootBoxes,...(value.lootBoxes||{})},
+      plateBoxes:value.plateBoxes&&typeof value.plateBoxes==='object'&&!Array.isArray(value.plateBoxes)
+        ?value.plateBoxes:{},
       nextRandomLootAt:Number(value.nextRandomLootAt)||base.nextRandomLootAt,
       vehicles:Object.fromEntries(Object.entries(scaleCollection(value.vehicles))
         .map(([id,vehicle])=>[id,vehicle&&[transportType,'jeep'].includes(vehicle.type)
@@ -1293,8 +1370,8 @@
       hp:100,ammo:effectiveWeapon(initial,'primary').mag,
       secondaryAmmo:effectiveWeapon(initial,'secondary').mag,kills:0,deaths:0,...initial,loadoutSet:false,
       vehiclePad:'',vehicleAmmo:0,
-      armorPlates:0,armorHp:0,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
-      smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
+      armorPlates:0,armorHp:0,armorSatchel:false,selfRevives:0,droneCharges:0,turretCharges:0,c4Charges:0,
+      smokeCharges:2,stimCharges:2,flashCharges:2,plateBoxCharges:1,grenadeCharges:2,stickyCharges:2,claymoreCharges:1,
       grappleCharges:0,airstrikeCharges:0,bunkerBusterCharges:0,rcCarCharges:0,
       downed:false,downedAt:0,
       online:true,lastSeen:Date.now(),
@@ -1485,26 +1562,38 @@
     const mods=equippedMods.map(entry=>entry.mod);
     const utility=equippedMods.find(({mod})=>mod.utility);
     const ammoAttachment=equippedMods.find(({mod})=>mod.bulletEffect&&mod.ammo);
+    const ionVulcan=mods.some(mod=>mod.ionVulcan);
+    const underbarrelAmmoMultiplier=mods.reduce((value,mod)=>value*(mod.underbarrelAmmo||1),1);
+    const withUnderbarrelCapacity=entry=>entry?{...entry.mod,
+      ...(entry.mod.ammo?{ammo:Math.round(entry.mod.ammo*underbarrelAmmoMultiplier)}:{})}:null;
     return {
       ...weapon,
       weaponId,
-      damage:Math.max(1,Math.round(weapon.damage*mods.reduce((value,mod)=>value*(mod.damage||1),1))),
-      rate:Math.max(40,Math.round(weapon.rate*mods.reduce((value,mod)=>value*(mod.rate||1),1))),
-      spread:weapon.spread * mods.reduce((value,mod) => value * (mod.spread || 1),1),
+      name:ionVulcan?'Ion Vulcan Minigun':weapon.name,
+      damage:ionVulcan?9:Math.max(1,Math.round(weapon.damage*mods.reduce((value,mod)=>value*(mod.damage||1),1))),
+      rate:ionVulcan?78:Math.max(40,Math.round(weapon.rate*mods.reduce((value,mod)=>value*(mod.rate||1),1))),
+      spread:ionVulcan?.27:weapon.spread * mods.reduce((value,mod) => value * (mod.spread || 1),1),
       range:Math.max(80,Math.round(weapon.range*mods.reduce((value,mod)=>value*(mod.range||1),1))),
-      recoil:(weapon.recoil||.02)*mods.reduce((value,mod)=>value*(mod.recoil||1),1),
+      recoil:ionVulcan?.095:(weapon.recoil||.02)*mods.reduce((value,mod)=>value*(mod.recoil||1),1),
       dualWield:mods.some(mod=>mod.dualWield),
-      burstRounds:mods.reduce((count,mod)=>Math.max(count,Number(mod.burstRounds)||1),1),
-      utilityAttachment:utility?{...utility.mod,attachmentId:utility.id}:null,
-      ammoAttachment:ammoAttachment?{...ammoAttachment.mod,attachmentId:ammoAttachment.id}:null,
-      mag:Math.round(weapon.mag * mods.reduce((value,mod) => value * (mod.mag || 1),1)),
-      reload:Math.round(weapon.reload * mods.reduce((value,mod) => value * (mod.reload || 1),1))
+      burstRounds:ionVulcan?1:Math.max(Number(weapon.burstRounds)||1,mods.reduce((count,mod)=>Math.max(count,Number(mod.burstRounds)||1),1)),
+      utilityAttachment:utility?{...withUnderbarrelCapacity(utility),attachmentId:utility.id}:null,
+      ammoAttachment:ammoAttachment?{...withUnderbarrelCapacity(ammoAttachment),attachmentId:ammoAttachment.id}:null,
+      mag:ionVulcan?300:Math.round(weapon.mag * mods.reduce((value,mod) => value * (mod.mag || 1),1)),
+      reload:Math.round(weapon.reload * mods.reduce((value,mod) => value * (mod.reload || 1),1)),
+      noReload:ionVulcan
     };
   }
 
   function normalizeAttachmentAmmo(ids,ammo={},previousIds=ids) {
     return Object.fromEntries(ids.filter(id=>attachments[id]?.ammo).map(id=>{
-      const capacity=Math.max(0,Math.floor(Number(attachments[id].ammo)||0));
+      const types=attachments[id].types||[];
+      const capacityMultiplier=ids.reduce((value,reserveId)=>{
+        const reserve=attachments[reserveId];
+        const compatible=!types.length||!reserve?.types||types.some(type=>reserve.types.includes(type));
+        return value*(compatible?(reserve?.underbarrelAmmo||1):1);
+      },1);
+      const capacity=Math.max(0,Math.floor((Number(attachments[id].ammo)||0)*capacityMultiplier));
       const previous=Number(ammo[id]);
       const count=previousIds.includes(id)&&Number.isFinite(previous)
         ?Math.max(0,Math.min(capacity,Math.floor(previous))):capacity;
@@ -1584,7 +1673,8 @@
       mutatePlayer(current=>current?{...current,hp:100,
         ...respawn,vehicle:'',ammo:effectiveWeapon(current,'primary').mag,
         secondaryAmmo:effectiveWeapon(current,'secondary').mag,
-        smokeCharges:2,stimCharges:2,grenadeCharges:2,claymoreCharges:1,
+        smokeCharges:2,stimCharges:2,flashCharges:2,plateBoxCharges:1,
+        grenadeCharges:2,stickyCharges:2,claymoreCharges:1,
         respawnAt:0,online:true,lastSeen:Date.now()}:current)
         .then(()=>{localPosition=respawn;})
         .catch(error=>setStatus(error.message,true))
@@ -1778,6 +1868,7 @@
     Object.values(warState.claymores||{}).forEach(claymore=>drawClaymore(context,claymore));
     Object.values(warState.grenades||{}).forEach(grenade=>drawThrownGrenade(context,grenade));
     Object.values(warState.lootBoxes||{}).forEach(crate=>drawLootBox(context,crate));
+    Object.values(warState.plateBoxes||{}).forEach(box=>drawPlateBox(context,box));
     Object.values(warState.c4s||{}).forEach(c4=>drawC4(context,c4));
     traces = traces.filter(trace => Date.now() - trace.time < 110);
     traces.forEach(trace => {
@@ -1810,6 +1901,11 @@
       context.restore();
     }
     context.restore();
+    const player=warState.players[playerKey];
+    if (Number(player?.flashUntil||0)>Date.now()) {
+      context.fillStyle='rgba(255,255,242,.82)';
+      context.fillRect(0,0,width,height);
+    }
     drawMinimap();
     updateStats(visiblePlayers);
     updateCaptureProgress();
@@ -2198,8 +2294,11 @@
   }
 
   function lootBoxIntersects(x,y,radius) {
-    return Object.values(warState&&warState.lootBoxes||{}).some(crate=>crate&&crate.available&&
+    const intersectsLoot=Object.values(warState&&warState.lootBoxes||{}).some(crate=>crate&&crate.available&&
       circleIntersectsRect(x,y,radius,{x:Number(crate.x)-15,y:Number(crate.y)-15,w:30,h:30}));
+    const intersectsPlateBox=Object.values(warState&&warState.plateBoxes||{}).some(box=>box&&Number(box.uses)>0&&
+      circleIntersectsRect(x,y,radius,{x:Number(box.x)-20,y:Number(box.y)-17,w:40,h:34}));
+    return intersectsLoot||intersectsPlateBox;
   }
 
   function drawTurret(context,turret) {
@@ -2782,6 +2881,24 @@
     context.fillText(crate.type==='random'?'DROP':'LOOT',Number(crate.x),Number(crate.y)-24);
   }
 
+  function drawPlateBox(context,box) {
+    if (!box||Number(box.uses)<=0||Number(box.hp)<=0) return;
+    const x=Number(box.x),y=Number(box.y);
+    context.fillStyle='#547f88';
+    context.strokeStyle='#c1f0e6';
+    context.lineWidth=4;
+    context.fillRect(x-20,y-17,40,34);
+    context.strokeRect(x-20,y-17,40,34);
+    context.fillStyle='#e5f2ed';
+    context.font='bold 12px system-ui';
+    context.textAlign='center';
+    context.fillText('PLATE '+Math.floor(Number(box.uses)),x,y-24);
+    context.fillStyle='#111815';
+    context.fillRect(x-18,y+23,36,4);
+    context.fillStyle='#65e6ad';
+    context.fillRect(x-18,y+23,36*Math.max(0,Number(box.hp)/120),4);
+  }
+
   function drawNode(context,id,node,state) {
     const colors = {vortex:'#5688df',krypton:'#e05b69'};
     const team = state && state.team;
@@ -2912,7 +3029,10 @@
       Number(accountData?.balance||0).toLocaleString()+' SEKTORIUM';
     updateCombatHud(player,weapon,ammo,weaponSlot);
     updateWeaponSwitchUi(player);
-    if (ui.giveUp) ui.giveUp.hidden=!player.downed;
+    if (ui.giveUp) {
+      ui.giveUp.hidden=false;
+      ui.giveUp.textContent=player.downed?'Hold to give up':'Hold G to respawn';
+    }
     const next = new Date();
     next.setUTCHours(0,0,0,0);
     next.setUTCDate(next.getUTCDate() + ((8 - next.getUTCDay()) % 7 || 7));
@@ -2925,9 +3045,10 @@
     const health=Math.max(0,Math.min(100,Number(player.hp)||0));
     const armor=Math.max(0,Math.min(150,Number(player.armorHp)||0));
     const worn=Math.min(3,Math.ceil(armor/50));
-    const carried=Math.min(3-worn,Math.max(0,Math.floor(Number(player.armorPlates)||0)));
+    const carried=Math.max(0,Math.floor(Number(player.armorPlates)||0));
+    const ready=Math.min(3-worn,carried);
     const slots=Array.from({length:3},(_,index)=>{
-      const state=index<worn?'worn':index<worn+carried?'ready':'empty';
+      const state=index<worn?'worn':index<worn+ready?'ready':'empty';
       const fill=state==='worn'?Math.round(Math.min(50,Math.max(0,armor-index*50))/50*100):0;
       const label=state==='worn'?'Armor active':state==='ready'?'Armor plate ready':'Empty plate slot';
       return '<span class="nexus-war-plate-slot '+state+'" aria-label="'+label+'"><i style="height:'+fill+'%"></i></span>';
@@ -2948,7 +3069,7 @@
       '<div class="nexus-war-health-track"><i class="'+(health<=30?'critical':'')+'" style="width:'+health+'%"></i></div>'+
       (player.downed?'<span class="nexus-war-downed">DOWNED</span>':'')+'</div>'+
       '<div class="nexus-war-hud-armor"><div class="nexus-war-hud-heading"><span>ARMOR</span><strong>'+Math.ceil(armor)+'<small> / 150</small></strong></div>'+
-      '<div class="nexus-war-plate-slots">'+slots+'</div><small class="nexus-war-ready-plates">'+carried+' READY</small></div>'+
+      '<div class="nexus-war-plate-slots">'+slots+'</div><small class="nexus-war-ready-plates">'+carried+' CARRIED'+(player.armorSatchel?' · SATCHEL':'')+'</small></div>'+
       '<div class="nexus-war-hud-ammo"><div class="nexus-war-hud-heading"><span>'+ammoLabel+'</span><strong>'+Math.max(0,Number(ammo)||0)+
       '<small> / '+Number(weapon.mag||0)+'</small></strong></div><div class="nexus-war-ammo-track"><i style="width:'+ammoPercent+'%"></i></div>'+
       '<small class="nexus-war-ammo-name">'+weapon.name+'</small></div>'+
@@ -3005,10 +3126,10 @@
       return;
     }
     const holdButton=event.target.closest('[data-war-action="give-up"]');
-    if (holdButton&&container.contains(holdButton)&&warState.players[playerKey]?.downed) {
+    if (!paused&&holdButton&&container.contains(holdButton)&&warState?.players?.[playerKey]) {
       event.preventDefault();
       holdButton.setPointerCapture(event.pointerId);
-      if (!giveUpInterval) giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},2000);
+      if (!giveUpInterval) giveUpInterval=window.setTimeout(()=>{manualRespawn();giveUpInterval=0;},2000);
       return;
     }
     const control=event.target.closest('[data-war-move],[data-war-fire]');
@@ -3158,8 +3279,10 @@
     } else secretSequence='';
     if (paused) return;
     if (key==='shift') { toggleDroneControl();return; }
-    if (key==='g'&&warState&&warState.players[playerKey]?.downed&&!giveUpInterval) {
-      giveUpInterval=window.setTimeout(()=>{giveUp();giveUpInterval=0;},2000);
+    if (key==='g'&&warState?.players?.[playerKey]&&!giveUpInterval) {
+      setStatus(warState.players[playerKey].downed?'Hold G for 2 seconds to give up.':'Hold G for 2 seconds to respawn.');
+      giveUpInterval=window.setTimeout(()=>{manualRespawn();giveUpInterval=0;},2000);
+      return;
     }
     keys.add(key);
     if (key==='1'||key==='2') {
@@ -3251,7 +3374,10 @@
     const burstCount=Math.max(1,Math.floor(Number(weapon.burstRounds)||1));
     const ammoCost=(weapon.dualWield?2:1)*burstCount;
     if (now - lastShot < weapon.rate) return;
-    if (Number(shooter[ammoField]||0) < ammoCost) { setStatus('Magazine empty. Press R to reload.'); return; }
+    if (Number(shooter[ammoField]||0) < ammoCost) {
+      setStatus(weapon.noReload?'Ion Vulcan feed empty. This conversion cannot be reloaded.':'Magazine empty. Press R to reload.');
+      return;
+    }
     if (ammoAttachment&&attachmentRounds<1) {setStatus('Incendiary magazine empty. Press R to reload.');return;}
     lastShot = now;
     playSound('shot');
@@ -3289,7 +3415,10 @@
     const projectileDamage=burstCount>1?weapon.damage:Math.max(1,Math.round(weapon.damage/pelletCount));
     try {
       for (let pellet=0;pellet<projectileCount;pellet++) {
-        if (pellet>0&&burstCount>1) playSound('shot');
+        if (pellet>0&&burstCount>1) {
+          await new Promise(resolve=>setTimeout(resolve,85));
+          playSound('shot');
+        }
         const burstStep=pellet%burstCount;
         const burstSpread=burstCount>1?(burstStep-(burstCount-1)/2)*weapon.spread*.22:0;
         const angle=Math.atan2(aim.y-origin.y,aim.x-origin.x)+(Math.random()-.5)*weapon.spread-recoilKick+burstSpread;
@@ -3297,7 +3426,7 @@
           x:Math.max(0,Math.min(worldWidth,origin.x+Math.cos(angle)*weapon.range)),
           y:Math.max(0,Math.min(worldHeight,origin.y+Math.sin(angle)*weapon.range))
         };
-        const penetratesWalls=weapon.type==='Sniper rifle';
+        const penetratesWalls=weapon.type==='Sniper rifle'&&!weapon.noReload;
         const wallHit=firstSolidObstruction(origin.x,origin.y,end.x,end.y,penetratesWalls);
         const shotEnd=wallHit||end;
         const target=closestTarget(origin,shotEnd,penetratesWalls);
@@ -3335,6 +3464,8 @@
           await hitTurret(impact.turretId,projectileDamage);
         } else if (impact&&impact.c4) {
           await destroyC4(impact.c4Id,impact.c4);
+        } else if (impact&&impact.plateBox) {
+          await hitPlateBox(impact.plateBoxId,projectileDamage,shooter);
         } else if (impact&&impact.transport) {
           await hitTransport(impact.transportId,weapon.aircraftDamage||125);
         } else if (baseHit) {
@@ -3390,6 +3521,13 @@
           const hit=pointToSegment(c4.x,c4.y,origin.x,origin.y,end.x,end.y);
           if (hit.distance<=20&&!lineBlocked(origin.x,origin.y,c4.x,c4.y,penetratesWalls)&&
             (!closest||hit.along<closest.distance)) closest={c4,c4Id:id,distance:hit.along,x:hit.x,y:hit.y};
+        }
+        for (const [id,box] of Object.entries(warState.plateBoxes||{})) {
+          if (!box||box.team===origin.team||Number(box.hp)<=0) continue;
+          const hit=pointToSegment(box.x,box.y,origin.x,origin.y,end.x,end.y);
+          if (hit.distance<=27&&!lineBlocked(origin.x,origin.y,box.x,box.y,penetratesWalls)&&
+            (!closest||hit.along<closest.distance))
+          closest={plateBox:box,plateBoxId:id,distance:hit.along,x:hit.x,y:hit.y};
         }
     return closest;
   }
@@ -3541,12 +3679,15 @@
   }
 
   function equipmentChoices(player) {
-    const tactical=[['smoke','Smoke grenade · '+Number(player.smokeCharges||0)] ,
-      ['stim','Stim · '+Number(player.stimCharges||0)]];
+    const tactical=[['smoke','Smoke grenade · '+Number(player.smokeCharges||0)],
+      ['stim','Stim · '+Number(player.stimCharges||0)],
+      ...(Number(player.flashCharges||0)>0?[['flash','Flash grenade · '+Number(player.flashCharges)]]:[]),
+      ...(Number(player.plateBoxCharges||0)>0?[['plate_box','Plate box · '+Number(player.plateBoxCharges)]]:[])];
     if (Number(player.grappleCharges||0)>0) tactical.push(['grapple','Grapple hook · '+player.grappleCharges]);
     if (Number(player.airstrikeCharges||0)>0) tactical.push(['airstrike','Precision airstrike · '+player.airstrikeCharges]);
     if (Number(player.bunkerBusterCharges||0)>0) tactical.push(['bunker_buster','Bunker buster · '+player.bunkerBusterCharges]);
     const lethal=[['grenade','Frag grenade · '+Number(player.grenadeCharges||0)],
+      ...(Number(player.stickyCharges||0)>0?[['sticky','Sticky grenade · '+Number(player.stickyCharges)]]:[]),
       ['claymore','Claymore · '+Number(player.claymoreCharges||0)]];
     if (Number(player.c4Charges||0)>0||Object.values(warState?.c4s||{}).some(c4=>c4?.ownerKey===playerKey))
       lethal.push(['c4','C4 · '+Number(player.c4Charges||0)+' available · '+
@@ -3576,7 +3717,8 @@
   }
 
   async function consumeEquipment(slot,item) {
-    const chargeField={smoke:'smokeCharges',stim:'stimCharges',grenade:'grenadeCharges',
+    const chargeField={smoke:'smokeCharges',stim:'stimCharges',flash:'flashCharges',plate_box:'plateBoxCharges',
+      grenade:'grenadeCharges',sticky:'stickyCharges',
       claymore:'claymoreCharges',turret:'turretCharges',drone:'droneCharges',
       grapple:'grappleCharges',airstrike:'airstrikeCharges',bunker_buster:'bunkerBusterCharges',
       rc_car:'rcCarCharges',c4:'c4Charges'}[item];
@@ -3588,8 +3730,8 @@
       const remaining=Number(current[chargeField])-1;
       const fallback=slot==='tactical'?'smoke':'grenade';
       const shouldFallback=remaining===0&&(slot==='tactical'
-        ?['turret','drone','grapple','airstrike','bunker_buster'].includes(item)
-        :['turret','drone','rc_car'].includes(item));
+        ?['flash','plate_box','turret','drone','grapple','airstrike','bunker_buster'].includes(item)
+        :['sticky','turret','drone','rc_car'].includes(item));
       return {...current,[chargeField]:remaining,
         ...(shouldFallback?{[slot]:fallback}:{})};
     });
@@ -3784,6 +3926,12 @@
     if (item==='airstrike'||item==='bunker_buster') { beginSupportTargeting(item);return; }
     try {
       const position=localPosition||player;
+      if (item==='plate_box') {
+        await placePlateBox();
+        refreshEquipmentUi();
+        draw();
+        return;
+      }
       if (item==='grapple') {
         const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
         const range=950;
@@ -3809,6 +3957,17 @@
           x:impact.x,y:impact.y,startX:position.x,startY:position.y,targetX:impact.x,targetY:impact.y,
           createdAt,detonateAt,expiresAt:detonateAt+650,radius:260}));
         setStatus('Smoke grenade thrown. Cloud deploys on impact.');
+      } else if (item==='flash') {
+        const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+        const distance=aimActive?Math.min(520,Math.hypot(aim.x-position.x,aim.y-position.y)):520;
+        const destination={x:position.x+Math.cos(angle)*distance,y:position.y+Math.sin(angle)*distance};
+        const impact=firstSolidObstruction(position.x,position.y,destination.x,destination.y)||destination;
+        const id='flash_grenade_'+playerKey+'_'+Date.now();
+        const createdAt=Date.now(),detonateAt=createdAt+650;
+        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,effect:'flash',
+          x:impact.x,y:impact.y,startX:position.x,startY:position.y,targetX:impact.x,targetY:impact.y,
+          createdAt,detonateAt,expiresAt:detonateAt+650,radius:620}));
+        setStatus('Flash grenade thrown. It will disorient enemies in line of sight.');
       } else if (item==='stim') {
         await mutatePlayer(current=>({...current,hp:Math.min(100,Number(current.hp)+45),
           speedBoostUntil:Date.now()+8000}));
@@ -3841,6 +4000,20 @@
     showGameNotice('C4 placed. Hold C or hold the C4 button to detonate all your charges.','objective');
     refreshEquipmentUi();
     draw();
+  }
+
+  async function placePlateBox() {
+    const player=warState?.players?.[playerKey];
+    if (!player||Number(player.plateBoxCharges||0)<1) throw new Error('Equip a plate box charge first.');
+    const position=localPosition||player;
+    const angle=aimActive?Math.atan2(aim.y-position.y,aim.x-position.x):Number(player.facingAngle)||0;
+    const target={x:Math.max(80,Math.min(worldWidth-80,position.x+Math.cos(angle)*58)),
+      y:Math.max(100,Math.min(worldHeight-100,position.y+Math.sin(angle)*58))};
+    const id='plate_box_'+playerKey+'_'+Date.now();
+    await consumeEquipment('tactical','plate_box');
+    await updateWar('plateBoxes/'+id,()=>({id,owner:playerName,ownerKey:playerKey,team:playerTeam,
+      x:target.x,y:target.y,hp:120,uses:3,createdAt:Date.now()}));
+    setStatus('Plate box deployed. It holds five plates per use and can be used three times.');
   }
 
   async function detonateC4s() {
@@ -3911,7 +4084,7 @@
           x:position.x,y:position.y,angle:Math.atan2(aim.y-position.y,aim.x-position.x),
           damage:90,radius:135,triggeredAt:0,createdAt:Date.now()}));
         setStatus('Claymore planted and facing your aim direction.');
-      } else if (item==='grenade') {
+      } else if (item==='grenade'||item==='sticky') {
         playSound('throw');
         await consumeEquipment('lethal',item);
         const position=localPosition||player;
@@ -3920,11 +4093,12 @@
         const impact={x:position.x+Math.cos(angle)*distance,y:position.y+Math.sin(angle)*distance};
         const id='grenade_'+playerKey+'_'+Date.now();
         const createdAt=Date.now(),detonateAt=createdAt+900;
-        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,
-          x:impact.x,y:impact.y,startX:position.x,startY:position.y,
-          targetX:impact.x,targetY:impact.y,createdAt,detonateAt,expiresAt:detonateAt+1000}));
+        await updateWar('grenades/'+id,()=>({team:playerTeam,owner:playerName,effect:item==='sticky'?'sticky':'',
+          x:impact.x,y:impact.y,startX:position.x,startY:position.y,targetX:impact.x,targetY:impact.y,
+          createdAt,detonateAt,expiresAt:detonateAt+1000,
+          ...(item==='sticky'?{radius:175,damage:125,splashDamage:68,directRadius:58}:{})}));
         refreshEquipmentUi();
-        setStatus('Frag grenade thrown. Detonates in 0.9 seconds.');
+        setStatus(item==='sticky'?'Sticky grenade thrown. High direct damage; detonates in 0.9 seconds.':'Frag grenade thrown. Detonates in 0.9 seconds.');
       }
       refreshEquipmentUi();
     } catch(error) { setStatus(error.message||'Could not use lethal equipment.',true); }
@@ -3994,6 +4168,16 @@
           team:detonated.team,owner:detonated.owner,x,y,radius:260,seed:Math.random()*Math.PI*2,
           createdAt:now,expiresAt:now+12_000
         });
+      } else if (detonated.effect==='flash') {
+        for (const [key,enemy] of Object.entries(warState.players||{})) {
+          if (!enemy||enemy.team===detonated.team||!enemy.online||enemy.hp<=0||enemy.transportId) continue;
+          if (Math.hypot(Number(enemy.x)-x,Number(enemy.y)-y)>radius||
+              firstSolidObstruction(x,y,Number(enemy.x),Number(enemy.y))) continue;
+          await updateWar('players/'+key,current=>current&&current.team!==detonated.team
+            ?{...current,flashUntil:Math.max(Number(current.flashUntil)||0,now+2400)}:current);
+        }
+        if (detonated.owner===playerName) setStatus('Flash grenade detonated. Enemies caught in the open are disoriented.');
+        continue;
       } else if (detonated.effect==='bunker_gas') {
         const gasId='gas_'+id;
         await updateWar('smokes/'+gasId,current=>current||{
@@ -4213,6 +4397,31 @@
     } finally { giveUpBusy=false; }
   }
 
+  async function manualRespawn() {
+    const player=warState?.players?.[playerKey];
+    if (!player||giveUpBusy||respawnBusy||warState.matchPhase!=='playing') return;
+    if (player.downed) { await giveUp();return; }
+    respawnBusy=true;
+    try {
+      if (player.transportId&&warState.vehicles?.[player.transportId]) await leaveTransport(player);
+      if (player.vehicleId&&warState.vehicles?.[player.vehicleId])
+        await updateWar('vehicles/'+player.vehicleId,()=>null);
+      const spawn=basePositions[playerTeam];
+      const position={x:playerTeam==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y};
+      await mutatePlayer(current=>current?{...current,...position,hp:100,vehicle:'',vehicleId:'',transportId:'',
+        vehiclePad:'',houseInside:'',houseFloor:0,downed:false,downedAt:0,respawnAt:0,
+        ammo:effectiveWeapon(current,'primary').mag,secondaryAmmo:effectiveWeapon(current,'secondary').mag,
+        smokeCharges:2,stimCharges:2,flashCharges:2,plateBoxCharges:1,grenadeCharges:2,stickyCharges:2,claymoreCharges:1,
+        deaths:Number(current.deaths||0)+(Number(current.hp)>0?1:0),lastSeen:Date.now()}:current);
+      localPosition=position;
+      localTransportId='';
+      houseInside='';houseFloor=0;
+      movementVelocity={x:0,y:0};
+      setStatus('Respawned at your team base.');
+    } catch(error) { setStatus(error.message||'Could not respawn.',true); }
+    finally { respawnBusy=false; }
+  }
+
   async function useSelfRevive() {
     const player=warState&&warState.players[playerKey];
     if (!player||!player.downed||Number(player.selfRevives||0)<1) {
@@ -4266,7 +4475,7 @@
   }
 
   async function purchaseFieldUpgrade(type) {
-    const config={armor:{cost:150,label:'armor plate'},selfRevive:{cost:400,label:'self-revive'},
+    const config={armor:{cost:150,label:'armor plate'},armorSatchel:{cost:750,label:'armor satchel'},selfRevive:{cost:400,label:'self-revive'},
       turret:{cost:350,label:'sentry turret'},drone:{cost:250,label:'kamikaze drone'},
       grapple:{cost:450,label:'grapple hook'},airstrike:{cost:1800,label:'precision airstrike'},
       bunkerBuster:{cost:2600,label:'bunker buster'},rcCar:{cost:1200,label:'RC kamikaze car'},
@@ -4275,8 +4484,11 @@
     if (!item) return;
     if (!nearOwnBase()) { setStatus('Field upgrades can only be purchased at your team base.',true);return; }
     const player=warState.players[playerKey];
-    if (type==='armor'&&Number(player.armorPlates||0)+Math.ceil(Number(player.armorHp||0)/50)>=3) {
-      setStatus('You can carry or plate up with at most three armor plates.',true);return;
+    if (type==='armor'&&Number(player.armorPlates||0)>=armorPlateCapacity(player)) {
+      setStatus('Your carried plates are full. Get an armor satchel to carry up to eight.',true);return;
+    }
+    if (type==='armorSatchel'&&player.armorSatchel) {
+      setStatus('You already own an armor satchel.',true);return;
     }
     try {
       let purchaseError='';
@@ -4288,6 +4500,8 @@
       if (purchaseError) throw new Error(purchaseError);
       if (type==='armor') {
         await mutatePlayer(current=>({...current,armorPlates:Number(current.armorPlates||0)+1}));
+      } else if (type==='armorSatchel') {
+        await mutatePlayer(current=>({...current,armorSatchel:true}));
       } else if (type==='selfRevive') {
         await mutatePlayer(current=>({...current,selfRevives:Number(current.selfRevives||0)+1}));
       } else if (type==='drone') {
@@ -4503,6 +4717,7 @@
     const weaponSlot=vehicleWeapon?null:
       player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'?'secondary':'primary';
     const weapon=vehicleWeapon||effectiveWeapon(player,weaponSlot);
+    if (weapon.noReload) { setStatus(weapon.name+' has a sealed 300-round feed and cannot be reloaded.');return; }
     const ammoField=vehicleWeapon?'vehicleAmmo':weaponSlot==='secondary'?'secondaryAmmo':'ammo';
     const attachmentMagazines=[weapon.utilityAttachment,weapon.ammoAttachment]
       .filter((attachment,index,list)=>attachment?.ammo&&
@@ -4560,6 +4775,12 @@
         return;
       }
     }
+    const nearbyPlateBox=Object.entries(warState.plateBoxes||{})
+      .map(([id,box])=>({id,box,distance:Math.hypot(Number(box?.x)-position.x,Number(box?.y)-position.y)}))
+      .filter(item=>item.box&&Number(item.box.uses)>0&&item.distance<=105&&
+        Number(player.armorPlates||0)<armorPlateCapacity(player))
+      .sort((a,b)=>a.distance-b.distance)[0];
+    if (nearbyPlateBox) { await claimPlateBox(nearbyPlateBox.id);return; }
     const nearestCrate=Object.values(warState.lootBoxes||{})
       .filter(crate=>crate&&crate.available)
       .map(crate=>({crate,distance:Math.hypot(Number(crate.x)-position.x,Number(crate.y)-position.y)}))
@@ -4946,6 +5167,37 @@
     }
   }
 
+  function armorPlateCapacity(player) {
+    return player?.armorSatchel?8:5;
+  }
+
+  async function claimPlateBox(id) {
+    const player=warState?.players?.[playerKey];
+    if (!player||player.downed||player.hp<=0) return;
+    if (Number(player.armorPlates||0)>=armorPlateCapacity(player)) {
+      setStatus('Your carried plates are full. Use a plate or get an armor satchel.',true);
+      return;
+    }
+    let claimed=false,remainingUses=0;
+    await updateWar('plateBoxes/'+id,current=>{
+      claimed=!!current&&Number(current.uses)>0;
+      if (!claimed) return current;
+      remainingUses=Number(current.uses)-1;
+      return remainingUses>0?{...current,uses:remainingUses}:null;
+    });
+    if (!claimed) { setStatus('Someone else used the last plate box charge.');return; }
+    let received=0;
+    await mutatePlayer(current=>{
+      if (!current) return current;
+      const room=Math.max(0,armorPlateCapacity(current)-Number(current.armorPlates||0));
+      received=Math.min(5,room);
+      return {...current,armorPlates:Number(current.armorPlates||0)+received};
+    });
+    setStatus('Plate box: '+received+' armor plates added · '+remainingUses+' use'+(remainingUses===1?'':'s')+' remain.');
+    showGameNotice('Picked up '+received+' armor plates.','loot');
+    draw();
+  }
+
   async function lootNearby() {
     const player=warState&&warState.players[playerKey];
     if (!player||player.downed||player.hp<=0) return;
@@ -4963,13 +5215,14 @@
       setStatus('Move within 105 units of a marked loot crate and press E.');
       return;
     }
-    const armorTotal=Number(player.armorPlates||0)+Math.ceil(Number(player.armorHp||0)/50);
+    const carriedPlates=Number(player.armorPlates||0);
     const drops=[
       {kind:'tactical',item:'smoke',field:'smokeCharges',amount:2,label:'2 smoke charges'},
       {kind:'tactical',item:'stim',field:'stimCharges',amount:2,label:'2 stim charges'},
       {kind:'lethal',item:'grenade',field:'grenadeCharges',amount:2,label:'2 frag grenades'},
       {kind:'lethal',item:'claymore',field:'claymoreCharges',amount:1,label:'1 claymore'},
-      ...(armorTotal<3?[{kind:'plate',field:'armorPlates',amount:1,label:'1 armor plate'}]:[]),
+      ...(carriedPlates<armorPlateCapacity(player)?[{kind:'plate',field:'armorPlates',amount:1,label:'1 armor plate'}]:[]),
+      ...(!player.armorSatchel?[{kind:'satchel',label:'armor satchel'}]:[]),
       {kind:'resources',amount:40+Math.floor(Math.random()*41),label:'team resources'}
     ];
     const drop=drops[Math.floor(Math.random()*drops.length)];
@@ -4992,7 +5245,15 @@
         let rewardLabel=drop.label;
         await mutatePlayer(current=>{
           if (!current) return current;
-          if (drop.kind==='plate'&&Number(current.armorPlates||0)+Math.ceil(Number(current.armorHp||0)/50)>=3) {
+          if (drop.kind==='satchel'&&!current.armorSatchel) {
+            rewardLabel='armor satchel · 8-plate capacity';
+            return {...current,armorSatchel:true};
+          }
+          if (drop.kind==='satchel') {
+            rewardLabel='2 armor plates';
+            return {...current,armorPlates:Math.min(armorPlateCapacity(current),Number(current.armorPlates||0)+2)};
+          }
+          if (drop.kind==='plate'&&Number(current.armorPlates||0)>=armorPlateCapacity(current)) {
             rewardLabel='1 smoke charge (armor capacity full)';
             return {...current,smokeCharges:Number(current.smokeCharges||0)+1};
           }
@@ -5300,6 +5561,7 @@
     if (button.dataset.warAction==='revive') reviveNearby();
     if (button.dataset.warAction==='self-revive') useSelfRevive();
     if (button.dataset.warAction==='armor') purchaseFieldUpgrade('armor');
+    if (button.dataset.warAction==='armor-satchel') purchaseFieldUpgrade('armorSatchel');
     if (button.dataset.warAction==='turret') purchaseFieldUpgrade('turret');
     if (button.dataset.warAction==='self-revive-buy') purchaseFieldUpgrade('selfRevive');
     if (button.dataset.warAction==='drone-buy') purchaseFieldUpgrade('drone');
@@ -5318,8 +5580,10 @@
       useLethal();
     }
     if (button.dataset.warAction==='drone-toggle') toggleDroneControl();
-    if (button.dataset.warAction==='give-up'&&warState.players[playerKey]?.downed) {
-      setStatus('Hold the give-up button for 2 seconds to give up.');
+    if (button.dataset.warAction==='give-up'&&warState.players[playerKey]) {
+      setStatus(warState.players[playerKey].downed
+        ?'Hold the button for 2 seconds to give up.'
+        :'Hold the button for 2 seconds to respawn.');
     }
   }
 
@@ -5372,6 +5636,15 @@
       '<form class="nexus-war-loadout"><label>Weapon<select data-war-weapon></select></label><label>Attachment 1<select data-war-attachment="1"></select></label><label>Attachment 2<select data-war-attachment="2"></select></label><label>Attachment 3<select data-war-attachment="3"></select></label><label>Attachment 4<select data-war-attachment="4"></select></label><label>Attachment 5<select data-war-attachment="5"></select></label><label>Tactical<select data-war-tactical></select></label><label>Lethal<select data-war-lethal></select></label><button class="nexus-button" type="submit">Equip loadout</button><button class="nexus-button secondary" type="button" data-war-action="use-tactical">Use tactical (X)</button><button class="nexus-button secondary" type="button" data-war-action="use-lethal">Use lethal (C)</button><small class="nexus-war-equipment-help">Choose up to five compatible attachments, one tactical, and one lethal. Underbarrel ammo reloads with R. Stims restore health and boost movement speed.</small></form>' +
       '<section class="nexus-war-attachment-shop"><h3>Attachment shop</h3><p>Buy permanent upgrades with your Nexus Sektorium.</p><div data-war-attachment-shop></div></section>' +
       '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Primary and secondary weapons across nine classes · unlocks through level 100</span><small>Weapons unlock at levels 1–100. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
+    const description=container.querySelector('.nexus-war-description');
+    if (description) description.textContent=description.textContent
+      .replace('Press Z to apply a purchased armor plate.','Press Z to apply a carried armor plate.')
+      .replace(
+      'or hold G while downed to give up.',
+      'hold G for two seconds to respawn while alive or give up while downed. Plate boxes provide five plates per use and last three uses.'
+      );
+    const armorButton=container.querySelector('[data-war-action="armor"]');
+    armorButton?.insertAdjacentHTML('afterend','<button class="nexus-button secondary" type="button" data-war-action="armor-satchel">Armor satchel · 750</button>');
     const hud=document.createElement('div');
     hud.className='nexus-war-hud';
     hud.dataset.warHud='';
