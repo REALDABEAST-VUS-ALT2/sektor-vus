@@ -352,6 +352,10 @@
     }
   }
 
+  function ownsMallBusiness(user,business) {
+    return !!(user&&business&&String(user.username||'').trim().toLowerCase()===String(business.owner||'').trim().toLowerCase());
+  }
+
   function openLocalWorldDatabase() {
     return new Promise((resolve, reject) => {
       if (!globalThis.indexedDB) return reject(new Error('IndexedDB is unavailable in this browser.'));
@@ -1086,19 +1090,19 @@
       selectedMallProductId='';
     }
     const businesses=world.mallBusinesses.slice().sort((left,right)=>Number(left.createdAt||0)-Number(right.createdAt||0));
-    const ownedBusinessLinks=businesses.filter(business=>user&&business.owner===user.username).map(business=>{
+    const ownedBusinessLinks=businesses.filter(business=>ownsMallBusiness(user,business)).map(business=>{
       const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
       return '<button class="nexus-button secondary" type="button" data-action="enter-mall-business" data-id="'+escapeHtml(business.id)+'">Open '+escapeHtml(type.label)+': '+escapeHtml(business.name)+'</button>';
     }).join('');
     const ownedBusinessShortcuts=ownedBusinessLinks?'<div class="nexus-mall-owned-businesses"><small>Your businesses</small>'+ownedBusinessLinks+'</div>':'';
     const businessTiles=businesses.map((business,index)=>{
       const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
-      const owned=!!user&&business.owner===user.username;
+      const owned=ownsMallBusiness(user,business);
       const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
       const productMarkup=products.map(product=>{
         const itemData=product.itemData||{};
         const canAfford=user&&Number(user.balance||0)>=Number(product.price||0);
-        const ownProduct=user&&business.owner===user.username;
+        const ownProduct=ownsMallBusiness(user,business);
         return '<article class="nexus-mall-product"><div><strong>'+escapeHtml(product.name)+'</strong><small>'+escapeHtml(product.type||'item')+' · '+currency(product.price)+' · '+Number(product.stock)+' available</small>'+mediaPreview(itemData.media,product.name)+'</div><button class="nexus-button" type="button" data-action="buy-mall-product" data-id="'+escapeHtml(product.id)+'" '+(!user||ownProduct||!canAfford?'disabled':'')+'>'+(ownProduct?'Your product':!user?'Sign in to buy':!canAfford?'Not enough Sektorium':'Buy')+'</button></article>';
       }).join('')||'<p class="nexus-mall-empty">No products on display.</p>';
       let casinoMarkup='';
@@ -1125,7 +1129,7 @@
 
   function renderMallBusiness(user,business) {
     const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
-    const owned=!!user&&business.owner===user.username;
+    const owned=ownsMallBusiness(user,business);
     const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
     const theme=['forest','midnight','neon','royal'].includes(business.theme)?business.theme:'forest';
     const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
@@ -1345,7 +1349,7 @@
     const user=currentUser();
     try {
       if (form.dataset.form==='mall-business-settings') {
-        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username);
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry));
         if (!business) throw new Error('Only this business owner can change its settings.');
         const name=String(formData.get('name')||'').trim();
         if (!name) throw new Error('Enter a business name.');
@@ -1357,7 +1361,7 @@
         if (business.type!=='casino') business.shelfCount=Math.max(1,Math.min(6,Number(formData.get('shelfCount'))||3));
         await persist('Storefront settings saved.');
       } else if (form.dataset.form==='casino-deposit') {
-        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry)&&entry.type==='casino');
         const amount=Number(formData.get('amount'));
         const wallet=Number(user&&user.balance||0);
         if (!business) throw new Error('Only this casino owner can deposit into its reserve.');
@@ -1366,7 +1370,7 @@
         business.bankroll=Number(business.bankroll||0)+amount;
         await persist(amount.toLocaleString()+' Sektorium deposited into the house reserve.');
       } else if (form.dataset.form==='casino-withdraw') {
-        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry)&&entry.type==='casino');
         const amount=Number(formData.get('amount'));
         const reserve=Number(business&&business.bankroll||0);
         if (!business) throw new Error('Only this casino owner can withdraw its reserve.');
@@ -1375,7 +1379,7 @@
         user.balance=Number(user.balance||0)+amount;
         await persist(amount.toLocaleString()+' Sektorium withdrawn to your wallet.');
       } else if (form.dataset.form==='casino-machine-settings') {
-        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry)&&entry.type==='casino');
         const machine=business&&business.machines?.find(entry=>entry.id===form.dataset.machineId);
         const config=machine&&casinoMachineTypes[machine.type];
         if (!machine||!config||config.game!=='slots') throw new Error('That slot machine is unavailable.');
@@ -1393,7 +1397,7 @@
         const quantity=Number(formData.get('quantity'));
         if (!business||!product||!Number.isInteger(quantity)||quantity<1||quantity>Number(product.stock||0))
           throw new Error('Choose an available product quantity.');
-        if (business.owner===user.username) throw new Error('You cannot buy from your own business.');
+        if (ownsMallBusiness(user,business)) throw new Error('You cannot buy from your own business.');
         const buyer=world.users.find(entry=>entry.username===user.username);
         const seller=world.users.find(entry=>entry.username===business.owner);
         const total=Number(product.price||0)*quantity;
@@ -1416,7 +1420,7 @@
         await persist('Secret reward: +10,000 Sektorium.');
       } else if (form.dataset.form === 'mall-product') {
         if (!user) throw new Error('Sign in to stock a Mall business.');
-        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user.username);
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry));
         if (!business) throw new Error('You do not own this Mall business.');
         const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
         const currentProducts=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
@@ -1736,7 +1740,7 @@
         await persist('Your '+config.label+' is open in the Mall.');
       } else if (action === 'buy-casino-machine') {
         if (!user) throw new Error('Sign in to manage a casino.');
-        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.businessId&&entry.owner===user.username&&entry.type==='casino');
+        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.businessId&&ownsMallBusiness(user,entry)&&entry.type==='casino');
         const machineType=casinoMachineTypes[button.dataset.machine];
         if (!business||!machineType||button.dataset.machine==='basic_slots') throw new Error('That casino machine is unavailable.');
         if (Number(user.balance||0)<machineType.price) throw new Error('You need '+machineType.price.toLocaleString()+' Sektorium to add that machine.');
@@ -1749,7 +1753,7 @@
         const product=world.mallProducts.find(entry=>entry.id===button.dataset.id);
         const business=product&&world.mallBusinesses.find(entry=>entry.id===product.businessId);
         if (!product||!business||Number(product.stock)<1) throw new Error('That product is sold out.');
-        if (business.owner===user.username) throw new Error('You cannot buy your own product.');
+        if (ownsMallBusiness(user,business)) throw new Error('You cannot buy your own product.');
         const buyer=world.users.find(entry=>entry.username===user.username);
         const price=Number(product.price||0);
         if (Number(buyer.balance||0)<price) throw new Error('You do not have enough Sektorium.');
@@ -1768,7 +1772,7 @@
         if (!user) throw new Error('Sign in to play at the casino.');
         const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.businessId&&entry.type==='casino');
         const machine=business&&business.machines?.find(entry=>entry.id===button.dataset.machineId);
-        if (!business||!machine||business.owner===user.username) throw new Error('This casino game is unavailable to the owner.');
+        if (!business||!machine||ownsMallBusiness(user,business)) throw new Error('This casino game is unavailable to the owner.');
         const bet=Number(content.querySelector('[data-mall-bet]')?.value);
         const gambler=world.users.find(entry=>entry.username===user.username);
         if (!Number.isInteger(bet)||bet<10||bet>5000) throw new Error('Choose a whole-number wager from 10 to 5000.');
