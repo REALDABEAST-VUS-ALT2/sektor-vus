@@ -1,5 +1,7 @@
 function friendConversationId(friendKey) { return [state.user.key, friendKey].sort().join('_'); }
 function friendAvatarMarkup(friend) { return friend.avatar ? '<span class="friend-nav-avatar"><img src="' + esc(friend.avatar) + '" alt=""></span>' : '<span class="friend-nav-avatar">' + esc((friend.username || '?').slice(0,2).toUpperCase()) + '</span>'; }
+let friendsLoadPromise=null;
+let friendRequestsRefreshTimer=0;
 function startOnlinePresence() {
   if (!state.user || state.onlinePresenceRef) return;
   state.onlinePresenceRef = db.ref('onlineUsers/' + state.user.key);
@@ -12,23 +14,40 @@ function startOnlinePresence() {
   };
   state.onlinePresenceListRef.on('value', state.onlinePresenceHandler);
 }
-async function loadFriends() {
+async function loadFriends({silent=false}={}) {
   if (!state.user) return;
-  try {
-    const friendsSnap = await db.ref('users/' + state.user.key + '/friends').get();
-    const friendKeys = Object.keys(friendsSnap.val() || {});
-    const friendUsers = await Promise.all(friendKeys.map(async key => { const snap = await db.ref('users/' + key).get(); return snap.exists() ? {key, ...snap.val()} : null; }));
-    state.friends = friendUsers.filter(friend => friend && friend.key !== state.user.key);
-    const requestsSnap = await db.ref('users/' + state.user.key + '/friendRequestsIncoming').get();
-    state.friendRequests = Object.entries(requestsSnap.val() || {}).map(([key, request]) => ({key, ...request})).filter(request => (request.fromKey || request.key) !== state.user.key);
-  } catch (error) {
-    state.friends = [];
-    state.friendRequests = [];
-    showError('Could not load friends and direct messages. Check your connection and try again.');
-  }
-  renderFriendsArea();
-  renderFriendRequests();
-  renderFriendsDirectory();
+  if (friendsLoadPromise) return friendsLoadPromise;
+  const refreshButton=$('refreshFriendRequestsBtn');
+  const requestStatus=$('friendRequestsStatus');
+  if (refreshButton) refreshButton.disabled=true;
+  if (requestStatus) requestStatus.textContent='Refreshing…';
+  friendsLoadPromise=(async()=>{
+    try {
+      const friendsSnap = await db.ref('users/' + state.user.key + '/friends').get();
+      const friendKeys = Object.keys(friendsSnap.val() || {});
+      const friendUsers = await Promise.all(friendKeys.map(async key => { const snap = await db.ref('users/' + key).get(); return snap.exists() ? {key, ...snap.val()} : null; }));
+      state.friends = friendUsers.filter(friend => friend && friend.key !== state.user.key);
+      const requestsSnap = await db.ref('users/' + state.user.key + '/friendRequestsIncoming').get();
+      state.friendRequests = Object.entries(requestsSnap.val() || {}).map(([key, request]) => ({key, ...request})).filter(request => (request.fromKey || request.key) !== state.user.key);
+      if (requestStatus) requestStatus.textContent=state.friendRequests.length?'Updated just now':'';
+    } catch (error) {
+      if (requestStatus) requestStatus.textContent='Could not refresh · try again';
+      if (!silent) showError('Could not load friends and direct messages. '+(error.message||'Check your connection and try again.'));
+    } finally {
+      friendsLoadPromise=null;
+      if (refreshButton) refreshButton.disabled=false;
+      renderFriendsArea();
+      renderFriendRequests();
+      renderFriendsDirectory();
+    }
+  })();
+  return friendsLoadPromise;
+}
+function startFriendRequestRefresh() {
+  if (friendRequestsRefreshTimer) clearInterval(friendRequestsRefreshTimer);
+  friendRequestsRefreshTimer=window.setInterval(()=>{
+    if (state.user&&document.visibilityState!=='hidden') loadFriends({silent:true});
+  },30_000);
 }
 function renderFriendsArea() {
   if (!els.friendsList) return;
@@ -392,6 +411,7 @@ const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUU
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
 els.audioInput = $('audioInput');
+els.popupStopShareBtn=$('popupStopShareBtn');
 const fileInput = document.createElement('input');
 fileInput.type = 'file';
 fileInput.hidden = true;
@@ -433,24 +453,42 @@ const safe = value => String(value || '').replace(/[.#$\[\]/]/g, '_');
 const esc = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
 const keyFor = name => safe(name.trim().toLowerCase());
 function isServerOwner() { return !!(state.server && state.user && String(state.server.ownerKey || '').trim() === String(state.user.key || '').trim()); }
-function isOwnerEditing() { return isServerOwner() && state.editMode; }
+function hasServerPermission(permission) {
+  if (!state.server || !state.user) return false;
+  if (isServerOwner()) return true;
+  const permissions=state.server.ranks?.[state.user.key]?.permissions||{};
+  if (permissions[permission]===true) return true;
+  if (permissions.manage===true && permission==='manageChannels') return true;
+  return permissions.announce===true && permission==='manageAnnouncements';
+}
+function openOwnerGatedModal(permission, openModal, ...args) {
+  if (!hasServerPermission(permission)) return;
+  const server=state.server;
+  const ownerKey=server.ownerKey;
+  server.ownerKey=state.user.key;
+  try { return openModal(...args); }
+  finally { server.ownerKey=ownerKey; }
+}
+function isOwnerEditing() { return hasServerPermission('manageChannels') && state.editMode; }
 function updateEditModeUi() {
-  const owner = isServerOwner();
-  const enabled = owner && state.editMode;
+  const canManageChannels=hasServerPermission('manageChannels');
+  const canManageRanks=hasServerPermission('manageRanks');
+  const canManageAnnouncements=hasServerPermission('manageAnnouncements');
+  const enabled=canManageChannels&&state.editMode;
   if (els.editModeBtn) {
-    els.editModeBtn.hidden = !owner;
+    els.editModeBtn.hidden = !canManageChannels;
     els.editModeBtn.setAttribute('aria-pressed', String(enabled));
     els.editModeBtn.textContent = enabled ? '✓' : '✎';
     els.editModeBtn.title = enabled ? 'Turn off channel edit mode' : 'Turn on channel edit mode';
     els.editModeBtn.setAttribute('aria-label', els.editModeBtn.title);
     els.editModeBtn.classList.toggle('active', enabled);
   }
-  if (els.ownerTools) els.ownerTools.hidden = !owner;
+  if (els.ownerTools) els.ownerTools.hidden = !(canManageChannels||canManageRanks);
   if (els.serverSettings) els.serverSettings.disabled = false;
-  if (els.addChannel) els.addChannel.disabled = !owner;
-  if (els.rank) els.rank.disabled = !owner;
-  if (els.announcementInput) els.announcementInput.disabled = !owner;
-  if (els.publish) els.publish.disabled = !owner;
+  if (els.addChannel) els.addChannel.disabled = !canManageChannels;
+  if (els.rank) els.rank.disabled = !canManageRanks;
+  if (els.announcementInput) els.announcementInput.disabled = !canManageAnnouncements;
+  if (els.publish) els.publish.disabled = !canManageAnnouncements;
 }
 let pendingImage = '';
 let pendingAudio = '';
@@ -688,6 +726,11 @@ async function ensureFirebaseAccess() {
   }
 }
 async function showApp() { els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); await loadServers(); const joinCode = new URLSearchParams(location.search).get('join'); if (joinCode) { const existing = state.servers.find(server => String(server.code).toUpperCase() === joinCode.toUpperCase()); if (existing) selectServer(existing.code); else openJoinServerModal(joinCode); } }
+const showAppWithPendingRefresh=showApp;
+showApp=async function() {
+  await showAppWithPendingRefresh();
+  startFriendRequestRefresh();
+};
 function showAuth() { els.authView.hidden = false; els.appView.hidden = true; }
 function avatarMarkup(user, className) { const image = user && user.avatar; return image ? '<div class="' + className + ' has-image"><img src="' + esc(image) + '" alt=""></div>' : '<div class="' + className + '">' + esc((user && user.name || state.user.username).slice(0,2).toUpperCase()) + '</div>'; }
 function showError(message) { if (els.authError) els.authError.textContent = message; console.error('[Sektor]', message); }
@@ -1043,7 +1086,7 @@ function syncUnreadChannelWatchers(textChannels) {
   });
 }
 function isGamesChannel() { return false; }
-function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manage:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
+function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manageChannels:true,manageAnnouncements:true,manageMessages:true,manageRanks:true,manageServer:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
 function renderServer() {
   if (state.activeView==='friends') return;
   if (state.dmFriend) closePrivateDm();
@@ -1056,7 +1099,7 @@ function renderServer() {
   const games = allChannels.filter(channel => channel.type === 'games');
   const current = allChannels.find(channel => channel.id === state.channel) || text[0];
   if (current) state.channel = current.id;
-  const owner = state.server.ownerKey === state.user.key;
+  const canManageChannels=hasServerPermission('manageChannels');
   els.textChannels.innerHTML = '';
   text.forEach(channel => {
     const button = document.createElement('button');
@@ -1065,7 +1108,7 @@ function renderServer() {
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>#</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread messages" hidden></span>';
     button.setAttribute('aria-pressed', String(current && state.channel === channel.id));
-    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    if (canManageChannels && !channel.default) addChannelDeleteButton(button, channel);
     els.textChannels.appendChild(button);
     updateChannelUnreadDot(channel.id);
   });
@@ -1077,7 +1120,7 @@ function renderServer() {
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>' + (channel.type === 'video' ? '▣' : '🔊') + '</span><span>' + esc(channel.name) + '</span><span class="channel-meta">Join</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
     button.onclick = () => joinVoice(channel.id, channel.type === 'video');
-    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    if (canManageChannels && !channel.default) addChannelDeleteButton(button, channel);
     els.voiceChannels.appendChild(button);
     updateChannelUnreadDot(channel.id);
   });
@@ -1088,11 +1131,11 @@ function renderServer() {
     button.dataset.channelId = channel.id;
     button.innerHTML = '<span>🎲</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread activity" hidden></span>';
     button.setAttribute('aria-pressed', String(current && state.channel === channel.id));
-    if (owner && !channel.default) addChannelDeleteButton(button, channel);
+    if (canManageChannels && !channel.default) addChannelDeleteButton(button, channel);
     els.textChannels.appendChild(button);
     updateChannelUnreadDot(channel.id);
   });
-  els.ownerTools.hidden = !owner;
+  els.ownerTools.hidden = !(canManageChannels||hasServerPermission('manageRanks'));
   syncUnreadChannelWatchers(text);
   if (!current) return;
   const announcementChannel = current.type === 'announcement';
@@ -1100,7 +1143,7 @@ function renderServer() {
   const latest = latestAnnouncement(state.server);
   els.channelName.textContent = current.name;
   els.channelTopic.textContent = current.topic || '';
-  els.channelPermission.textContent = announcementChannel ? 'OWNER ONLY' : '';
+  els.channelPermission.textContent = announcementChannel ? 'STAFF ONLY' : '';
   els.announcement.hidden = !(announcementChannel && announcements.length);
   els.announcementText.replaceChildren(...announcements.map(announcement => {
     const entry = document.createElement('article');
@@ -1110,7 +1153,7 @@ function renderServer() {
     const heading = document.createElement('div');
     heading.className = 'announcement-entry-heading';
     heading.appendChild(label);
-    if (owner) {
+    if (hasServerPermission('manageAnnouncements')) {
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'announcement-delete';
@@ -1124,8 +1167,8 @@ function renderServer() {
     entry.append(heading, text);
     return entry;
   }));
-  els.ownerComposer.hidden = !(announcementChannel && owner);
-  els.messageInput.placeholder = announcementChannel ? 'Only the server owner can post here' : 'Message #' + current.name;
+  els.ownerComposer.hidden = !(announcementChannel && hasServerPermission('manageAnnouncements'));
+  els.messageInput.placeholder = announcementChannel ? 'Only staff can post here' : 'Message #' + current.name;
   markChannelRead(current.id, announcementChannel && latest ? latest.ts : Date.now());
   if (!latest && current.id === 'announcements') setChannelUnread('announcements', false);
   else if (latest && !announcementChannel && Number(latest.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
@@ -1691,9 +1734,10 @@ function renderMessage(message) {
   const rank = rankForMember(message.key, message.name);
   const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
-  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button><button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  const canModerateMessages=hasServerPermission('manageMessages');
+  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button>' : '') + (ownMessage||canModerateMessages ? '<button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
   const escapedUsername = String(state.user.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (state.server && !existing && !ownMessage && !pingedMessages.has(message.id) && new RegExp('(^|\\s):@' + escapedUsername + '(?=$|\\s|[,.!?])', 'i').test(message.text || '')) {
+  if (state.server && !existing && !ownMessage && !pingedMessages.has(message.id) && new RegExp('(^|\\s)(?::@|@)\\(?' + escapedUsername + '\\)?(?=$|\\s|[,.!?])', 'i').test(message.text || '')) {
     pingedMessages.add(message.id);
     playMentionPing();
   }
@@ -1747,7 +1791,7 @@ async function saveMessage(message, updates) {
   if (state.server === server && state.channel === channelId) renderMessage(message);
 }
 async function deleteMessage(item, message) {
-  if (!state.server || String(message.key) !== String(state.user.key) || !message.id) return;
+  if (!state.server || (String(message.key) !== String(state.user.key)&&!hasServerPermission('manageMessages')) || !message.id) return;
   const server = state.server;
   const channelId = state.channel;
   try {
@@ -1767,10 +1811,42 @@ async function deleteMessage(item, message) {
 }
 async function toggleReaction(message, emoji) { if (!message.id) { showError('This message is still loading. Try again.'); return; } const reactions = {...(message.reactions || {})}; const users = {...(reactions[emoji] || {})}; if (users[state.user.key]) delete users[state.user.key]; else users[state.user.key] = true; if (Object.keys(users).length) reactions[emoji] = users; else delete reactions[emoji]; try { await saveMessage(message, {reactions}); } catch (error) { showError('Could not update reaction.'); } }
 function startEdit(item, message) { const text = item.querySelector('.message-text'); const original = message.text; const input = document.createElement('textarea'); input.className = 'edit-input'; input.value = original; input.rows = 2; text.replaceWith(input); input.focus(); input.onkeydown = async event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const value = input.value.trim(); if (value) await saveMessage(message, {text:value, edited:true}); } if (event.key === 'Escape') selectMessages(state.channel); }; }
-function mentionMatches() { if (!state.server) { els.mentionSuggestions.hidden = true; return; } const match = els.messageInput.value.match(/(?:^|\s)(:@|@)([a-zA-Z0-9_]*)$/); if (!match) { els.mentionSuggestions.hidden = true; return; } const query = match[2].toLowerCase(); const members = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().startsWith(query)).slice(0,6); els.mentionSuggestions.innerHTML = ''; members.forEach(member => { const option = document.createElement('button'); option.type = 'button'; option.className = 'mention-option'; option.textContent = match[1] + member.name; option.onclick = () => { els.messageInput.value = els.messageInput.value.slice(0, els.messageInput.value.length - match[2].length) + member.name + ' '; els.mentionSuggestions.hidden = true; els.messageInput.focus(); }; els.mentionSuggestions.appendChild(option); }); els.mentionSuggestions.hidden = !members.length; }
+function mentionMatches() {
+  if (!state.server) {els.mentionSuggestions.hidden=true;return;}
+  const match=els.messageInput.value.match(/(^|\s)(:@\(|@\(|:@|@)([a-zA-Z0-9_]*)$/);
+  if (!match) {els.mentionSuggestions.hidden=true;return;}
+  const query=match[3].toLowerCase();
+  const members=Object.values(state.serverMembers||{})
+    .filter(member=>String(member.name||'').toLowerCase().startsWith(query)).slice(0,6);
+  els.mentionSuggestions.innerHTML='';
+  members.forEach(member=>{
+    const option=document.createElement('button');
+    option.type='button';option.className='mention-option';
+    option.textContent=match[2]+member.name;
+    option.onclick=()=>{
+      const start=match.index+match[1].length;
+      const closing=match[2].includes('(')?')':'';
+      els.messageInput.value=els.messageInput.value.slice(0,start)+match[2]+member.name+closing+' ';
+      els.mentionSuggestions.hidden=true;els.messageInput.focus();
+    };
+    els.mentionSuggestions.appendChild(option);
+  });
+  els.mentionSuggestions.hidden=!members.length;
+}
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
 function renderMembers(data) { const members = Object.values(data || {}).filter(member => member && typeof member === 'object'); state.serverMembers = Object.fromEntries(members.map(member => [member.key || member.name, member])); els.memberCount.textContent = members.length; els.membersList.innerHTML = ''; members.forEach(member => { const row = document.createElement('div'); row.className = 'member'; const rank = rankForMember(member.key, member.name); const rankText = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '<span class="member-rank">Member</span>'; row.innerHTML = avatarMarkup(member, 'member-avatar') + '<div><div class="member-name">' + esc(member.name || 'Member') + '</div><div class="member-rank">' + rankText + '</div></div>'; els.membersList.appendChild(row); }); }
 const RTC_CONFIG = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+const CAMERA_VIDEO_CONSTRAINTS = {
+  width:{ideal:1280},
+  height:{ideal:720},
+  frameRate:{ideal:30}
+};
+const VOICE_AUDIO_CONSTRAINTS = {
+  echoCancellation:{ideal:true},
+  noiseSuppression:{ideal:true},
+  autoGainControl:{ideal:true},
+  channelCount:{ideal:1}
+};
 function showVoicePermissionPrompt(channelId, videoMode) {
   const message = document.createElement('div');
   message.textContent = 'Allow access in the browser prompt. If permission was blocked, change it in your browser site settings and try again.';
@@ -1788,7 +1864,7 @@ async function joinVoice(channelId, videoMode = false) {
     state.mediaMode = videoMode ? 'camera' : 'audio';
     state.localStream = state.mediaMode === 'screen'
       ? await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true})
-      : await navigator.mediaDevices.getUserMedia({audio:true,video:videoMode ? {width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}} : false});
+      : await navigator.mediaDevices.getUserMedia({audio:VOICE_AUDIO_CONSTRAINTS,video:videoMode ? CAMERA_VIDEO_CONSTRAINTS : false});
   }
   catch (error) {
     if (error && ['NotAllowedError', 'PermissionDeniedError'].includes(error.name)) {
@@ -1803,6 +1879,9 @@ async function joinVoice(channelId, videoMode = false) {
   state.voiceChannel = channelId;
   els.voiceControls.hidden = false;
   els.muteVoice.textContent = 'Mute';
+  els.popupStopShareBtn.hidden=true;
+  els.popupScreenBtn.hidden=false;
+  els.popupCameraBtn.textContent=videoMode?'Turn camera off':'Turn camera on';
   els.voiceMembers.textContent = '🎙 Microphone on · Connecting to voice...';
     els.voiceMembers.textContent = videoMode ? '▣ Video sharing on · Connecting...' : '🎙 Microphone on · Connecting to voice...';
     els.videoStage.hidden = !videoMode;
@@ -1817,7 +1896,7 @@ async function joinVoice(channelId, videoMode = false) {
   state.voicePeerId = voicePeerId;
   state.voiceRef = db.ref('serverVoice/' + state.server.code + '/' + safe(channelId) + '/' + voicePeerId);
   try {
-    state.voiceRef.onDisconnect().remove();
+    await state.voiceRef.onDisconnect().remove();
     await state.voiceRef.set({key:state.user.key,peerId:voicePeerId,name:state.user.username});
   } catch (error) {
     els.voiceMembers.textContent = '🎙 Microphone on · Could not connect to online voice.';
@@ -1826,8 +1905,28 @@ async function joinVoice(channelId, videoMode = false) {
   const membersRef = db.ref('serverVoice/' + state.server.code + '/' + safe(channelId));
   const onMembers = snap => {
     const members = snap.val() || {};
-    const names = Object.values(members).filter(member => member && typeof member === 'object').map(member => member.name).filter(Boolean);
-    els.voiceMembers.textContent = names.length ? '🔊 ' + names.join(' · ') : '';
+    const participants=Object.entries(members).filter(([,member])=>member&&typeof member==='object');
+    els.voiceMembers.replaceChildren();
+    if (participants.length) {
+      const heading=document.createElement('span');
+      heading.className='voice-members-label';
+      heading.textContent='IN CALL · '+participants.length;
+      els.voiceMembers.appendChild(heading);
+      participants.forEach(([key,member])=>{
+        const chip=document.createElement('span');
+        chip.className='voice-member-chip';
+        const avatar=document.createElement('span');
+        avatar.className='voice-member-avatar';
+        avatar.textContent=String(member.name||'?').trim().slice(0,1).toUpperCase();
+        const name=document.createElement('span');
+        name.textContent=member.name||'Member';
+        chip.append(avatar,name);
+        if (String(key)===String(state.voicePeerId)) chip.dataset.self='true';
+        els.voiceMembers.appendChild(chip);
+      });
+    } else {
+      els.voiceMembers.textContent='Waiting for others to join';
+    }
     Object.keys(members).filter(key => key !== state.voicePeerId).forEach(key => {
       if (state.voicePeerId < key) connectVoicePeer(key, true);
     });
@@ -1860,17 +1959,88 @@ async function handleVoiceSignal(signalKey, signal) {
   if (signal.type === 'offer') { await peer.setRemoteDescription({type:'offer',sdp:signal.sdp}); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); sendVoiceSignal(signal.from, {type:'answer',sdp:answer.sdp}); }
   else if (signal.type === 'answer') await peer.setRemoteDescription({type:'answer',sdp:signal.sdp});
   else if (signal.type === 'candidate') { try { await peer.addIceCandidate(signal.candidate); } catch (error) {} }
+  else if (signal.type === 'stop-screen-share') document.querySelector('[data-video-peer="' + signal.from + '"]')?.remove();
   db.ref('voiceSignals/' + state.server.code + '/' + safe(state.voiceChannel) + '/' + state.voicePeerId + '/' + signalKey).remove();
 }
 function closeVoicePeer(remoteKey) { const peer = state.peers[remoteKey]; if (peer) peer.close(); delete state.peers[remoteKey]; document.querySelectorAll('audio[data-peer="' + remoteKey + '"], [data-video-peer="' + remoteKey + '"]').forEach(element => element.remove()); }
-function addVideoTile(key, stream, label) { if (!els.videoStage) return; let tile = document.querySelector('[data-video-peer="' + key + '"]'); if (!tile) { tile = document.createElement('div'); tile.className = 'video-tile'; tile.dataset.videoPeer = key; tile.innerHTML = '<video autoplay playsinline></video><span>' + esc(label) + '</span>'; els.videoStage.appendChild(tile); } tile.querySelector('video').srcObject = stream; }
-function addLocalVideoTile() { addVideoTile('local', state.localStream, state.mediaMode === 'screen' ? 'Your screen' : 'Your camera'); }
+function addVideoTile(key, stream, label) {
+  if (!els.videoStage) return;
+  let tile = document.querySelector('[data-video-peer="' + key + '"]');
+  if (!tile) {
+    tile = document.createElement('div');
+    tile.className = 'video-tile';
+    tile.dataset.videoPeer = key;
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    const labelElement = document.createElement('span');
+    labelElement.textContent = label;
+    const fullscreenButton = document.createElement('button');
+    fullscreenButton.type = 'button';
+    fullscreenButton.className = 'video-fullscreen-btn';
+    fullscreenButton.textContent = 'Fullscreen';
+    fullscreenButton.setAttribute('aria-label', 'Fullscreen ' + label);
+    fullscreenButton.title = 'Fullscreen';
+    fullscreenButton.onclick = async event => {
+      event.stopPropagation();
+      try {
+        if (document.fullscreenElement === tile) await document.exitFullscreen();
+        else await tile.requestFullscreen();
+      } catch (error) {
+        showError('Could not fullscreen this video.');
+      }
+    };
+    tile.append(video,labelElement,fullscreenButton);
+    els.videoStage.appendChild(tile);
+  }
+  tile.querySelector('video').srcObject = stream;
+  if (key==='local') {
+    const videoEnabled=stream.getVideoTracks().some(track=>track.enabled&&track.readyState==='live');
+    tile.classList.toggle('video-disabled',!videoEnabled);
+  }
+}
+function addLocalVideoTile() {
+  const localTile=document.querySelector('[data-video-peer="local"]');
+  const shareNotice=els.videoStage.querySelector('[data-local-screen-share]');
+  if (state.mediaMode==='screen') {
+    localTile?.remove();
+    if (!shareNotice) {
+      const notice=document.createElement('div');
+      notice.className='video-share-notice';
+      notice.dataset.localScreenShare='';
+      notice.textContent='Your screen is being shared';
+      els.videoStage.appendChild(notice);
+    }
+    return;
+  }
+  shareNotice?.remove();
+  addVideoTile('local',state.localStream,'Your camera');
+}
+async function stopScreenShare() {
+  if (!state.localStream||state.mediaMode!=='screen') return;
+  const screenTrack=state.localStream.getVideoTracks()[0];
+  state.mediaMode='audio';
+  if (screenTrack) {
+    state.localStream.removeTrack(screenTrack);
+    Object.values(state.peers).forEach(peer=>{
+      const sender=peer.getSenders().find(item=>item.track&&item.track.kind==='video');
+      if (sender) sender.replaceTrack(null).catch(()=>{});
+    });
+    screenTrack.stop();
+  }
+  document.querySelector('[data-video-peer="local"]')?.remove();
+  els.videoStage.querySelector('[data-local-screen-share]')?.remove();
+  els.popupScreenBtn.hidden=false;
+  els.popupStopShareBtn.hidden=true;
+  els.popupCameraBtn.textContent='Turn camera on';
+  Object.keys(state.peers).forEach(key=>sendVoiceSignal(key,{type:'stop-screen-share'}));
+}
 async function switchVideoSource(mode) {
   if (!state.localStream || !state.voiceChannel) return;
   try {
     const newVideoStream = mode === 'screen'
       ? await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false})
-      : await navigator.mediaDevices.getUserMedia({audio:false,video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}}});
+      : await navigator.mediaDevices.getUserMedia({audio:false,video:CAMERA_VIDEO_CONSTRAINTS});
     const newVideoTrack = newVideoStream.getVideoTracks()[0];
     const oldVideoTracks = state.localStream.getVideoTracks();
     state.localStream.removeTrack(oldVideoTracks[0]);
@@ -1882,8 +2052,10 @@ async function switchVideoSource(mode) {
     });
     state.mediaMode = mode;
     addLocalVideoTile();
-    els.popupCameraBtn.textContent = mode === 'screen' ? 'Camera' : 'Turn camera off';
-    newVideoTrack.onended = () => { if (state.mediaMode === 'screen') switchVideoSource('camera'); };
+    els.popupCameraBtn.textContent = mode === 'screen' ? 'Turn camera on' : 'Turn camera off';
+    els.popupScreenBtn.hidden=mode==='screen';
+    els.popupStopShareBtn.hidden=mode!=='screen';
+    newVideoTrack.onended = () => { if (state.mediaMode === 'screen') stopScreenShare(); };
   } catch (error) {
     showError(mode === 'screen' ? 'Screen sharing was cancelled.' : 'Camera permission is required.');
   }
@@ -1904,9 +2076,34 @@ async function toggleCamera() {
   const localTile = document.querySelector('[data-video-peer="local"]');
   if (localTile) localTile.classList.toggle('video-disabled', !track.enabled);
 }
-async function leaveVoice() { if (state.voiceMembersUnsub) state.voiceMembersUnsub(); if (state.voiceSignalUnsub) state.voiceSignalUnsub(); Object.keys(state.peers).forEach(closeVoicePeer); if (state.voiceRef) { state.voiceRef.onDisconnect().cancel(); await state.voiceRef.remove(); } if (state.localStream) state.localStream.getTracks().forEach(track => track.stop()); state.voiceMembersUnsub = state.voiceSignalUnsub = state.voiceRef = state.localStream = null; state.voiceChannel = null; state.voicePeerId = null; state.mediaMode = 'audio'; state.peers = {}; if (els.voiceControls) els.voiceControls.hidden = true; if (els.voiceMembers) els.voiceMembers.textContent = ''; if (els.videoStage) { els.videoStage.innerHTML = ''; els.videoStage.hidden = true; } if (els.mediaControlPopup) els.mediaControlPopup.hidden = true; }
+async function leaveVoice() {
+  if (state.voiceMembersUnsub) state.voiceMembersUnsub();
+  if (state.voiceSignalUnsub) state.voiceSignalUnsub();
+  Object.keys(state.peers).forEach(closeVoicePeer);
+  if (state.voiceRef) {
+    const voiceRef=state.voiceRef;
+    try {
+      await voiceRef.remove();
+      await voiceRef.onDisconnect().cancel();
+    } catch(error) {
+      console.warn('[Sektor] Voice presence cleanup will finish on disconnect.',error);
+    }
+  }
+  if (state.localStream) state.localStream.getTracks().forEach(track => track.stop());
+  state.voiceMembersUnsub=state.voiceSignalUnsub=state.voiceRef=state.localStream=null;
+  state.voiceChannel=null;
+  state.voicePeerId=null;
+  state.mediaMode='audio';
+  state.peers={};
+  if (els.voiceControls) els.voiceControls.hidden=true;
+  if (els.voiceMembers) els.voiceMembers.textContent='';
+  if (els.videoStage) {els.videoStage.innerHTML='';els.videoStage.hidden=true;}
+  if (els.mediaControlPopup) els.mediaControlPopup.hidden=true;
+  if (els.popupStopShareBtn) els.popupStopShareBtn.hidden=true;
+  if (els.popupScreenBtn) els.popupScreenBtn.hidden=false;
+}
 async function publishAnnouncement() {
-  if (!state.server || state.server.ownerKey !== state.user.key) return;
+  if (!state.server || !hasServerPermission('manageAnnouncements')) return;
   const text = els.announcementInput.value.trim();
   if (!text) return;
   const announcement = {text:text.slice(0,240),by:state.user.username,ts:Date.now()};
@@ -1929,7 +2126,7 @@ async function publishAnnouncement() {
 }
 async function deleteAnnouncement(announcement, button) {
   const server = state.server;
-  if (!server || !isServerOwner() || !announcement.announcementKey || !button) return;
+  if (!server || !hasServerPermission('manageAnnouncements') || !announcement.announcementKey || !button) return;
   if (button.dataset.confirming !== 'true') {
     button.dataset.confirming = 'true';
     button.textContent = 'Confirm?';
@@ -2032,7 +2229,7 @@ async function leaveCurrentServer(server) {
 function openServerSettings() {
   if (!state.server) return;
   const server = state.server;
-  if (!isServerOwner()) {
+  if (!hasServerPermission('manageServer')) {
     els.modalTitle.textContent = 'Leave server';
     els.modalBody.innerHTML = '<p class="modal-copy">Leave <strong>' + esc(server.name) + '</strong>? You can rejoin later with an invite code.</p><div class="modal-actions"><button id="cancelLeaveServer" class="modal-secondary" type="button">Cancel</button><button id="confirmLeaveServer" class="modal-danger" type="button">Leave server</button></div>';
     document.getElementById('cancelLeaveServer').onclick = () => { els.modal.hidden = true; };
@@ -2042,6 +2239,7 @@ function openServerSettings() {
   }
   els.modalTitle.textContent = 'Customize server';
   els.modalBody.innerHTML = '<label class="modal-label" for="settingsServerName">Server name</label><input id="settingsServerName" class="modal-input" maxlength="32"><label class="modal-label" for="settingsDescription">Description</label><input id="settingsDescription" class="modal-input" maxlength="80" placeholder="What is this server about?"><label class="modal-label" for="settingsAccent">Accent color</label><input id="settingsAccent" class="modal-color" type="color"><label class="modal-label" for="settingsIcon">Server icon</label><input id="settingsIcon" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveServerSettings" class="primary-btn">Save changes</button><hr><button id="deleteServer" class="modal-danger" type="button">Delete server</button>';
+  if (!isServerOwner()) document.getElementById('deleteServer').hidden=true;
   const nameInput = document.getElementById('settingsServerName');
   const descriptionInput = document.getElementById('settingsDescription');
   const accentInput = document.getElementById('settingsAccent');
@@ -2085,6 +2283,7 @@ function openServerSettings() {
     });
   };
   document.getElementById('saveServerSettings').onclick = async () => {
+    if (!hasServerPermission('manageServer')||state.server?.code!==server.code) return;
     const name = nameInput.value.trim();
     if (!name) { document.getElementById('modalError').textContent = 'Enter a server name.'; return; }
     if (!(await iconReadPromise)) return;
@@ -2266,11 +2465,17 @@ youtubePopupCard.addEventListener('pointercancel', stopYoutubeDrag);
 els.signupTab.onclick = () => { signupMode = true; els.signupTab.classList.add('active'); els.loginTab.classList.remove('active'); els.authSubmit.textContent = 'Create account'; };
 els.authSubmit.onclick = auth; els.password.onkeydown = event => { if (event.key === 'Enter') auth(); }; els.newServer.onclick = openCreateServerModal; els.joinServer.onclick = openJoinServerModal; els.messageForm.onsubmit = async event => { event.preventDefault(); const text = els.messageInput.value.trim(); const channel = channels().find(item => item.id === state.channel); if ((!text && !pendingImage) || !state.server || channel.type === 'announcement') return; try { const payload = {id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,image:pendingImage || '',replyTo,ts:firebase.database.ServerValue.TIMESTAMP}; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(state.channel); const messages = JSON.parse(localStorage.getItem(key) || '[]'); payload.ts = Date.now(); messages.push(payload); localStorage.setItem(key, JSON.stringify(messages)); renderMessage(payload); } else { await db.ref('serverMessages/' + state.server.code + '/' + safe(state.channel)).push(payload); } els.messageInput.value = ''; pendingImage = ''; replyTo = null; els.messageInput.placeholder = 'Message #' + (channel.name || 'channel'); els.imageInput.value = ''; els.imageButton.textContent = '＋'; els.mentionSuggestions.hidden = true; } catch (error) { showError('Could not send that message.'); } }; els.messageInput.oninput = mentionMatches; els.imageButton.onclick = () => els.imageInput.click(); els.imageInput.onchange = async event => { const file = event.target.files[0]; if (!file) return; if (!file.type.startsWith('image/')) { showError('Choose an image file.'); return; } try { pendingImage = await resizeImage(file); els.imageButton.textContent = '✓'; } catch (error) { showError('Could not prepare that image.'); } }; els.publish.onclick = publishAnnouncement; els.addChannel.onclick = openAddChannelModal; els.rank.onclick = openRankModal;
 els.muteVoice.onclick = () => { if (!state.localStream) return; const track = state.localStream.getAudioTracks()[0]; if (!track) return; track.enabled = !track.enabled; els.muteVoice.textContent = track.enabled ? 'Mute' : 'Unmute'; els.popupMuteBtn.textContent = track.enabled ? 'Mute' : 'Unmute'; };
+window.addEventListener('pagehide',()=>{
+  if (!useLanBackend||!state.server||!state.voiceChannel||!state.voicePeerId) return;
+  const path='serverVoice/'+state.server.code+'/'+safe(state.voiceChannel)+'/'+state.voicePeerId;
+  fetch('/api/data?path='+encodeURIComponent(path),{method:'DELETE',keepalive:true}).catch(()=>{});
+});
 els.joinServer.onclick = () => openJoinServerModal();
 els.leaveVoice.onclick = leaveVoice;
 els.popupMuteBtn.onclick = () => els.muteVoice.click();
 els.popupCameraBtn.onclick = toggleCamera;
 els.popupScreenBtn.onclick = () => switchVideoSource('screen');
+els.popupStopShareBtn.onclick=stopScreenShare;
 els.popupLeaveBtn.onclick = leaveVoice;
 els.serverSettings.onclick = openServerSettings;
 els.modalClose.onclick = () => { els.modal.hidden = true; };
@@ -2316,7 +2521,7 @@ new MutationObserver(() => {
 }).observe(els.modalBody, {childList:true});
 els.friendsBtn.onclick = openFriendsArea;
 els.editModeBtn.onclick = () => {
-  if (!isServerOwner()) return;
+  if (!hasServerPermission('manageChannels')) return;
   state.editMode = !state.editMode;
   updateEditModeUi();
   renderServer();
@@ -2446,7 +2651,115 @@ els.addChannel.onclick = openAddChannelModal;
     renderFriendsHome('all');
   };
   els.friendsBtn.onclick = openFriendsArea;
+  const refreshFriendRequestsButton=$('refreshFriendRequestsBtn');
+  if (refreshFriendRequestsButton) refreshFriendRequestsButton.onclick=()=>loadFriends();
   els.serverList.addEventListener('click', () => {
     if (els.friendHome) els.friendHome.hidden = true;
   });
+
+  const addChannelOwnerOnly=openAddChannelModal;
+  openAddChannelModal=()=>{
+    openOwnerGatedModal('manageChannels',addChannelOwnerOnly);
+    const saveButton=document.getElementById('saveChannel');
+    if (saveButton) {
+      const save=saveButton.onclick;
+      saveButton.onclick=event=>hasServerPermission('manageChannels')?save(event):undefined;
+    }
+  };
+  els.addChannel.onclick=openAddChannelModal;
+
+  const renameChannelOwnerOnly=openRenameChannelModal;
+  openRenameChannelModal=channel=>{
+    openOwnerGatedModal('manageChannels',renameChannelOwnerOnly,channel);
+    const saveButton=document.getElementById('saveChannelName');
+    if (saveButton) {
+      const save=saveButton.onclick;
+      saveButton.onclick=event=>hasServerPermission('manageChannels')?save(event):undefined;
+    }
+  };
+
+  const deleteChannelOwnerOnly=openDeleteChannelModal;
+  openDeleteChannelModal=channel=>{
+    if (!hasServerPermission('manageChannels')) return;
+    deleteChannelOwnerOnly(channel);
+    const confirmButton=document.getElementById('confirmDelete');
+    if (confirmButton) {
+      const confirm=confirmButton.onclick;
+      confirmButton.onclick=event=>hasServerPermission('manageChannels')?confirm(event):undefined;
+    }
+  };
+
+  const rankModalOwnerOnly=openRankModal;
+  openRankModal=function() {
+    if (!hasServerPermission('manageRanks')) return;
+    openOwnerGatedModal('manageRanks',rankModalOwnerOnly);
+    const memberSelect=document.getElementById('rankMember');
+    const nameInput=document.getElementById('rankName');
+    const colorInput=document.getElementById('rankColor');
+    const channelInput=document.getElementById('rankManage');
+    const announcementInput=document.getElementById('rankAnnounce');
+    if (!memberSelect||!nameInput||!channelInput||!announcementInput) return;
+    nameInput.maxLength=100;
+    nameInput.placeholder='Custom rank name (up to 100 characters)';
+    channelInput.closest('label').lastChild.textContent=' Manage channels';
+    announcementInput.closest('label').lastChild.textContent=' Publish announcements';
+    const extraPermissions=[
+      ['manageMessages','rankManageMessages',"Delete other members' messages"],
+      ['manageRanks','rankManageRanks','Assign ranks and permissions'],
+      ['manageServer','rankManageServer','Edit server settings']
+    ];
+    announcementInput.closest('label').insertAdjacentHTML('afterend',extraPermissions.map(([,id,label])=>
+      '<label class="rank-check"><input id="'+id+'" type="checkbox"> '+label+'</label>').join(''));
+    const permissionInputs=Object.fromEntries(extraPermissions.map(([key,id])=>[key,document.getElementById(id)]));
+    const refreshPermissions=()=>{
+      const existing=state.server.ranks&&state.server.ranks[memberSelect.value];
+      const permissions=existing&&existing.permissions||{};
+      channelInput.checked=!!(permissions.manageChannels||permissions.manage);
+      announcementInput.checked=!!(permissions.manageAnnouncements||permissions.announce);
+      Object.entries(permissionInputs).forEach(([key,input])=>{input.checked=!!permissions[key];});
+    };
+    memberSelect.addEventListener('change',refreshPermissions);
+    refreshPermissions();
+    const presetPermissions={Moderator:{manageMessages:true},Staff:{manageMessages:true,manageRanks:true}};
+    document.querySelectorAll('[data-rank-preset]').forEach(button=>button.addEventListener('click',()=>{
+      const preset=presetPermissions[button.dataset.rankPreset]||{};
+      Object.entries(permissionInputs).forEach(([key,input])=>{input.checked=!!preset[key];});
+    }));
+    document.getElementById('saveRank').onclick=async()=>{
+      const memberKey=memberSelect.value;
+      const rankName=nameInput.value.trim();
+      const permissions={
+        manage:channelInput.checked,
+        announce:announcementInput.checked,
+        manageChannels:channelInput.checked,
+        manageAnnouncements:announcementInput.checked,
+        ...Object.fromEntries(Object.entries(permissionInputs).map(([key,input])=>[key,input.checked]))
+      };
+      const error=document.getElementById('modalError');
+      if (!hasServerPermission('manageRanks')) return;
+      if (!memberKey||!rankName) {error.textContent='Choose a member and enter a rank name.';return;}
+      const delegatedKeys=['manageChannels','manageAnnouncements','manageMessages','manageRanks','manageServer'];
+      if (!isServerOwner()&&delegatedKeys.some(key=>permissions[key]&&!hasServerPermission(key))) {
+        error.textContent='You can only grant permissions that you have.';return;
+      }
+      const server=state.server;
+      const rank={name:rankName.slice(0,100),color:colorInput.value,permissions};
+      try {
+        server.ranks=server.ranks||{};
+        server.ranks[memberKey]=rank;
+        if (server.localOnly) saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+        else await db.ref('serverMeta/'+server.code+'/ranks/'+memberKey).set(rank);
+        renderMembers(state.serverMembers);
+        els.modal.hidden=true;
+      } catch(error) {
+        document.getElementById('modalError').textContent='Could not save this rank.';
+      }
+    };
+    const clearButton=document.getElementById('clearRank');
+    if (clearButton) {
+      const clear=clearButton.onclick;
+      clearButton.onclick=event=>hasServerPermission('manageRanks')?clear(event):undefined;
+    }
+  };
+  els.rank.onclick=openRankModal;
 })();

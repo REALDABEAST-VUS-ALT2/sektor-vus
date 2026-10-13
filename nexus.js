@@ -21,6 +21,8 @@
   let cloudWorldHandler = null;
   let connecting = false;
   let activeTab = 'home';
+  let activeMallBusinessId='';
+  let selectedMallProductId='';
   let spectatorExpanded = true;
   let renderPending = false;
   let wheelRotation = 0;
@@ -56,9 +58,9 @@
     supermarket:{label:'Supermarket',price:50_000,productLimit:200}
   };
   const casinoMachineTypes={
-    basic_slots:{label:'Basic slots',game:'slots',price:0},
-    compact_slots:{label:'Compact slots',game:'slots',price:4000},
-    deluxe_slots:{label:'Deluxe slots',game:'slots',price:7000},
+    basic_slots:{label:'Basic slots',game:'slots',price:0,defaultWinRate:50,maxWinRate:50,defaultPayout:2,maxPayout:10},
+    compact_slots:{label:'Compact slots',game:'slots',price:4000,defaultWinRate:20,maxWinRate:20,defaultPayout:10,maxPayout:50},
+    deluxe_slots:{label:'Deluxe slots',game:'slots',price:7000,defaultWinRate:2,maxWinRate:2,defaultPayout:50,maxPayout:100},
     roulette:{label:'Roulette',game:'roulette',price:8000},
     blackjack:{label:'Blackjack',game:'blackjack',price:10_000}
   };
@@ -461,9 +463,31 @@
     if (migratingRecords) await cloudWorldRef.child('_recordFormat').set(1);
   }
 
+  async function saveUserSession(user) {
+    const session={username:user.username};
+    if (firebaseMode||lanMode) {
+      const index=world.users.findIndex(entry=>entry&&
+        String(entry.username).toLowerCase()===String(user.username).toLowerCase());
+      if (index>=0) {
+        try {
+          const stored=firebaseMode
+            ?(await cloudWorldRef.child('users/'+index).get()).val()
+            :await requestWorldAt(sharedPath+'/users/'+index,'GET');
+          if (stored&&String(stored.username).toLowerCase()===String(user.username).toLowerCase()) {
+            session.userKey=String(index);
+          }
+        } catch(error) {
+          console.warn('[Nexus] Could not cache the account key for Dropzone.',error);
+        }
+      }
+    }
+    localStorage.setItem(sessionKey,JSON.stringify(session));
+  }
+
   function currentUser() {
     const session = currentSession();
-    return session && world ? world.users.find(user => user.username === session.username) || null : null;
+    const username=String(session&&session.username||'').toLowerCase();
+    return session && world ? world.users.find(user => String(user.username||'').toLowerCase()===username) || null : null;
   }
 
   function todayKey() {
@@ -486,6 +510,36 @@
       item.quantity=Number.isInteger(quantity)&&quantity>=0?quantity:1;
     }
     return user.inventory;
+  }
+
+  async function syncEquippedWrap(user) {
+    const playerKey=String(user.username||'').toLowerCase().replace(/[.#$\[\]/]/g,'_').slice(0,32);
+    const savedProgress=user.dropzone&&typeof user.dropzone==='object'?user.dropzone:{};
+    const update={weaponColor:'',weaponColors:savedProgress.weaponColors||{},weaponWrap:savedProgress.weaponWrap||{pattern:'solid'}};
+    try {
+      if (firebaseMode) {
+        const playerRef=firebaseApi.database().ref(sharedPath+'/war/players/'+playerKey);
+        const snapshot=await playerRef.get();
+        if (!snapshot.exists()) return false;
+        await playerRef.update(update);
+        return true;
+      }
+      if (lanMode) {
+        const path=sharedPath+'/war/players/'+playerKey;
+        const player=await requestWorldAt(path,'GET');
+        if (!player) return false;
+        await requestWorldAt(path,'PATCH',update);
+        return true;
+      }
+      const game=JSON.parse(localStorage.getItem('nexusWarGame')||'null');
+      if (!game?.players?.[playerKey]) return false;
+      game.players[playerKey]={...game.players[playerKey],...update};
+      localStorage.setItem('nexusWarGame',JSON.stringify(game));
+      return true;
+    } catch(error) {
+      console.warn('[Nexus] Could not update the active Dropzone loadout.',error);
+      return false;
+    }
   }
 
   function quantityCost(quantity) {
@@ -746,10 +800,15 @@
         subscribeToWorld();
       } else if (firebaseMode) {
         await ensureFirebaseAccess();
-        const result = await cloudWorldRef.transaction(current =>
-          current == null ? normalize(defaults()) : current
-        );
-        world = normalize(result.snapshot.val());
+        const snapshot = await cloudWorldRef.get();
+        if (snapshot.exists()) {
+          world = normalize(snapshot.val());
+        } else {
+          const result = await cloudWorldRef.transaction(current =>
+            current == null ? normalize(defaults()) : current
+          );
+          world = normalize(result.snapshot.val());
+        }
         await cloudWorldRef.child('stockMarket').remove();
         const storedUsers=await cloudWorldRef.child('users').get();
         const stockCleanup={};
@@ -1016,6 +1075,12 @@
   }
 
   function renderMall(user) {
+    if (activeMallBusinessId) {
+      const selectedBusiness=world.mallBusinesses.find(business=>business.id===activeMallBusinessId);
+      if (selectedBusiness) return renderMallBusiness(user,selectedBusiness);
+      activeMallBusinessId='';
+      selectedMallProductId='';
+    }
     const businesses=world.mallBusinesses.slice().sort((left,right)=>Number(left.createdAt||0)-Number(right.createdAt||0));
     const businessTiles=businesses.map((business,index)=>{
       const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
@@ -1037,15 +1102,59 @@
         }).join('')+'</div>'+(owned?'<div class="nexus-casino-bankroll">House reserve · '+currency(business.bankroll||0)+'</div><div class="nexus-casino-upgrades">'+Object.entries(casinoMachineTypes).filter(([id,machine])=>id!=='basic_slots').map(([id,machine])=>'<button class="nexus-button secondary" type="button" data-action="buy-casino-machine" data-business-id="'+escapeHtml(business.id)+'" data-machine="'+id+'">Add '+machine.label+' · '+machine.price.toLocaleString()+'</button>').join('')+'</div>':'')+'</section>';
       }
       const addProduct=owned
-        ?'<form class="nexus-form nexus-mall-product-form" data-form="mall-product" data-business-id="'+escapeHtml(business.id)+'"><select name="itemId" required '+(user.inventory&&user.inventory.length?'':'disabled')+'>'+inventoryFor(user).filter(item=>Number(item.quantity||0)>0).map(item=>'<option value="'+escapeHtml(item.id)+'">'+escapeHtml(item.name)+' · '+Number(item.quantity)+' available</option>').join('')+'</select><input name="price" type="number" min="1" max="999999" placeholder="Price in Sektorium" required><button class="nexus-button" '+(products.length>=type.productLimit||!user.inventory.length?'disabled':'')+'>List in this business · '+products.length+'/'+type.productLimit+'</button></form>'
+        ?'<form class="nexus-form nexus-mall-product-form" data-form="mall-product" data-business-id="'+escapeHtml(business.id)+'"><select name="itemId" required '+(user.inventory&&user.inventory.length?'':'disabled')+'>'+inventoryFor(user).filter(item=>Number(item.quantity||0)>0).map(item=>'<option value="'+escapeHtml(item.id)+'" data-quantity="'+Number(item.quantity||0)+'">'+escapeHtml(item.name)+' · '+Number(item.quantity)+' available</option>').join('')+'</select><input name="quantity" type="number" min="1" max="9999" value="1" placeholder="Quantity to stock" required><input name="price" type="number" min="1" max="999999" placeholder="Price per item" required><button class="nexus-button" '+(products.length>=type.productLimit||!user.inventory.length?'disabled':'')+'>List in this business · '+products.length+'/'+type.productLimit+'</button></form>'
         :'';
       const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
-      return '<article class="nexus-mall-storefront" style="--mall-index:'+index+';--mall-accent:'+accent+'"><header><span>'+escapeHtml(type.label.toUpperCase())+'</span><strong>'+escapeHtml(business.name)+'</strong><small>Owned by '+escapeHtml(business.owner)+' · '+products.length+'/'+type.productLimit+' products</small></header><div class="nexus-mall-products">'+productMarkup+'</div>'+casinoMarkup+addProduct+'</article>';
+      return '<button class="nexus-mall-directory-entry" type="button" data-action="enter-mall-business" data-id="'+escapeHtml(business.id)+'" style="--mall-index:'+index+';--mall-accent:'+accent+'"><span class="nexus-mall-sign-type">'+escapeHtml(type.label.toUpperCase())+'</span><strong>'+escapeHtml(business.name)+'</strong><small>Owned by '+escapeHtml(business.owner)+' · '+products.length+' products</small><span class="nexus-mall-enter">Enter business <b>→</b></span></button>';
     }).join('')||'<p class="nexus-mall-empty">The mall is open, but no businesses have opened yet.</p>';
     const businessCustomizer=user?'<div class="nexus-mall-customizer"><input type="text" maxlength="32" placeholder="Business name (optional)" data-mall-business-name><label>Brand color <input type="color" value="#65e6ad" data-mall-business-accent></label></div>':'';
     const purchaseButtons=user?Object.entries(mallBusinessTypes).map(([type,config])=>'<button class="nexus-button secondary" type="button" data-action="buy-business" data-business-type="'+type+'">Open a '+config.label+' · '+config.price.toLocaleString()+'</button>').join(''):'<p class="nexus-wheel-help">Sign in to open a business or buy from local owners.</p>';
     const betControls=user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>';
-    return '<section class="nexus-mall-heading"><div><span>SEKTOR · SHARED MARKETPLACE</span><h2>The Mall</h2><p>Open a storefront, browse local goods, or play at a casino.</p></div><div class="nexus-mall-open-actions">'+businessCustomizer+purchaseButtons+'</div></section>'+betControls+'<section class="nexus-mall-map" aria-label="Mall directory map"><div class="nexus-mall-map-title">MALL DIRECTORY <span>'+businesses.length+' BUSINESSES</span></div><div class="nexus-mall-map-grid">'+businessTiles+'</div></section>';
+    const secretRedeem=user?'<form class="nexus-form nexus-mall-secret" data-form="mall-secret"><input name="secretCode" maxlength="24" autocomplete="off" placeholder="Mall secret code"><button class="nexus-button secondary">Redeem</button></form>':'';
+    return '<section class="nexus-mall-heading"><div><span>SEKTOR · SHARED MARKETPLACE</span><h2>The Mall</h2><p>Open a storefront, browse local goods, or play at a casino.</p></div><div class="nexus-mall-open-actions">'+businessCustomizer+purchaseButtons+'</div></section>'+betControls+secretRedeem+'<section class="nexus-mall-map" aria-label="Mall directory map"><div class="nexus-mall-map-title">MALL DIRECTORY <span>'+businesses.length+' BUSINESSES</span></div><div class="nexus-mall-map-grid">'+businessTiles+'</div></section>';
+  }
+
+  function renderMallBusiness(user,business) {
+    const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
+    const owned=!!user&&business.owner===user.username;
+    const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
+    const theme=['forest','midnight','neon','royal'].includes(business.theme)?business.theme:'forest';
+    const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
+    const selected=products.find(product=>product.id===selectedMallProductId)||products[0]||null;
+    const checkout=selected&&user
+      ?'<form class="nexus-mall-checkout-form" data-form="mall-checkout" data-business-id="'+escapeHtml(business.id)+'"><input type="hidden" name="productId" value="'+escapeHtml(selected.id)+'"><div><strong>'+escapeHtml(selected.name)+'</strong><small>'+currency(selected.price)+' each · '+Number(selected.stock)+' in stock</small></div><label>Quantity<input name="quantity" type="number" min="1" max="'+Number(selected.stock)+'" value="1" required></label><button type="submit" class="nexus-button" '+(Number(user.balance||0)<Number(selected.price||0)?'disabled':'')+'>Checkout</button></form>'
+      :'<div class="nexus-mall-checkout-empty">'+(user?'Select an item from a shelf.':'Sign in to shop here.')+'</div>';
+    let roomContent='';
+    if (business.type==='casino') {
+      const machines=Array.isArray(business.machines)?business.machines:[];
+      const machineMarkup=machines.map(machine=>{
+        const config=casinoMachineTypes[machine.type]||casinoMachineTypes.basic_slots;
+        const winRate=Math.max(1,Math.min(config.maxWinRate||100,Number(machine.winRate)||config.defaultWinRate||5));
+        const payout=Math.max(2,Math.min(config.maxPayout||100,Number(machine.payoutMultiplier)||config.defaultPayout||2));
+        const rouletteChoice=config.game==='roulette'?'<label>Bet on <select data-roulette-choice><option value="red">Red</option><option value="black">Black</option></select></label>':'';
+        const machineSettings=owned&&config.game==='slots'
+          ?'<form class="nexus-casino-machine-settings" data-form="casino-machine-settings" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'"><label>Win chance %<input name="winRate" type="number" min="1" max="'+config.maxWinRate+'" value="'+winRate+'" required></label><label>Payout ×<input name="payoutMultiplier" type="number" min="2" max="'+config.maxPayout+'" value="'+payout+'" required></label><button class="nexus-button secondary">Save slot settings</button><small>Max '+config.maxWinRate+'% chance · '+config.maxPayout+'× payout for this tier</small></form>':'';
+        return '<article class="nexus-casino-machine" style="--mall-accent:'+accent+'"><span class="nexus-casino-machine-lights">✦ · ✦ · ✦</span><strong>'+escapeHtml(machine.name||config.label)+'</strong><small>'+escapeHtml(config.label)+(config.game==='slots'?' · '+winRate+'% chance · up to '+payout+'×':'')+'</small>'+rouletteChoice+'<button class="nexus-button" type="button" data-action="play-casino" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'" data-game="'+escapeHtml(config.game)+'" '+(!user||owned?'disabled':'')+'>'+(owned?'Owner cannot play':'Play')+'</button>'+machineSettings+'</article>';
+      }).join('')||'<p class="nexus-mall-empty">No machines are installed yet.</p>';
+      const upgrades=owned?'<section class="nexus-casino-upgrades"><h3>Add a machine</h3>'+Object.entries(casinoMachineTypes).filter(([id])=>id!=='basic_slots').map(([id,machine])=>'<button class="nexus-button secondary" type="button" data-action="buy-casino-machine" data-business-id="'+escapeHtml(business.id)+'" data-machine="'+id+'">Add '+machine.label+' · '+machine.price.toLocaleString()+'</button>').join('')+'</section>':'';
+      const withdrawal=owned?'<form class="nexus-casino-withdraw" data-form="casino-withdraw" data-business-id="'+escapeHtml(business.id)+'"><label>Withdraw reserve <span>'+currency(business.bankroll||0)+'</span><input name="amount" type="number" min="1" max="'+Math.floor(Number(business.bankroll||0))+'" step="1" placeholder="Amount"></label><button class="nexus-button secondary" '+(Number(business.bankroll||0)<1?'disabled':'')+'>Withdraw to wallet</button></form>':'';
+      roomContent='<section class="nexus-casino-floor"><div class="nexus-casino-marquee"><span>CASINO</span><strong>'+escapeHtml(business.name||'LUCKY NEXUS')+'</strong><small>'+(business.description?escapeHtml(business.description)+' · ':'')+'House reserve '+currency(business.bankroll||0)+'</small></div>'+(user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>')+'<div class="nexus-casino-machine-grid">'+machineMarkup+'</div>'+upgrades+withdrawal+'</section>';
+    } else {
+      const shelfCount=Math.max(1,Math.min(6,Math.floor(Number(business.shelfCount)||3)));
+      const shelves=Array.from({length:shelfCount},(_,shelfIndex)=>{
+        const shelfProducts=products.filter((product,index)=>index%shelfCount===shelfIndex);
+        const items=shelfProducts.map(product=>'<article class="nexus-shop-item"><div class="nexus-shop-item-media">'+mediaPreview(product.itemData?.media,product.name)+'</div><strong>'+escapeHtml(product.name)+'</strong><small>'+currency(product.price)+' · '+Number(product.stock)+' available</small><button class="nexus-button secondary" type="button" data-action="select-mall-product" data-id="'+escapeHtml(product.id)+'">Add to checkout</button></article>').join('')||'<span class="nexus-shop-shelf-empty">Shelf space available</span>';
+        return '<section class="nexus-shop-shelf"><span class="nexus-shop-shelf-label">SHELF '+(shelfIndex+1)+'</span><div class="nexus-shop-shelf-items">'+items+'</div><div class="nexus-shop-shelf-rail" style="--mall-accent:'+accent+'"></div></section>';
+      }).join('');
+      roomContent='<div class="nexus-shop-floor">'+(business.description?'<p class="nexus-shop-welcome">'+escapeHtml(business.description)+'</p>':'')+'<div class="nexus-shop-shelves">'+shelves+'</div></div><aside class="nexus-mall-checkout"><span>CHECKOUT</span><h3>Ready to buy?</h3>'+checkout+'</aside>';
+    }
+    const inventoryItems=user?inventoryFor(user).filter(item=>Number(item.quantity||0)>0):[];
+    const productForm=owned
+      ?'<form class="nexus-form nexus-mall-product-form nexus-mall-stock-form" data-form="mall-product" data-business-id="'+escapeHtml(business.id)+'"><h3>Stock a product</h3><select name="itemId" required '+(inventoryItems.length?'':'disabled')+'>'+inventoryItems.map(item=>'<option value="'+escapeHtml(item.id)+'" data-quantity="'+Number(item.quantity||0)+'">'+escapeHtml(item.name)+' · '+Number(item.quantity)+' available</option>').join('')+'</select><input name="quantity" type="number" min="1" max="'+Number(inventoryItems[0]?.quantity||1)+'" value="1" placeholder="Units to stock" required><input name="price" type="number" min="1" max="999999" placeholder="Price per unit" required><button class="nexus-button" '+(products.length>=type.productLimit||!inventoryItems.length?'disabled':'')+'>List product · '+products.length+'/'+type.productLimit+'</button></form>'
+      :'';
+    const settings=owned
+      ?'<details class="nexus-mall-owner-settings"><summary>Customize this '+escapeHtml(type.label.toLowerCase())+'</summary><form class="nexus-form" data-form="mall-business-settings" data-business-id="'+escapeHtml(business.id)+'"><label>Business name<input name="name" maxlength="32" value="'+escapeHtml(business.name)+'" required></label><label>Welcome text<textarea name="description" maxlength="100" rows="2">'+escapeHtml(business.description||'')+'</textarea></label><label>Interior style<select name="theme"><option value="forest" '+(theme==='forest'?'selected':'')+'>Forest market</option><option value="midnight" '+(theme==='midnight'?'selected':'')+'>Midnight</option><option value="neon" '+(theme==='neon'?'selected':'')+'>Neon</option><option value="royal" '+(theme==='royal'?'selected':'')+'>Royal</option></select></label><label>Brand color<input type="color" name="accent" value="'+accent+'"></label>'+(business.type!=='casino'?'<label>Shelf count<select name="shelfCount">'+[1,2,3,4,5,6].map(count=>'<option value="'+count+'" '+(count===shelfCount?'selected':'')+'>'+count+' shelves</option>').join('')+'</select></label>':'')+'<button class="nexus-button">Save storefront</button></form></details>':'';
+    return '<section class="nexus-mall-room" data-theme="'+theme+'" style="--mall-accent:'+accent+'"><header class="nexus-mall-room-header"><button class="nexus-button secondary" type="button" data-action="exit-mall-business">← Mall directory</button><div><span>'+escapeHtml(type.label.toUpperCase())+' · OWNED BY '+escapeHtml(business.owner.toUpperCase())+'</span><h2>'+escapeHtml(business.name)+'</h2></div><small>'+products.length+'/'+type.productLimit+' products</small></header><div class="nexus-mall-room-layout">'+roomContent+'</div>'+productForm+settings+'</section>';
   }
 
   function renderChatPane(scrollState) {
@@ -1147,6 +1256,18 @@
             (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in from Home to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
         : walletAuth + wheel + '<section class="nexus-card"><h2>Live chat</h2><div class="nexus-chat">' + messages + '</div><form class="nexus-chat-form" data-form="chat"><textarea name="text" maxlength="' + (maxCodeLength + 7) + '" rows="2" placeholder="Message Nexus… Use /code: for a code or server invite" required></textarea><button class="nexus-button">Send</button></form><small class="nexus-chat-hint">Use <code>/code:YOURSERVERCODE</code> to share a server invite card, or <code>/code:</code> followed by source to post a copyable code block. Press Shift+Enter for a new line.</small></section>');
     renderChatPane({scrollTop:previousChatScrollTop,atBottom:previousChatAtBottom});
+    content.querySelectorAll('.nexus-mall-product-form').forEach(form=>{
+      const itemSelect=form.querySelector('[name="itemId"]');
+      const quantityInput=form.querySelector('[name="quantity"]');
+      if (!itemSelect||!quantityInput) return;
+      const updateMaximum=()=>{
+        const maximum=Number(itemSelect.selectedOptions[0]?.dataset.quantity||1);
+        quantityInput.max=String(maximum);
+        quantityInput.value=String(Math.min(Math.max(1,Number(quantityInput.value)||1),maximum));
+      };
+      itemSelect.addEventListener('change',updateMaximum);
+      updateMaximum();
+    });
     updateAuctionCountdowns();
   }
 
@@ -1206,8 +1327,79 @@
     const chatInput=isChatForm?form.querySelector('textarea[name="text"]'):null;
     let chatTextToRestore='';
     let pendingChatMessageId='';
+    const user=currentUser();
     try {
-      if (form.dataset.form === 'mall-product') {
+      if (form.dataset.form==='mall-business-settings') {
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username);
+        if (!business) throw new Error('Only this business owner can change its settings.');
+        const name=String(formData.get('name')||'').trim();
+        if (!name) throw new Error('Enter a business name.');
+        business.name=name.slice(0,32);
+        business.description=String(formData.get('description')||'').trim().slice(0,100);
+        business.theme=['forest','midnight','neon','royal'].includes(formData.get('theme'))?formData.get('theme'):'forest';
+        const accent=String(formData.get('accent')||'');
+        business.accent=/^#[0-9a-f]{6}$/i.test(accent)?accent:'#65e6ad';
+        if (business.type!=='casino') business.shelfCount=Math.max(1,Math.min(6,Number(formData.get('shelfCount'))||3));
+        await persist('Storefront settings saved.');
+      } else if (form.dataset.form==='casino-withdraw') {
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const amount=Number(formData.get('amount'));
+        const reserve=Number(business&&business.bankroll||0);
+        if (!business) throw new Error('Only this casino owner can withdraw its reserve.');
+        if (!Number.isInteger(amount)||amount<1||amount>reserve) throw new Error('Choose a whole amount up to the current house reserve.');
+        business.bankroll=reserve-amount;
+        user.balance=Number(user.balance||0)+amount;
+        await persist(amount.toLocaleString()+' Sektorium withdrawn to your wallet.');
+      } else if (form.dataset.form==='casino-withdraw') {
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const amount=Number(formData.get('amount'));
+        const reserve=Number(business&&business.bankroll||0);
+        if (!business) throw new Error('Only this casino owner can withdraw its reserve.');
+        if (!Number.isInteger(amount)||amount<1||amount>reserve) throw new Error('Choose a whole amount up to the current house reserve.');
+        business.bankroll=reserve-amount;
+        user.balance=Number(user.balance||0)+amount;
+        await persist(amount.toLocaleString()+' Sektorium withdrawn to your wallet.');
+      } else if (form.dataset.form==='casino-machine-settings') {
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
+        const machine=business&&business.machines?.find(entry=>entry.id===form.dataset.machineId);
+        const config=machine&&casinoMachineTypes[machine.type];
+        if (!machine||!config||config.game!=='slots') throw new Error('That slot machine is unavailable.');
+        const winRate=Number(formData.get('winRate'));
+        const payout=Number(formData.get('payoutMultiplier'));
+        if (!Number.isInteger(winRate)||winRate<1||winRate>config.maxWinRate) throw new Error('Win chance must be 1-'+config.maxWinRate+'% for this slot tier.');
+        if (!Number.isInteger(payout)||payout<2||payout>config.maxPayout) throw new Error('Payout must be 2-'+config.maxPayout+'× for this slot tier.');
+        machine.winRate=winRate;
+        machine.payoutMultiplier=payout;
+        await persist(machine.name+' settings saved.');
+      } else if (form.dataset.form==='mall-checkout') {
+        if (!user) throw new Error('Sign in to shop in the Mall.');
+        const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId);
+        const product=world.mallProducts.find(entry=>entry.id===formData.get('productId')&&entry.businessId===form.dataset.businessId);
+        const quantity=Number(formData.get('quantity'));
+        if (!business||!product||!Number.isInteger(quantity)||quantity<1||quantity>Number(product.stock||0))
+          throw new Error('Choose an available product quantity.');
+        if (business.owner===user.username) throw new Error('You cannot buy from your own business.');
+        const buyer=world.users.find(entry=>entry.username===user.username);
+        const seller=world.users.find(entry=>entry.username===business.owner);
+        const total=Number(product.price||0)*quantity;
+        if (!buyer||Number(buyer.balance||0)<total) throw new Error('You do not have enough Sektorium for that checkout.');
+        buyer.balance=Number(buyer.balance||0)-total;
+        if (seller) seller.balance=Number(seller.balance||0)+total;
+        product.stock=Number(product.stock)-quantity;
+        const itemData=product.itemData||{};
+        inventoryFor(buyer).push({id:'inventory-'+Date.now()+'-'+Math.random().toString(16).slice(2),
+          name:itemData.name||product.name,quantity,type:itemData.type||product.type||'item',
+          description:itemData.description||'Purchased at '+business.name+'.',media:itemData.media||'',
+          ...(itemData.wrap?{wrap:itemData.wrap}:{})});
+        world.chat.push({user:'Mall',text:user.username+' checked out '+quantity+' '+product.name+' at '+business.name+'.'});
+        await persist('Checkout complete · '+quantity+' × '+product.name+'.');
+      } else if (form.dataset.form === 'mall-secret') {
+        if (!user) throw new Error('Sign in to redeem Mall secrets.');
+        const code=String(formData.get('secretCode')||'').trim().toLowerCase();
+        if (code!=='theyseeyou') throw new Error('That Mall secret was not recognized.');
+        user.balance=Number(user.balance||0)+10_000;
+        await persist('Secret reward: +10,000 Sektorium.');
+      } else if (form.dataset.form === 'mall-product') {
         if (!user) throw new Error('Sign in to stock a Mall business.');
         const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user.username);
         if (!business) throw new Error('You do not own this Mall business.');
@@ -1215,15 +1407,16 @@
         const currentProducts=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
         if (currentProducts.length>=type.productLimit) throw new Error('This business is at its '+type.productLimit+' product limit.');
         const item=inventoryFor(user).find(entry=>entry.id===formData.get('itemId'));
+        const stock=Number(formData.get('quantity'));
         const price=Number(formData.get('price'));
-        if (!item||Number(item.quantity||0)<1) throw new Error('Choose an item that is in your inventory.');
+        if (!item||!Number.isInteger(stock)||stock<1||stock>Number(item.quantity||0)) throw new Error('Choose a quantity available in your inventory.');
         if (!Number.isInteger(price)||price<1||price>999999) throw new Error('Enter a price from 1 to 999999.');
         const itemData={name:item.name,type:item.type||'item',description:item.description||'',media:item.media||'',...(item.wrap?{wrap:item.wrap}:{})};
-        item.quantity=Number(item.quantity)-1;
+        item.quantity=Number(item.quantity)-stock;
         if (item.quantity===0) user.inventory=inventoryFor(user).filter(entry=>entry.id!==item.id);
         world.mallProducts.push({id:'mall-product-'+Date.now()+'-'+Math.random().toString(16).slice(2),
-          businessId:business.id,owner:user.username,name:item.name,type:item.type||'item',price,stock:1,itemData,createdAt:Date.now()});
-        await persist(item.name+' listed at '+business.name+'.');
+          businessId:business.id,owner:user.username,name:item.name,type:item.type||'item',price,stock,itemData,createdAt:Date.now()});
+        await persist(stock+' '+item.name+' listed at '+business.name+'.');
       } else if (form.dataset.form === 'auth') {
         captureAuthDraft(form);
         const username = String(formData.get('username') || '').trim().replace(/[^a-zA-Z0-9_]/g, '').slice(0,20);
@@ -1252,12 +1445,12 @@
             world.users.push(newUser);
             await persist('Welcome to Nexus. Your starter wallet is 500 Sektorium.');
           }
-          localStorage.setItem(sessionKey, JSON.stringify({username}));
+          await saveUserSession(newUser);
           authDraft={username:'',password:''};
           render();
         } else {
           if (!user || user.password !== password) throw new Error('No matching account was found.');
-          localStorage.setItem(sessionKey, JSON.stringify({username:user.username}));
+          await saveUserSession(user);
           authDraft={username:'',password:''};
           render();
           setStatus('Logged in to Nexus.');
@@ -1469,6 +1662,7 @@
     const tab = event.target.closest('[data-nexus-tab]');
     if (tab && !inventoryPage) {
       activeTab = ['shop','mall'].includes(tab.dataset.nexusTab) ? tab.dataset.nexusTab : 'home';
+      if (activeTab!=='mall') {activeMallBusinessId='';selectedMallProductId='';}
       render();
       return;
     }
@@ -1481,7 +1675,18 @@
     }
     const user = currentUser();
     try {
-      if (action === 'logout') {
+      if (action==='enter-mall-business') {
+        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.id);
+        if (!business) throw new Error('That Mall business is no longer available.');
+        activeMallBusinessId=business.id;
+        selectedMallProductId=world.mallProducts.find(product=>product.businessId===business.id&&Number(product.stock)>0)?.id||'';
+        render();
+      } else if (action==='exit-mall-business') {
+        activeMallBusinessId='';selectedMallProductId='';render();
+      } else if (action==='select-mall-product') {
+        selectedMallProductId=button.dataset.id;
+        render();
+      } else if (action === 'logout') {
         localStorage.removeItem(sessionKey);
         render();
         setStatus('You are logged out.');
@@ -1508,9 +1713,11 @@
         const business={id:'mall-'+Date.now()+'-'+Math.random().toString(16).slice(2),type,
           name:(customName||user.username+'\'s '+config.label+' '+index).slice(0,32),owner:user.username,
           accent:/^#[0-9a-f]{6}$/i.test(customAccent)?customAccent:'#65e6ad',
+          description:'',theme:type==='casino'?'midnight':'forest',shelfCount:3,
           productLimit:config.productLimit,products:[],createdAt:Date.now(),
           ...(type==='casino'?{bankroll:3000,machines:[{id:'machine-'+Date.now(),type:'basic_slots',name:'Lucky Seven'}]}:{})};
         world.mallBusinesses.push(business);
+        activeMallBusinessId=business.id;
         await persist('Your '+config.label+' is open in the Mall.');
       } else if (action === 'buy-casino-machine') {
         if (!user) throw new Error('Sign in to manage a casino.');
@@ -1552,13 +1759,22 @@
         if (!Number.isInteger(bet)||bet<10||bet>5000) throw new Error('Choose a whole-number wager from 10 to 5000.');
         if (Number(gambler.balance||0)<bet) throw new Error('You do not have enough Sektorium for that wager.');
         const game=casinoMachineTypes[machine.type]?.game||'slots';
-        let payout=0,result='No win this round.';
+        let payout=0,result='No win this round.',slotWon=false,slotReels='',slotPayoutMultiplier=0;
         if (game==='slots') {
-          const symbols=Array.from({length:3},()=>Math.floor(Math.random()*6));
-          const counts=symbols.map(symbol=>symbols.filter(value=>value===symbol).length);
-            const multiplier=Math.max(...counts)===3?(machine.type==='deluxe_slots'?20:10):Math.max(...counts)===2?2:0;
-          payout=bet*multiplier;
-          result='Slots '+symbols.map(symbol=>['◆','●','7','★','♣','♦'][symbol]).join('  ')+' · '+(multiplier?'payout '+payout.toLocaleString():'no win');
+          const config=casinoMachineTypes[machine.type]||casinoMachineTypes.basic_slots;
+          const winRate=Math.max(1,Math.min(config.maxWinRate,Number(machine.winRate)||config.defaultWinRate));
+          slotPayoutMultiplier=Math.max(2,Math.min(config.maxPayout,Number(machine.payoutMultiplier)||config.defaultPayout));
+          const symbols=['◆','●','7','★','♣','♦'];
+          slotWon=Math.random()*100<winRate;
+          const reels=slotWon
+            ?Array(3).fill(Math.floor(Math.random()*symbols.length))
+            :[Math.floor(Math.random()*symbols.length),0,0];
+          if (!slotWon) {
+            reels[1]=(reels[0]+1+Math.floor(Math.random()*(symbols.length-1)))%symbols.length;
+            reels[2]=Math.floor(Math.random()*symbols.length);
+          }
+          slotReels=reels.map(symbol=>symbols[symbol]).join('  ');
+          if (slotWon) payout=bet*slotPayoutMultiplier;
         } else if (game==='roulette') {
           const rouletteChoice=button.closest('.nexus-casino-machine')?.querySelector('[data-roulette-choice]')?.value;
           if (!['red','black'].includes(rouletteChoice)) throw new Error('Choose red or black before playing roulette.');
@@ -1575,6 +1791,9 @@
         const paid=Math.min(payout,business.bankroll);
         business.bankroll-=paid;
         gambler.balance+=paid;
+        if (game==='slots') result=slotWon
+          ?'YOU WON! Slots '+slotReels+' · '+paid.toLocaleString()+' Sektorium paid ('+slotPayoutMultiplier+'×)'
+          :'YOU LOST · Slots '+slotReels+' · no payout';
         world.chat.push({user:'Casino',text:user.username+' wagered '+bet+' at '+business.name+': '+result});
         await persist(result+' House reserve '+Number(business.bankroll).toLocaleString()+'.');
       } else if (action === 'copy-code') {
@@ -1668,6 +1887,8 @@
         user.dropzone={...savedProgress,weaponColor:'',weaponWrap:{pattern:item.wrap.pattern||'solid'},
           weaponColors:{...(savedProgress.weaponColors||{}),...item.wrap.weaponColors}};
         await persist(item.name+' equipped for Dropzone.');
+        const synced=await syncEquippedWrap(user);
+        if (synced) setStatus(item.name+' equipped in your active Dropzone match.');
       } else if (action === 'save-art') {
         if (!user) throw new Error('Sign in to save artwork to your inventory.');
         const canvas = content.querySelector('[data-art-canvas]');

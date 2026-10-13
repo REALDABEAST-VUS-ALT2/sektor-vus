@@ -22,6 +22,16 @@
   const lanMode = new URLSearchParams(location.search).get('lan') === '1';
   const firebaseApi = globalThis.firebase;
   const firebaseMode = !lanMode && !!(firebaseApi && firebaseApi.apps && firebaseApi.apps.length);
+  const dropzoneFirebaseConfig=globalThis.DROPZONE_FIREBASE_CONFIG;
+  let gameFirebaseApi=firebaseApi;
+  if (firebaseMode&&dropzoneFirebaseConfig&&dropzoneFirebaseConfig.databaseURL) {
+    try {
+      gameFirebaseApi=firebaseApi.app('nexus-dropzone');
+    } catch(error) {
+      gameFirebaseApi=firebaseApi.initializeApp(dropzoneFirebaseConfig,'nexus-dropzone');
+    }
+  }
+  const firebaseWarMode=!lanMode&&!!(gameFirebaseApi&&gameFirebaseApi.apps&&gameFirebaseApi.apps.length);
   const weapons = {
     ar_pulse:{name:'Pulse AR',type:'Assault rifle',damage:22,rate:180,mag:30,range:680,spread:.035,reload:1500,level:1},
     ar_bulldog:{name:'Bulldog 7.62',type:'Assault rifle',damage:31,rate:290,mag:24,range:620,spread:.05,reload:1750,level:5},
@@ -251,6 +261,7 @@
   const weaponColorDefaults={receiver:'#647166',barrel:'#18211c',grip:'#29362d',stock:'#536257',optic:'#a5f06d',accent:'#d3b263'};
   const vehicleColorParts=['body','trim','accent'];
   const vehicleColorDefaults={body:'#71836e',trim:'#9fc4ff',accent:'#d3b263'};
+  const vehicleSkinPatterns=['solid','stripes','digital','camo'];
   const vehicles = {
     scout_bike:{name:'Scout bike',speed:1.9,color:'#d8c76f'},
     assault_rover:{name:'Assault rover',speed:2.3,color:'#b8836e'},
@@ -674,7 +685,7 @@
       matchLifecycleBusy=true;
       try {
         const next={...warState,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}};
-        if (firebaseMode) {
+        if (firebaseWarMode) {
           const result=await warRef.transaction(current=>current&&current.matchPhase==='playing'&&
             (now>=Number(current.matchEndsAt||Infinity)||Object.values(current.bases||{}).some(base=>Number(base?.health)<=0))
             ?{...current,matchPhase:'voting',voteEndsAt:now+15_000,mapVotes:{}}:current);
@@ -802,7 +813,7 @@
         return next;
       };
       let next;
-      if (firebaseMode) {
+      if (firebaseWarMode) {
         const result=await warRef.transaction(finalize);
         next=result.snapshot.val();
       } else if (lanMode) {
@@ -839,9 +850,11 @@
     const weaponColors=Object.fromEntries(weaponColorParts.map(part=>[part,
       /^#[0-9a-f]{6}$/i.test(savedColors[part]||'')?savedColors[part]:weaponColor]));
     const savedVehicleColors=value&&value.vehicleColors&&typeof value.vehicleColors==='object'?value.vehicleColors:{};
-    const vehicleColors=Object.fromEntries(Object.entries(vehicles).map(([id,vehicle])=>[id,
-      Object.fromEntries(vehicleColorParts.map(part=>[part,
-        /^#[0-9a-f]{6}$/i.test(savedVehicleColors[id]?.[part]||'')?savedVehicleColors[id][part]:part==='body'?vehicle.color:vehicleColorDefaults[part]]))]));
+    const vehicleColors=Object.fromEntries(Object.entries(vehicles).map(([id,vehicle])=>[id,{
+      ...Object.fromEntries(vehicleColorParts.map(part=>[part,
+        /^#[0-9a-f]{6}$/i.test(savedVehicleColors[id]?.[part]||'')?savedVehicleColors[id][part]:part==='body'?vehicle.color:vehicleColorDefaults[part]])),
+      pattern:vehicleSkinPatterns.includes(savedVehicleColors[id]?.pattern)?savedVehicleColors[id].pattern:'solid'
+    }]));
     const savedWrap=value&&value.weaponWrap&&typeof value.weaponWrap==='object'?value.weaponWrap:{};
     const weaponWrap={pattern:['solid','stripes','digital'].includes(savedWrap.pattern)?savedWrap.pattern:'solid'};
     return {xp,level:Math.min(maxLevel,Math.floor(xp/xpPerLevel)+1),ownedAttachments:[...new Set([...freeAttachments,...owned])],weaponColor,weaponColors,weaponWrap,vehicleColors};
@@ -905,27 +918,123 @@
     return user;
   }
 
-  async function readAccountWorld() {
+  async function firebaseAccountFields(userRef) {
+    const fields=['username','balance','team','teamWeek','dropzone'];
+    const values=await Promise.all(fields.map(async field=>[field,(await userRef.child(field).get()).val()]));
+    return Object.fromEntries(values.filter(([,value])=>value!==null&&value!==undefined));
+  }
+
+  async function firebaseUserSnapshot(username) {
+    const usersRef=firebaseApi.database().ref(sharedPath+'/users');
+    const usersUrl=new URL(usersRef.toString().replace(/\/+$/,'')+'.json');
+    usersUrl.searchParams.set('shallow','true');
+    const authUser=firebaseApi.auth().currentUser;
+    if (authUser) usersUrl.searchParams.set('auth',await authUser.getIdToken());
+    const response=await fetch(usersUrl);
+    if (!response.ok) throw new Error((await response.text())||'Could not locate your Firebase account.');
+    const keys=Object.keys(await response.json()||{});
+    const matches=await Promise.all(keys.map(async key=>({
+      key,
+      username:(await usersRef.child(key).child('username').get()).val()
+    })));
+    const match=matches.find(entry=>String(entry.username||'').toLowerCase()===String(username).toLowerCase());
+    if (!match) return {val:()=>null,exists:()=>false};
+    const account=await firebaseAccountFields(usersRef.child(match.key));
+    return {val:()=>({[match.key]:account}),exists:()=>true};
+  }
+
+  function firebaseSessionUserKey(username) {
+    try {
+      const session=JSON.parse(localStorage.getItem(sessionKey)||'null');
+      return session&&String(session.username||'').toLowerCase()===String(username).toLowerCase()
+        ?String(session.userKey||''):'';
+    } catch(error) { return ''; }
+  }
+
+  function rememberFirebaseSessionUserKey(username,key) {
+    if (String(username).toLowerCase()!==String(playerName).toLowerCase()) return;
+    try {
+      const session=JSON.parse(localStorage.getItem(sessionKey)||'null');
+      if (session&&session.username) localStorage.setItem(sessionKey,JSON.stringify({...session,userKey:String(key)}));
+    } catch(error) {}
+  }
+
+  function clearFirebaseSessionUserKey(username) {
+    try {
+      const session=JSON.parse(localStorage.getItem(sessionKey)||'null');
+      if (session&&String(session.username||'').toLowerCase()===String(username).toLowerCase()) {
+        delete session.userKey;
+        localStorage.setItem(sessionKey,JSON.stringify(session));
+      }
+    } catch(error) {}
+  }
+
+  function firebaseUserEntries(users) {
+    return Array.isArray(users)?users.map((user,index)=>[String(index),user]):
+      users&&typeof users==='object'?Object.entries(users):[];
+  }
+
+  function firebaseUserEntry(users,username) {
+    return firebaseUserEntries(users).find(([,user])=>user&&
+      String(user.username).toLowerCase()===String(username).toLowerCase())||null;
+  }
+
+  async function readAccountWorld(username=playerName) {
     if (firebaseMode) {
-      const snapshot=await firebaseApi.database().ref(sharedPath).get();
-      if (!snapshot.exists()) throw new Error('The shared Nexus world is not available.');
-      return snapshot.val();
+      const usersRef=firebaseApi.database().ref(sharedPath+'/users');
+      const cachedKey=firebaseSessionUserKey(username);
+      if (cachedKey) {
+        const cachedUser=await firebaseAccountFields(usersRef.child(cachedKey));
+        if (cachedUser&&String(cachedUser.username).toLowerCase()===String(username).toLowerCase()) {
+          return {users:[cachedUser]};
+        }
+        clearFirebaseSessionUserKey(username);
+      }
+      const snapshot=await firebaseUserSnapshot(username);
+      if (!snapshot.exists()) throw new Error('Your Nexus account could not be found.');
+      const entry=firebaseUserEntry(snapshot.val(),username);
+      if (!entry) throw new Error('Your Nexus account could not be found.');
+      rememberFirebaseSessionUserKey(username,entry[0]);
+      return {users:[entry[1]]};
     }
     if (lanMode) {
-      const response=await fetch(requestUrl(sharedPath));
+      const usersPath=sharedPath+'/users';
+      const cachedKey=firebaseSessionUserKey(username);
+      if (cachedKey) {
+        const cachedResponse=await fetch(requestUrl(usersPath+'/'+cachedKey));
+        if (cachedResponse.ok) {
+          const cachedUser=await cachedResponse.json();
+          if (cachedUser&&String(cachedUser.username).toLowerCase()===String(username).toLowerCase())
+            return {users:[cachedUser]};
+        }
+        clearFirebaseSessionUserKey(username);
+      }
+      const response=await fetch(requestUrl(usersPath));
       if (!response.ok) throw new Error((await response.text())||'Could not read the shared Nexus account.');
-      return response.json();
+      const entry=firebaseUserEntry(await response.json(),username);
+      if (!entry) throw new Error('Your Nexus account could not be found.');
+      rememberFirebaseSessionUserKey(username,entry[0]);
+      return {users:[entry[1]]};
     }
     return accountWorldFromLocal();
   }
 
   async function updateAccount(updater,username=playerName) {
     if (firebaseMode) {
-      const usersSnapshot=await firebaseApi.database().ref(sharedPath+'/users').get();
-      const users=usersSnapshot.val();
-      const entries=Array.isArray(users)?users.map((user,index)=>[String(index),user]):
-        users&&typeof users==='object'?Object.entries(users):[];
-      const entry=entries.find(([,user])=>user&&String(user.username).toLowerCase()===String(username).toLowerCase());
+      const usersRef=firebaseApi.database().ref(sharedPath+'/users');
+      let entry=null;
+      const cachedKey=firebaseSessionUserKey(username);
+      if (cachedKey) {
+        const cachedUser=await firebaseAccountFields(usersRef.child(cachedKey));
+        if (cachedUser&&String(cachedUser.username).toLowerCase()===String(username).toLowerCase()) {
+          entry=[cachedKey,cachedUser];
+        } else clearFirebaseSessionUserKey(username);
+      }
+      if (!entry) {
+        const usersSnapshot=await firebaseUserSnapshot(username);
+        entry=firebaseUserEntry(usersSnapshot.val(),username);
+        if (entry) rememberFirebaseSessionUserKey(username,entry[0]);
+      }
       if (!entry) throw new Error('Your Nexus account could not be found. Reconnect to Nexus and try again.');
       const cachedUser=entry[1];
       const nextUser=JSON.parse(JSON.stringify(cachedUser));
@@ -946,15 +1055,27 @@
       if (String(username).toLowerCase()===playerName.toLowerCase()) accountData=user;
       return user;
     }
+    if (lanMode) {
+      const user=accountFor(await readAccountWorld(username),username);
+      const previous=JSON.parse(JSON.stringify(user));
+      updater(user);
+      if (JSON.stringify(user.inventory)!==JSON.stringify(previous.inventory))
+        throw new Error('Inventory changes must be saved from Nexus.');
+      const updates={};
+      for (const key of new Set([...Object.keys(previous),...Object.keys(user)])) {
+        if (key==='inventory'||JSON.stringify(previous[key])===JSON.stringify(user[key])) continue;
+        updates[key]=Object.prototype.hasOwnProperty.call(user,key)?user[key]:null;
+      }
+      const userKey=firebaseSessionUserKey(username);
+      if (!userKey) throw new Error('Could not locate your shared Nexus account. Reopen Nexus and try again.');
+      if (Object.keys(updates).length) await requestWorldAt(sharedPath+'/users/'+userKey,'PATCH',updates);
+      if (String(username).toLowerCase()===playerName.toLowerCase()) accountData=user;
+      return user;
+    }
     const next=await readAccountWorld();
     const user=accountFor(next,username);
     updater(user);
-    if (lanMode) {
-      const response=await fetch(requestUrl(sharedPath),{
-        method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(next)
-      });
-      if (!response.ok) throw new Error((await response.text())||'Could not save the shared Nexus account.');
-    } else await writeLocalAccountWorld(next);
+    await writeLocalAccountWorld(next);
     if (String(username).toLowerCase()===playerName.toLowerCase()) accountData=user;
     return user;
   }
@@ -1354,12 +1475,12 @@
   }
 
   async function initializeGame() {
-    if (firebaseMode) {
-      await firebaseApi.auth().signInAnonymously().catch(error => {
-        if (firebaseApi.auth().currentUser) return;
+    if (firebaseWarMode) {
+      await gameFirebaseApi.auth().signInAnonymously().catch(error => {
+        if (gameFirebaseApi.auth().currentUser) return;
         throw error;
       });
-      warRef = firebaseApi.database().ref(gamePath);
+      warRef = gameFirebaseApi.database().ref(gamePath);
       const initialized = await warRef.transaction(current =>
         !current || current.week !== weekKey() ? freshWar() :
           Number(current.arenaVersion||1)<arenaVersion?{...current,...normalizeWar(current)}:current
@@ -1480,7 +1601,7 @@
     }
     if (stale) {
       if (lanMode) lanPut(warState).catch(error=>setStatus(error.message,true));
-      else if (!firebaseMode) localStorage.setItem(localGameKey,JSON.stringify(warState));
+      else if (!firebaseWarMode) localStorage.setItem(localGameKey,JSON.stringify(warState));
     }
     if (previousWeek && previousWeek!==warState.week && playerKey && playerTeam) {
       cancelCapture('Weekly match reset. Capture cancelled.');
@@ -1503,7 +1624,7 @@
   }
 
   async function updateWar(path, updater) {
-    if (firebaseMode) {
+    if (firebaseWarMode) {
       const result = await warRef.child(path).transaction(current => updater(current));
       return result.snapshot.val();
     }
@@ -1622,8 +1743,6 @@
     container.addEventListener('pointercancel',onControlPointerUp);
     container.addEventListener('pointerleave',onControlPointerUp);
     ui.reload.addEventListener('click',reloadWeapon);
-    document.addEventListener('click',onActionClick);
-    document.addEventListener('fullscreenchange',updateFullscreenButton);
     window.addEventListener('pagehide',markOffline,{once:true});
   }
 
@@ -2319,6 +2438,7 @@
     context.strokeStyle=trimColor;
     context.lineWidth=3/scale;
     context.beginPath();context.ellipse(0,0,38,16,0,0,Math.PI*2);context.fill();context.stroke();
+    drawVehicleSkin(context,'transport_helicopter',accentColor,palette.pattern);
     context.strokeStyle=accentColor;context.lineWidth=2/scale;
     context.beginPath();context.moveTo(-15,0);context.lineTo(20,0);context.stroke();
     context.fillRect(-48,-3,24,6);
@@ -2376,6 +2496,44 @@
     }
     context.fillStyle='#edf5ef';context.font='bold 12px system-ui';context.textAlign='center';
     context.fillText('GUN JEEP · '+(vehicle.passengers?.length||0)+'/5',x,y-34);
+  }
+
+  function drawVehicleSkin(context,type,accent,pattern) {
+    if (!vehicleSkinPatterns.includes(pattern)||pattern==='solid') return;
+    const bodyBounds={
+      scout_bike:{x:-12,y:-8,width:24,height:16,ellipse:true},
+      assault_rover:{x:-25,y:-15,width:51,height:30},
+      tank:{x:-25,y:-13,width:48,height:26},
+      anti_air:{x:-26,y:-14,width:52,height:28},
+      apache:{x:-25,y:-12,width:50,height:24,ellipse:true},
+      jeep:{x:-25,y:-17,width:52,height:34},
+      transport_helicopter:{x:-38,y:-16,width:76,height:32,ellipse:true}
+    }[type];
+    if (!bodyBounds) return;
+    context.save();
+    context.beginPath();
+    if (bodyBounds.ellipse) context.ellipse(0,0,bodyBounds.width/2,bodyBounds.height/2,0,0,Math.PI*2);
+    else context.rect(bodyBounds.x,bodyBounds.y,bodyBounds.width,bodyBounds.height);
+    context.clip();
+    context.globalAlpha=.52;
+    context.fillStyle=accent;
+    if (pattern==='stripes') {
+      for (let stripe=-50;stripe<55;stripe+=9) {
+        context.save();context.translate(stripe,0);context.rotate(-.6);
+        context.fillRect(0,-35,3,70);context.restore();
+      }
+    } else if (pattern==='digital') {
+      for (let row=-20;row<24;row+=8) for (let column=-45;column<50;column+=9) {
+        if ((Math.abs(row/8+column/9)%2)===0) context.fillRect(column,row,5,5);
+      }
+    } else {
+      context.strokeStyle=accent;context.lineWidth=2;
+      for (let row=-24;row<28;row+=8) for (let column=-48;column<52;column+=10) {
+        const offset=(Math.abs(row/8)%2)*5;
+        context.beginPath();context.ellipse(column+offset,row,4,2.5,0,0,Math.PI*2);context.stroke();
+      }
+    }
+    context.restore();
   }
 
   function drawVehicleSprite(context,type,x,y,bodyColor,teamColor,angle=0,customColors={}) {
@@ -2463,6 +2621,7 @@
       context.strokeStyle='#e0c87b';context.lineWidth=5;
       context.beginPath();context.moveTo(4,0);context.lineTo(31,0);context.stroke();
     }
+    drawVehicleSkin(context,type,accent,customColors.pattern);
     context.strokeStyle=accent;
     context.globalAlpha=.88;
     context.lineWidth=2;
@@ -4709,7 +4868,7 @@
     const startVote=current=>current&&current.matchPhase==='playing'&&
       Object.values(current.bases||{}).some(base=>Number(base?.health)<=0)
       ?{...current,matchPhase:'voting',voteEndsAt:Date.now()+15_000,mapVotes:{}}:current;
-    if (firebaseMode) {
+    if (firebaseWarMode) {
       const result=await warRef.transaction(startVote);
       const next=result.snapshot.val();
       if (!next||next.matchPhase!=='voting') return false;
@@ -5306,7 +5465,7 @@
   async function generateTeamResources() {
     if (!warState || destroyed) return;
     if (warState.week !== weekKey()) {
-      if (firebaseMode) {
+      if (firebaseWarMode) {
         const reset = await warRef.transaction(current => !current || current.week !== weekKey() ? freshWar() : current);
         warState = normalizeWar(reset.snapshot.val());
       } else {
@@ -5320,7 +5479,7 @@
       return;
     }
     const now=Date.now();
-    if (firebaseMode) {
+    if (firebaseWarMode) {
       const clockRef=warRef.child('economyClock');
       const claim=await clockRef.transaction(last=>Number(last||0)<=now-60000?now:last);
       if (!claim.committed || Number(claim.snapshot.val())!==now) return;
@@ -5341,7 +5500,7 @@
     if (!warState||destroyed) return;
     const now=Date.now();
     let claimed=false;
-    if (firebaseMode) {
+    if (firebaseWarMode) {
       const claim=await warRef.child('sekoriumPayoutAt').transaction(last=>{
         claimed=false;
         if (now-Number(last||0)<60_000) return last;
@@ -5353,7 +5512,7 @@
       if (now-Number(warState.sekoriumPayoutAt||0)<60_000) return;
       await updateWar('sekoriumPayoutAt',()=>now);
     }
-    if (firebaseMode) warState=normalizeWar((await warRef.get()).val());
+    if (firebaseWarMode) warState=normalizeWar((await warRef.get()).val());
     else if (lanMode) warState=normalizeWar(await lanGet());
     const shares={};
     const xpShares={};
@@ -5558,6 +5717,7 @@
     const type=ui.vehicleColorVehicle.value;
     const saved=accountData.dropzone.vehicleColors[type]||{};
     for (const part of vehicleColorParts) ui.vehicleColors[part].value=saved[part]||vehicleColorDefaults[part];
+    ui.vehicleSkinPattern.value=vehicleSkinPatterns.includes(saved.pattern)?saved.pattern:'solid';
   }
 
   async function colorVehicle() {
@@ -5565,10 +5725,12 @@
     const colors=Object.fromEntries(vehicleColorParts.map(part=>[
       part,String(ui.vehicleColors[part].value||'').toLowerCase()
     ]));
+    colors.pattern=vehicleSkinPatterns.includes(ui.vehicleSkinPattern.value)?ui.vehicleSkinPattern.value:'solid';
     if (Object.values(colors).some(color=>!/^#[0-9a-f]{6}$/.test(color))) {
       setStatus('Choose a valid color for each vehicle part.',true);return;
     }
-    const sameColors=current=>vehicleColorParts.every(part=>current&&current[part]===colors[part]);
+    const sameColors=current=>vehicleColorParts.every(part=>current&&current[part]===colors[part])&&
+      current?.pattern===colors.pattern;
     if (sameColors(accountData.dropzone.vehicleColors[type])) {setStatus('Those vehicle colors are already applied.');return;}
     try {
       let purchaseError='';
@@ -5588,7 +5750,7 @@
       if (currentVehicleId) await updateWar('vehicles/'+currentVehicleId,current=>current?{...current,colors}:current);
       refreshProgressUi();
       draw();
-      setStatus(vehicles[type].name+' colors applied for 100 Sektorium.');
+      setStatus(vehicles[type].name+' colors and '+colors.pattern+' skin applied for 100 Sektorium.');
     } catch(error) {setStatus(error.message||'Could not apply those vehicle colors.',true);}
   }
 
@@ -5690,7 +5852,7 @@
   }
 
   function buildUi() {
-    container.innerHTML='<div class="nexus-war-heading"><div><span>'+(firebaseMode||lanMode?'LIVE MULTIPLAYER':'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-heading-actions"><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div><button class="nexus-button secondary" type="button" data-war-action="fullscreen" aria-pressed="false">Fullscreen</button></div></div>' +
+    container.innerHTML='<div class="nexus-war-heading"><div><span>'+(lanMode?'LAN MULTIPLAYER':firebaseWarMode?(gameFirebaseApi!==firebaseApi?'SEPARATE FIREBASE':'LIVE FIREBASE'):'LOCAL PRACTICE')+'</span><h2>nexus:dropzone</h2></div><div class="nexus-war-heading-actions"><div class="nexus-war-reset" data-war-reset>Weekly wipe pending</div><button class="nexus-button secondary" type="button" data-war-action="fullscreen" aria-pressed="false">Fullscreen</button></div></div>' +
       '<p class="nexus-war-description">Explore a frontline six times wider and taller than before. Move on foot relative to the cursor, and use high-speed vehicles from your team base. Click Deploy / board / dismount or press V once. Tanks and anti-air have separate ammo; aim with the mouse, fire on the map, and press R to reload. Equip a stim in your tactical slot and use X for a strong temporary speed boost and healing. Marked loot crates can contain tactical or lethal charges, armor plates, or team resources; open one with E when nearby. Fixed crates respawn, and random airdrops arrive during the match. Each base is protected by a team-only safe zone. Spawn each vehicle at its marked pad inside your base; occupied pads are unavailable. Capture empty relays in 10 seconds or enemy relays in 20. Each captured relay earns its owner 25 Sektorium and 50 XP per minute, and adds team resources once per minute. Only anti-air can bring down a transport helicopter; it lifts as it flies and seats up to ten. Press Z to apply a purchased armor plate. Enter marked houses with Q, revive allies with F, or hold G while downed to give up.</p>' +
       '<a class="nexus-button nexus-war-home" href="'+nexusUrl()+'">Back to Nexus</a>' +
       '<div class="nexus-war-status" data-war-status role="status" aria-live="polite">Connecting to the frontline…</div>' +
@@ -5897,6 +6059,12 @@
     vehicleSelectLabel.className='nexus-war-color-label';
     vehicleSelectLabel.append('Vehicle',ui.vehicleColorVehicle);
     vehicleColorControls.appendChild(vehicleSelectLabel);
+    ui.vehicleSkinPattern=document.createElement('select');
+    ui.vehicleSkinPattern.setAttribute('aria-label','Vehicle skin pattern');
+    ui.vehicleSkinPattern.innerHTML='<option value="solid">Solid skin</option><option value="stripes">Stripe wrap</option><option value="digital">Digital wrap</option><option value="camo">Camo wrap</option>';
+    const vehicleSkinLabel=document.createElement('label');
+    vehicleSkinLabel.className='nexus-war-color-label';vehicleSkinLabel.append('Skin',ui.vehicleSkinPattern);
+    vehicleColorControls.appendChild(vehicleSkinLabel);
     for (const [part,label] of [['body','Body'],['trim','Trim'],['accent','Accent']]) {
       const input=document.createElement('input');
       input.type='color';input.value=vehicleColorDefaults[part];
@@ -5962,6 +6130,15 @@
     container=target;
     destroyed=false;
     buildUi();
+    container.querySelectorAll('[data-war-action="join-dropzone-team"]').forEach(button=>{
+      button.addEventListener('click',event=>{
+        event.stopPropagation();
+        chooseDropzoneTeam(button.dataset.team);
+      });
+    });
+    document.addEventListener('click',onActionClick);
+    document.addEventListener('fullscreenchange',updateFullscreenButton);
+    setStatus('Checking your Nexus account and shared frontline…');
     showConnectionPanel('Checking your Nexus account and shared war state.','Connecting…');
     try {
       const session=JSON.parse(localStorage.getItem(sessionKey)||'null');
@@ -5974,7 +6151,7 @@
       if (teamLookup!=='vortex' && teamLookup!=='krypton') {
         container.classList.add('nexus-war-unavailable');
         ui.teamChoice.hidden=false;
-        setStatus('Choose Vortex or Krypton for this visit.');
+        setStatus('Choose a side to join the frontline.');
         showConnectionPanel('Choose Vortex or Krypton for this visit.','Choose your team');
         return;
       }
@@ -5992,6 +6169,7 @@
     if (!ui||!ui.teamChoice||!['vortex','krypton'].includes(team)) return;
     const buttons=[...ui.teamChoice.querySelectorAll('button')];
     buttons.forEach(button=>{button.disabled=true;});
+    setStatus('Saving your team choice…');
     let selected=false;
     const currentWeek=weekKey();
     try {
@@ -6026,7 +6204,7 @@
     if (captureTimer) clearInterval(captureTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (refreshTimer) clearInterval(refreshTimer);
-    if (firebaseMode && warRef && typeof warRef.off==='function') warRef.off('value');
+    if (firebaseWarMode && warRef && typeof warRef.off==='function') warRef.off('value');
     if (lanMode && warRef && typeof warRef.close==='function') warRef.close();
     for (const key of voicePeers.keys()) closeVoicePeer(key);
     voiceStream?.getTracks().forEach(track=>track.stop());
@@ -6202,10 +6380,10 @@
     spectatorUi.onChange=onChange;
     spectatorAnimation=requestAnimationFrame(spectatorFrame);
     try {
-      if (firebaseMode) {
-        if (!firebaseApi.auth().currentUser) await firebaseApi.auth().signInAnonymously();
+      if (firebaseWarMode) {
+        if (!gameFirebaseApi.auth().currentUser) await gameFirebaseApi.auth().signInAnonymously();
         if (generation!==spectatorGeneration||!target.isConnected) return;
-        spectatorRef=firebaseApi.database().ref(gamePath);
+        spectatorRef=gameFirebaseApi.database().ref(gamePath);
         spectatorRef.on('value',snapshot=>{
           if (!snapshot.exists()) {
             updateSpectatorState(null,generation);
