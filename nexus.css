@@ -924,12 +924,85 @@ body::before {
 .nexus-casino-upgrades .nexus-button { padding:7px 9px; font-size:10px; }
 .nexus-casino-bet { display:flex; align-items:center; gap:8px; grid-column:1/-1; color:#9cac9f; font-size:11px; }
 .nexus-casino-bet input { width:110px; }
+.nexus-mall-directory-entry { position:relative; display:flex; min-height:150px; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:7px; overflow:hidden; padding:18px; border:1px solid color-mix(in srgb,var(--mall-accent) 50%,transparent); border-radius:9px; background:linear-gradient(150deg,color-mix(in srgb,var(--mall-accent) 17%,#121a16),#0d1411 72%); color:#edf5ef; text-align:left; cursor:pointer; }
+.nexus-mall-directory-entry::before { position:absolute; inset:0 0 auto; height:4px; background:var(--mall-accent); content:""; }
+.nexus-mall-directory-entry:hover { border-color:var(--mall-accent); transform:translateY(-2px); }
+.nexus-mall-directory-entry > strong { font-size:18px; }
+.nexus-mall-directory-entry > small,.nexus-mall-sign-type { color:#9cac9f; font-size:10px; }
+.nexus-mall-sign-type { color:var(--mall-accent); font-weight:800; }
+.nexus-mall-enter { display:flex; width:100%; justify-content:space-between; margin-top:8px; padding-top:9px; border-top:1px solid #d5e2d522; color:var(--mall-accent); font-size:11px; font-weight:800; }
+.nexus-mall-room { grid-column:1/-1; min-width:0; padding:clamp(14px,3vw,28px); border:1px solid color-mix(in srgb,var(--mall-accent) 40%,transparent); border-radius:12px; background:#101713; }
+.nexus-mall-room-header { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:16px; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid color-mix(in srgb,var(--mall-accent) 28%,transparent); }
+.nexus-mall-room-header > div > span { color:var(--mall-accent); font-size:9px; font-weight:800; }
+.nexus-mall-room-header h2 { margin:4px 0 0; overflow-wrap:anywhere; font-size:22px; }
+.nexus-mall-room-header > small { color:#9cac9f; font-size:10px; }
+.nexus-mall-room-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,.34fr); gap:16px; align-items:start; }
+.nexus-mall-room[data-theme="midnight"] { --room-bg:#15131b; }
+.nexus-mall-room[data-theme="neon"] { --room-bg:#101917; }
+.nexus-mall-room[data-theme="royal"] { --room-bg:#171414; }
+.nexus-mall-room[data-theme="forest"] { --room-bg:#101713; }
+.nexus-shop-floor { min-width:0; min-height:370px; padding:18px; border:1px solid color-mix(in srgb,var(--mall-accent) 32%,transparent); border-radius:8px; background:radial-gradient(ellipse at 50% 0%,color-mix(in srgb,var(--mall-accent) 10%,transparent),transparent 60%),var(--room-bg,#101713); }
+.nexus-shop-welcome { margin:0 0 18px; color:#b1c4ba; font-size:12px; }
+.nexus-shop-shelves { display:grid; gap:18px; }
+.nexus-shop-shelf { position:relative; padding:0 10px 10px; }
+.nexus-shop-shelf-label { display:block; margin-bottom:8px; color:#82958b; font-size:8px; font-weight:800; }
+.nexus-shop-shelf-items { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; min-height:74px; align-items:end; }
+.nexus-shop-item { min-width:0; display:grid; gap:4px; justify-items:start; padding:8px; border:1px solid #d5e2d51b; border-radius:7px; background:#0b100f; }
+.nexus-shop-item-media { display:grid; width:100%; min-height:48px; place-items:center; }
+.nexus-shop-item-media img { width:auto; max-width:100%; max-height:56px; object-fit:contain; }
+.nexus-shop-item > strong { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.nexus-shop-item > small { color:#9cac9f; font-size:9px; }
+.nexus-shop-item .nexus-button { padding:5px 7px; font-size:9px; }
+.nexus-shop-shelf-empty { align-self:center; color:#617168; font-size:10px; }
+.nexus-shop-shelf-rail { height:8px; margin:9px -10px 0; border-radius:2px; background:linear-gradient(180deg,color-mix(in srgb,var(--mall-accent) 85%,white),var(--mall-accent)); box-shadow:0 4px 0 color-mix(in srgb,var(--mall-accent) 35%,#111); }
+.nexus-mall-checkout { position:sticky; top:90px; min-height:220px; padding:16px; border:1px solid #d4b45a66; border-radius:8px; background:linear-gradient(155deg,#242014,#11140f 65%); }
+.nexus-mall-checkout > span { color:#f0c85a; font-size:9px; font-weight:900; }
+.nexus-mall-checkout h3 { margin:7px 0 16px; font-size:17px; }
+.nexus-mall-checkout-form { display:grid; gap:10px; }
+.nexus-mall-checkout-form > div { display:grid; gap:4px; }
+.nexus-mall-checkout-form small,.nexus-mall-checkout-empty { color:#9cac9f; font-size:10px; }
+.nexus-mall-checkout-form label { display:grid; gap:5px; color:#b8c4b6; font-size:10px; }
+.nexus-mall-checkout-form input { width:100%; padding:8px 10px; border:1px solid #d5e2d533; border-radius:6px; background:#0d1410; color:#edf5ef; }
+.nexus-mall-owner-settings { margin-top:16px; padding:12px 14px; border:1px solid #d5e2d522; border-radius:8px; background:#0c1210; }
+.nexus-mall-owner-settings summary { color:var(--mall-accent); cursor:pointer; font-size:11px; font-weight:800; }
+.nexus-mall-owner-settings form,.nexus-mall-stock-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+.nexus-mall-owner-settings form label { display:grid; gap:5px; color:#9cac9f; font-size:10px; }
+.nexus-mall-owner-settings input:not([type="color"]),.nexus-mall-owner-settings textarea,.nexus-mall-owner-settings select,.nexus-mall-stock-form input,.nexus-mall-stock-form select { min-width:0; padding:8px 9px; border:1px solid #d5e2d522; border-radius:6px; background:#0d1410; color:#edf5ef; }
+.nexus-mall-owner-settings input[type="color"] { width:100%; height:34px; padding:2px; border:1px solid #d5e2d522; border-radius:6px; background:#0d1410; }
+.nexus-mall-stock-form { margin:18px 0 0; padding:14px; border:1px solid #d5e2d522; border-radius:8px; background:#0c1210; }
+.nexus-mall-stock-form h3 { grid-column:1/-1; margin:0; font-size:13px; }
+.nexus-mall-stock-form button { align-self:end; }
+.nexus-casino-floor { grid-column:1/-1; min-height:430px; padding:20px; border:1px solid #8d2b3a; border-radius:9px; background:radial-gradient(ellipse at 50% 10%,#54202d 0,#23141b 40%,#100f13 82%); }
+.nexus-casino-marquee { display:grid; justify-items:center; gap:5px; margin:0 auto 20px; padding:14px; border:1px solid #d4ad4b88; border-radius:8px; background:linear-gradient(180deg,#51262b,#26151b); box-shadow:0 0 28px #e5ad3f22; }
+.nexus-casino-marquee > span { color:#ffd871; font-size:9px; font-weight:900; }
+.nexus-casino-marquee > strong { color:#ffe8a0; font-size:22px; }
+.nexus-casino-marquee > small { color:#cfb979; font-size:10px; }
+.nexus-casino-machine-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+.nexus-casino-machine { display:grid; grid-template-columns:minmax(0,1fr); align-content:start; min-width:0; gap:8px; padding:13px; border:1px solid #d4ad4b55; border-radius:8px; background:linear-gradient(155deg,#31191f,#141318); box-shadow:inset 0 0 22px #e7ad3d0d; }
+.nexus-casino-machine > strong,.nexus-casino-machine > small,.nexus-casino-machine > button,.nexus-casino-machine > label,.nexus-casino-machine-settings { grid-column:1; grid-row:auto; }
+.nexus-casino-machine-lights { color:#f4c95b; font-size:12px; }
+.nexus-casino-machine > strong { color:#ffe5a0; font-size:14px; }
+.nexus-casino-machine > small { color:#c8b98f; }
+.nexus-casino-machine-settings { display:grid; gap:7px; margin-top:9px; padding-top:9px; border-top:1px solid #d4ad4b33; }
+.nexus-casino-machine-settings label { display:flex; align-items:center; justify-content:space-between; gap:6px; color:#d1c39b; font-size:9px; }
+.nexus-casino-machine-settings input { width:70px; padding:5px 6px; border:1px solid #d4ad4b55; border-radius:5px; background:#100f13; color:#fff0bb; }
+.nexus-casino-machine-settings > small { color:#c3a96b; font-size:8px; }
+.nexus-casino-upgrades { grid-column:1/-1; padding-top:12px; border-top:1px solid #d4ad4b33; }
+.nexus-casino-upgrades h3 { color:#f0d58e; font-size:12px; }
+.nexus-mall-secret { display:flex; align-items:center; gap:8px; max-width:360px; margin:12px 0 18px; }
+.nexus-mall-secret input { min-width:0; margin:0; }
+.nexus-mall-secret button { flex:0 0 auto; }
 @media (max-width: 760px) {
   .nexus-mall-map-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .nexus-mall-heading { flex-direction:column; }
   .nexus-mall-open-actions { justify-content:flex-start; }
+  .nexus-mall-room-layout { grid-template-columns:1fr; }
+  .nexus-mall-checkout { position:static; }
 }
 @media (max-width: 480px) {
   .nexus-mall-map-grid { grid-template-columns:1fr; }
   .nexus-mall-map { padding:10px; }
+  .nexus-mall-room-header { grid-template-columns:1fr auto; }
+  .nexus-mall-room-header > .nexus-button { grid-column:1/-1; justify-self:start; }
+  .nexus-shop-shelf-items { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
