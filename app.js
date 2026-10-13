@@ -102,7 +102,7 @@ async function openFriendsArea() {
   closePrivateDm();
   if (navigationVersion!==state.navigationVersion) return;
   state.server=null;state.channel='';state.editMode=false;
-  els.appView.classList.add('friends-view','friends-home-view');
+  els.appView.classList.add('friends-view','friends-home-view');els.appView.classList.remove('private-dm-view');
   els.friendsBtn.classList.add('active');els.friendsList.hidden=false;
   els.friendRequestsPanel.hidden=false;els.friendsDirectory.hidden=false;
   els.textChannelsLabel.hidden=true;els.textChannels.hidden=true;
@@ -129,7 +129,7 @@ async function openPrivateDm(friend) {
   closePrivateDm();
   if (navigationVersion!==state.navigationVersion) return;
   state.server=null;state.channel='';state.editMode=false;
-  els.appView.classList.add('friends-view'); els.appView.classList.remove('friends-home-view');
+  els.appView.classList.add('friends-view','private-dm-view'); els.appView.classList.remove('friends-home-view');
   els.friendsBtn.classList.add('active'); els.friendsList.hidden = false;
   els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false;
   els.textChannelsLabel.hidden = true; els.textChannels.hidden = true;
@@ -143,7 +143,9 @@ async function openPrivateDm(friend) {
   els.channelHash.textContent='@';els.channelName.textContent=friend.username;
   els.channelTopic.textContent='Private messages';els.channelPermission.textContent='DM';
   els.announcement.hidden=true;els.ownerComposer.hidden=true;els.friendHome.hidden=true;
-  els.messages.hidden=false;els.messageForm.hidden=false;
+  clearTimeout(state.moderationTimer);state.moderationTimer=0;
+  els.messageForm.querySelectorAll('input,button').forEach(control=>{control.disabled=false;});
+  els.messages.hidden=false;els.messageForm.hidden=false;els.messageForm.removeAttribute('hidden');
   els.messages.innerHTML='<div class="empty-state">Loading private messages…</div>';
   els.messageInput.placeholder='Message @'+friend.username;
   els.textChannels.replaceChildren();els.voiceChannels.replaceChildren();
@@ -404,6 +406,7 @@ const firebaseApp = firebase.apps && firebase.apps.length ? firebase.app() : fir
 const db = firebaseApp.database();
 const firebaseAuth = firebase.auth ? firebase.auth() : makeLocalAuth();
 const state = { user:null, servers:[], server:null, channel:"general", activeView:'server', editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[], nexusData:null, nexusLoaded:false, nexusLoading:false, nexusInitialized:false, nexusRef:null, nexusHandler:null, nexusError:'' };
+state.serverPresence = {};
 const unreadChannelWatchers = new Map();
 let channelReadAt = {};
 let unreadChannels = {};
@@ -760,6 +763,7 @@ async function loadServers() {
   const joined = JSON.parse(localStorage.getItem('vusServersJoined') || '[]')
     .filter(code => !deleted.has(String(code).toUpperCase()));
   const visible = server => !deleted.has(String(server.code || '').toUpperCase()) &&
+    !(server.bans && server.bans[state.user.key]) &&
     (server.ownerKey === state.user.key || joined.includes(server.code));
   const savedLocally = localServers().filter(visible).filter(server => !/^TEST-/.test(server.code || ''));
   let useLocalTestServer = false;
@@ -825,7 +829,7 @@ async function clearSubscriptions() {
 async function selectServer(code) {
   const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.activeView = 'server';
-  els.appView.classList.remove('friends-view','friends-home-view');
+  els.appView.classList.remove('friends-view','friends-home-view','private-dm-view');
   try {
     await clearSubscriptions();
     closePrivateDm();
@@ -836,6 +840,14 @@ async function selectServer(code) {
     updateEditModeUi();
     state.channel = 'general';
     if (!state.server) return;
+    if (state.server.bans && state.server.bans[state.user.key]) {
+      state.servers=state.servers.filter(server=>server.code!==code);
+      els.channelTopic.textContent='You are banned from this server.';
+      state.server=null;
+      clearServer();
+      return;
+    }
+    refreshMessageTimeoutState();
     els.friendsBtn.classList.remove('active');
     els.serverSettings.hidden=false;
     els.friendHome.hidden = true;
@@ -850,11 +862,14 @@ async function selectServer(code) {
     localStorage.setItem('vusServersJoined', JSON.stringify([...new Set([...(JSON.parse(localStorage.getItem('vusServersJoined') || '[]')), code])]));
     renderServerRail();
     if (state.server.localOnly) {
-      state.serverMembers = {[state.user.key]:{key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''}};
-      renderMembers(state.serverMembers);
+      state.server.members=state.server.members||{};
+      state.server.members[state.user.key]={key:state.user.key,name:state.user.username,avatar:state.user.avatar||''};
+      state.serverPresence={[state.user.key]:{key:state.user.key,name:state.user.username,avatar:state.user.avatar||''}};
+      renderMembers(state.serverPresence);
       renderServer();
       return;
     }
+    state.serverPresence={};
     const presenceRef = db.ref('serverPresence/' + code + '/' + state.user.key);
     state.presenceRef = presenceRef;
     state.metaRef = db.ref('serverMeta/' + code);
@@ -867,20 +882,37 @@ async function selectServer(code) {
       } else {
         state.server = null;
       }
+      if (state.server && state.server.bans && state.server.bans[state.user.key] && !isServerOwner()) {
+        els.channelTopic.textContent='You are banned from this server.';
+        leaveCurrentServer(state.server);
+        return;
+      }
       updateEditModeUi();
       renderServer();
+      renderMembers(state.serverPresence);
+      refreshMessageTimeoutState();
     };
     state.metaRef.on('value', state.metaHandler);
     state.presenceListRef = db.ref('serverPresence/' + code);
     state.presenceHandler = snap => {
-      if (navigationVersion === state.navigationVersion && state.activeView === 'server') renderMembers(snap.val() || {});
+      if (navigationVersion === state.navigationVersion && state.activeView === 'server') {
+        state.serverPresence=snap.val()||{};
+        renderMembers(state.serverPresence);
+      }
     };
     state.presenceListRef.on('value', state.presenceHandler);
     renderServer();
     presenceRef.onDisconnect().remove()
       .then(() => {
         if (navigationVersion !== state.navigationVersion || state.activeView !== 'server') return;
-        return presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''});
+        return presenceRef.set({key:state.user.key,name:state.user.username,avatar:state.user.avatar || ''}).then(async()=>{
+          if (navigationVersion!==state.navigationVersion||state.activeView!=='server'||state.server?.code!==code||state.server.bans?.[state.user.key]) return;
+          const memberRef=db.ref('serverMeta/'+code+'/members/'+state.user.key);
+          const memberSnapshot=await memberRef.get();
+          if (navigationVersion!==state.navigationVersion||state.activeView!=='server'||state.server?.code!==code||state.server.bans?.[state.user.key]) return;
+          const existingMember=memberSnapshot.val()||{};
+          await memberRef.update({key:state.user.key,name:state.user.username,avatar:state.user.avatar||'',joinedAt:existingMember.joinedAt||firebase.database.ServerValue.TIMESTAMP});
+        });
       })
       .catch(error => {
         if (navigationVersion === state.navigationVersion && state.activeView === 'server') {
@@ -1174,6 +1206,7 @@ function renderServer() {
   else if (latest && !announcementChannel && Number(latest.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
   selectMessages(current.id);
   els.messageForm.hidden = announcementChannel;
+  refreshMessageTimeoutState();
 }
 function addChannelDeleteButton(channelButton, channel) { if (!isOwnerEditing()) return; const renameButton = document.createElement('button'); renameButton.className = 'channel-action channel-rename'; renameButton.type = 'button'; renameButton.title = 'Rename ' + channel.name; renameButton.textContent = '✎'; renameButton.onclick = event => { event.stopPropagation(); openRenameChannelModal(channel); }; channelButton.appendChild(renameButton); if (['general','announcements','lounge'].includes(channel.id)) return; const removeButton = document.createElement('button'); removeButton.className = 'channel-action channel-delete'; removeButton.type = 'button'; removeButton.title = 'Delete ' + channel.name; removeButton.textContent = '×'; removeButton.onclick = event => { event.stopPropagation(); openDeleteChannelModal(channel); }; channelButton.appendChild(removeButton); }
 function openRenameChannelModal(channel) { if (!state.server || state.server.ownerKey !== state.user.key) return; els.modalTitle.textContent = 'Rename channel'; els.modalBody.innerHTML = '<label class="modal-label" for="renameChannelName">Channel name</label><input id="renameChannelName" class="modal-input" maxlength="24" value="' + esc(channel.name) + '"><div id="modalError" class="error"></div><button id="saveChannelName" class="primary-btn">Save name</button>'; els.modal.hidden = false; const input = document.getElementById('renameChannelName'); const error = document.getElementById('modalError'); input.focus(); input.select(); document.getElementById('saveChannelName').onclick = async () => { const name = input.value.trim(); if (!name) { error.textContent = 'Enter a channel name.'; return; } try { if (state.server.localOnly) { state.server.channels[channel.id].name = name.slice(0,24); saveLocalServers(localServers().map(server => server.code === state.server.code ? state.server : server)); } else await db.ref('serverMeta/' + state.server.code + '/channels/' + channel.id + '/name').set(name.slice(0,24)); els.modal.hidden = true; renderServer(); } catch (renameError) { error.textContent = 'Could not rename this channel.'; } }; }
@@ -1813,28 +1846,146 @@ async function toggleReaction(message, emoji) { if (!message.id) { showError('Th
 function startEdit(item, message) { const text = item.querySelector('.message-text'); const original = message.text; const input = document.createElement('textarea'); input.className = 'edit-input'; input.value = original; input.rows = 2; text.replaceWith(input); input.focus(); input.onkeydown = async event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const value = input.value.trim(); if (value) await saveMessage(message, {text:value, edited:true}); } if (event.key === 'Escape') selectMessages(state.channel); }; }
 function mentionMatches() {
   if (!state.server) {els.mentionSuggestions.hidden=true;return;}
-  const match=els.messageInput.value.match(/(^|\s)(:@\(|@\(|:@|@)([a-zA-Z0-9_]*)$/);
-  if (!match) {els.mentionSuggestions.hidden=true;return;}
-  const query=match[3].toLowerCase();
+  const value=els.messageInput.value;
+  const commandMatch=value.match(/^\/(timeout\s+\d+(?:[smhd])?|ban)\s+(@?)([a-zA-Z0-9_]*)$/i);
+  const mentionMatch=value.match(/(^|\s)(:@\(|@\(|:@|@)([a-zA-Z0-9_]*)$/);
+  if (!commandMatch&&!mentionMatch) {els.mentionSuggestions.hidden=true;return;}
+  const query=(commandMatch?commandMatch[3]:mentionMatch[3]).toLowerCase();
   const members=Object.values(state.serverMembers||{})
-    .filter(member=>String(member.name||'').toLowerCase().startsWith(query)).slice(0,6);
+    .filter(member=>String(member.name||'').toLowerCase().startsWith(query))
+    .sort((first,second)=>Number(!!second.online)-Number(!!first.online)||String(first.name||'').localeCompare(String(second.name||'')))
+    .slice(0,8);
   els.mentionSuggestions.innerHTML='';
   members.forEach(member=>{
     const option=document.createElement('button');
     option.type='button';option.className='mention-option';
-    option.textContent=match[2]+member.name;
+    const name=document.createElement('span');
+    name.textContent=(commandMatch?commandMatch[2]:mentionMatch[2])+member.name;
+    const status=document.createElement('small');
+    status.className='mention-status '+(member.online?'is-online':'is-offline');
+    status.textContent=member.online?'Online':'Offline';
+    option.append(name,status);
     option.onclick=()=>{
-      const start=match.index+match[1].length;
-      const closing=match[2].includes('(')?')':'';
-      els.messageInput.value=els.messageInput.value.slice(0,start)+match[2]+member.name+closing+' ';
+      const start=commandMatch?value.length-commandMatch[3].length-commandMatch[2].length:mentionMatch.index+mentionMatch[1].length;
+      const prefix=commandMatch?commandMatch[2]:mentionMatch[2];
+      const closing=!commandMatch&&mentionMatch[2].includes('(')?')':'';
+      els.messageInput.value=value.slice(0,start)+prefix+member.name+closing+' ';
       els.mentionSuggestions.hidden=true;els.messageInput.focus();
     };
     els.mentionSuggestions.appendChild(option);
   });
   els.mentionSuggestions.hidden=!members.length;
 }
+function showModerationNotice(message) {
+  const serverCode=state.server?.code;
+  const channel=channels().find(item=>item.id===state.channel);
+  els.channelTopic.textContent=message;
+  clearTimeout(state.moderationNoticeTimer);
+  state.moderationNoticeTimer=window.setTimeout(()=>{
+    if (state.server?.code===serverCode&&state.activeView==='server') els.channelTopic.textContent=channel?.topic||'';
+  },5000);
+}
+function activeTimeoutForCurrentUser() {
+  const record=state.server?.timeouts?.[state.user?.key];
+  return record&&Number(record.expiresAt)>Date.now()?record:null;
+}
+function refreshMessageTimeoutState() {
+  clearTimeout(state.moderationTimer);
+  const timeout=activeTimeoutForCurrentUser();
+  const controls=els.messageForm.querySelectorAll('input,button');
+  controls.forEach(control=>{control.disabled=!!timeout;});
+  if (timeout) {
+    els.messageInput.placeholder='Timed out until '+new Date(timeout.expiresAt).toLocaleString();
+    state.moderationTimer=window.setTimeout(refreshMessageTimeoutState,Math.min(timeout.expiresAt-Date.now(),2147480000));
+  } else {
+    const channel=channels().find(item=>item.id===state.channel);
+    els.messageInput.placeholder=channel?.type==='announcement'?'Only staff can post here':'Message #'+(channel?.name||'channel');
+  }
+}
+function parseTimeoutDuration(value) {
+  const match=String(value||'').match(/^(\d+)(s|m|h|d)?$/i);
+  if (!match) return null;
+  const units={s:1000,m:60000,h:3600000,d:86400000};
+  const duration=Number(match[1])*(units[(match[2]||'m').toLowerCase()]);
+  return duration>0&&duration<=30*86400000?duration:null;
+}
+async function runModerationCommand(text) {
+  const timeoutMatch=text.match(/^\/timeout\s+(\S+)\s+@?([a-zA-Z0-9_]+)$/i);
+  const banMatch=text.match(/^\/ban\s+@?([a-zA-Z0-9_]+)$/i);
+  if (/^\/timeout(?:\s|$)/i.test(text)&&!hasServerPermission('manageMessages')) {
+    showModerationNotice('You need message-moderation permission to use /timeout.');return;
+  }
+  if (/^\/ban(?:\s|$)/i.test(text)&&!hasServerPermission('manageServer')) {
+    showModerationNotice('You need server-management permission to use /ban.');return;
+  }
+  if (timeoutMatch) {
+    const duration=parseTimeoutDuration(timeoutMatch[1]);
+    if (!duration) {showModerationNotice('Use /timeout (time) (name), up to 30 days.');return;}
+  }
+  if (!timeoutMatch&&!banMatch) {
+    showModerationNotice(/^\/timeout/i.test(text)?'Use /timeout (time) (name), for example /timeout 10m Alex.':'Use /ban (name), for example /ban Alex.');return;
+  }
+  const memberName=(timeoutMatch||banMatch)[timeoutMatch?2:1];
+  const target=Object.values(state.serverMembers||{}).find(member=>String(member.name||'').toLowerCase()===memberName.toLowerCase());
+  if (!target) {showModerationNotice('No server member named '+memberName+'.');return;}
+  if (target.key===state.user.key) {showModerationNotice('You cannot moderate yourself.');return;}
+  if (target.key===state.server.ownerKey) {showModerationNotice('The server owner cannot be moderated.');return;}
+  const server=state.server;
+  if (timeoutMatch) {
+    const duration=parseTimeoutDuration(timeoutMatch[1]);
+    const timeout={key:target.key,name:target.name,byKey:state.user.key,byName:state.user.username,expiresAt:Date.now()+duration};
+    try {
+      if (server.localOnly) {
+        server.timeouts=server.timeouts||{};server.timeouts[target.key]=timeout;
+        saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      } else await db.ref('serverMeta/'+server.code+'/timeouts/'+target.key).set(timeout);
+      showModerationNotice('@'+target.name+' timed out for '+timeoutMatch[1]+'.');
+    } catch (error) {showModerationNotice('Could not apply that timeout.');}
+    return;
+  }
+  const ban={key:target.key,name:target.name,byKey:state.user.key,byName:state.user.username,at:Date.now()};
+  try {
+    if (server.localOnly) {
+      server.bans=server.bans||{};server.bans[target.key]=ban;
+      delete server.members?.[target.key];
+      saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      renderMembers(state.serverPresence);
+    } else {
+      const updates={};
+      updates['serverMeta/'+server.code+'/bans/'+target.key]=ban;
+      updates['serverMeta/'+server.code+'/members/'+target.key]=null;
+      updates['serverPresence/'+server.code+'/'+target.key]=null;
+      await db.ref().update(updates);
+    }
+    showModerationNotice('@'+target.name+' was banned from the server.');
+  } catch (error) {showModerationNotice('Could not ban that member.');}
+}
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
-function renderMembers(data) { const members = Object.values(data || {}).filter(member => member && typeof member === 'object'); state.serverMembers = Object.fromEntries(members.map(member => [member.key || member.name, member])); els.memberCount.textContent = members.length; els.membersList.innerHTML = ''; members.forEach(member => { const row = document.createElement('div'); row.className = 'member'; const rank = rankForMember(member.key, member.name); const rankText = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '<span class="member-rank">Member</span>'; row.innerHTML = avatarMarkup(member, 'member-avatar') + '<div><div class="member-name">' + esc(member.name || 'Member') + '</div><div class="member-rank">' + rankText + '</div></div>'; els.membersList.appendChild(row); }); }
+function renderMembers(data) {
+  if (data !== state.serverMembers) state.serverPresence=data||{};
+  const membersByKey=new Map();
+  Object.entries(state.server?.members||{}).forEach(([key,member])=>{
+    if (member&&typeof member==='object') membersByKey.set(member.key||key,{...member,key:member.key||key});
+  });
+  Object.values(state.serverPresence||{}).forEach(member=>{
+    if (member&&typeof member==='object') membersByKey.set(member.key||member.name,{...membersByKey.get(member.key)||{},...member,key:member.key||member.name});
+  });
+  const members=[...membersByKey.values()].map(member=>({...member,online:!!state.serverPresence[member.key]}))
+    .sort((first,second)=>Number(second.online)-Number(first.online)||String(first.name||'').localeCompare(String(second.name||'')));
+  state.serverMembers=Object.fromEntries(members.map(member=>[member.key||member.name,member]));
+  els.memberCount.textContent=members.length;
+  els.membersList.innerHTML='';
+  members.forEach(member=>{
+    const row=document.createElement('div');
+    row.className='member '+(member.online?'online':'offline');
+    const rank=rankForMember(member.key,member.name);
+    const rankText=rank?'<span class="rank-badge" style="--rank-color:'+esc(rank.color||'#9aa5b4')+'">'+esc(rank.name)+'</span>':'Member';
+    const statusText=member.online?'Online':'Offline';
+    row.setAttribute('aria-label',(member.name||'Member')+' · '+statusText);
+    row.innerHTML=avatarMarkup(member,'member-avatar')+'<div class="member-copy"><div class="member-heading"><span class="member-name">'+esc(member.name||'Member')+'</span><span class="member-status '+(member.online?'is-online':'is-offline')+'">'+statusText+'</span></div><div class="member-rank">'+rankText+'</div></div>';
+    els.membersList.appendChild(row);
+  });
+}
 const RTC_CONFIG = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
 const CAMERA_VIDEO_CONSTRAINTS = {
   width:{ideal:1280},
@@ -1897,7 +2048,7 @@ async function joinVoice(channelId, videoMode = false) {
   state.voiceRef = db.ref('serverVoice/' + state.server.code + '/' + safe(channelId) + '/' + voicePeerId);
   try {
     await state.voiceRef.onDisconnect().remove();
-    await state.voiceRef.set({key:state.user.key,peerId:voicePeerId,name:state.user.username});
+    await state.voiceRef.set({key:state.user.key,peerId:voicePeerId,name:state.user.username,avatar:state.user.avatar||''});
   } catch (error) {
     els.voiceMembers.textContent = '🎙 Microphone on · Could not connect to online voice.';
     return;
@@ -1917,7 +2068,18 @@ async function joinVoice(channelId, videoMode = false) {
         chip.className='voice-member-chip';
         const avatar=document.createElement('span');
         avatar.className='voice-member-avatar';
-        avatar.textContent=String(member.name||'?').trim().slice(0,1).toUpperCase();
+        const nameParts=String(member.name||'?').trim().split(/[\s_-]+/).filter(Boolean);
+        const initials=(nameParts.length>1?nameParts[0][0]+nameParts[1][0]:(nameParts[0]||'?').slice(0,2)).toUpperCase();
+        const memberKey=member.key||member.accountKey;
+        const avatarSource=String(member.avatar||state.serverMembers[memberKey]?.avatar||'');
+        if (/^https:\/\//i.test(avatarSource)||/^data:image\/[a-z0-9.+-]+;base64,/i.test(avatarSource)) {
+          const image=document.createElement('img');
+          image.alt='';
+          image.src=avatarSource;
+          image.onerror=()=>{avatar.classList.remove('has-image');avatar.replaceChildren();avatar.textContent=initials;};
+          avatar.classList.add('has-image');
+          avatar.appendChild(image);
+        } else avatar.textContent=initials;
         const name=document.createElement('span');
         name.textContent=member.name||'Member';
         chip.append(avatar,name);
@@ -2193,6 +2355,7 @@ function openRankModal() { if (!state.server || state.server.ownerKey !== state.
 async function leaveCurrentServer(server) {
   if (!server || server.ownerKey === state.user.key) return;
   try {
+    if (!server.localOnly) await db.ref('serverMeta/'+server.code+'/members/'+state.user.key).remove();
     if (!server.localOnly && state.presenceRef && state.server?.code === server.code) {
       try { await state.presenceRef.onDisconnect().cancel(); } catch (error) {}
       await state.presenceRef.remove();
@@ -2538,6 +2701,17 @@ els.messageForm.addEventListener('submit',event=>{
   event.stopImmediatePropagation();
   sendPrivateMessage(els.messageInput.value.trim());
 },true);
+els.messageForm.addEventListener('submit',event=>{
+  if (state.dmFriend) return;
+  const text=els.messageInput.value.trim();
+  const moderationCommand=/^\/(?:timeout|ban)(?:\s|$)/i.test(text);
+  const timeout=activeTimeoutForCurrentUser();
+  if (!moderationCommand&&!timeout) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (moderationCommand) runModerationCommand(text);
+  else showModerationNotice('You are timed out until '+new Date(timeout.expiresAt).toLocaleString()+'.');
+},true);
 els.audioButton.addEventListener('click', () => els.audioInput.click());
 els.audioInput.addEventListener('change', () => {
   const file = els.audioInput.files[0];
@@ -2704,9 +2878,9 @@ els.addChannel.onclick = openAddChannelModal;
     channelInput.closest('label').lastChild.textContent=' Manage channels';
     announcementInput.closest('label').lastChild.textContent=' Publish announcements';
     const extraPermissions=[
-      ['manageMessages','rankManageMessages',"Delete other members' messages"],
+      ['manageMessages','rankManageMessages',"Delete messages and timeout members"],
       ['manageRanks','rankManageRanks','Assign ranks and permissions'],
-      ['manageServer','rankManageServer','Edit server settings']
+      ['manageServer','rankManageServer','Edit server settings and ban members']
     ];
     announcementInput.closest('label').insertAdjacentHTML('afterend',extraPermissions.map(([,id,label])=>
       '<label class="rank-check"><input id="'+id+'" type="checkbox"> '+label+'</label>').join(''));
