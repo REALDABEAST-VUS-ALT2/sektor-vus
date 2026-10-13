@@ -319,13 +319,17 @@
         items&&typeof items==='object'?Object.values(items):fallback;
       return source.filter(item=>item&&typeof item==='object'&&!Array.isArray(item)).slice(-limit);
     };
+    const users=records(value && value.users, base.users, 500).map(user=>{
+      const {stockShares,stockCostBasis,...account}=user;
+      return account;
+    });
     return {
-      users: records(value && value.users, base.users, 500).map(user=>{
-        const {stockShares,stockCostBasis,...account}=user;
-        return account;
-      }),
+      users,
       listings: records(value && value.listings, base.listings, 100),
-      mallBusinesses: records(value && value.mallBusinesses, base.mallBusinesses, 2000),
+      mallBusinesses: records(value && value.mallBusinesses, base.mallBusinesses, 2000).map(business=>{
+        const owner=users.find(user=>String(user.username||'').trim().toLowerCase()===String(business.owner||'').trim().toLowerCase());
+        return owner?{...business,owner:owner.username}:business;
+      }),
       mallProducts: records(value && value.mallProducts, base.mallProducts, 10000),
       auctions: records(value && value.auctions, base.auctions, 100)
         .filter(item => item.status === 'sold' || item.status === 'unsold' || Number.isFinite(item.endsAt)),
@@ -1082,6 +1086,11 @@
       selectedMallProductId='';
     }
     const businesses=world.mallBusinesses.slice().sort((left,right)=>Number(left.createdAt||0)-Number(right.createdAt||0));
+    const ownedBusinessLinks=businesses.filter(business=>user&&business.owner===user.username).map(business=>{
+      const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
+      return '<button class="nexus-button secondary" type="button" data-action="enter-mall-business" data-id="'+escapeHtml(business.id)+'">Open '+escapeHtml(type.label)+': '+escapeHtml(business.name)+'</button>';
+    }).join('');
+    const ownedBusinessShortcuts=ownedBusinessLinks?'<div class="nexus-mall-owned-businesses"><small>Your businesses</small>'+ownedBusinessLinks+'</div>':'';
     const businessTiles=businesses.map((business,index)=>{
       const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
       const owned=!!user&&business.owner===user.username;
@@ -1111,7 +1120,7 @@
     const purchaseButtons=user?Object.entries(mallBusinessTypes).map(([type,config])=>'<button class="nexus-button secondary" type="button" data-action="buy-business" data-business-type="'+type+'">Open a '+config.label+' · '+config.price.toLocaleString()+'</button>').join(''):'<p class="nexus-wheel-help">Sign in to open a business or buy from local owners.</p>';
     const betControls=user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>';
     const secretRedeem=user?'<form class="nexus-form nexus-mall-secret" data-form="mall-secret"><input name="secretCode" maxlength="24" autocomplete="off" placeholder="Mall secret code"><button class="nexus-button secondary">Redeem</button></form>':'';
-    return '<section class="nexus-mall-heading"><div><span>SEKTOR · SHARED MARKETPLACE</span><h2>The Mall</h2><p>Open a storefront, browse local goods, or play at a casino.</p></div><div class="nexus-mall-open-actions">'+businessCustomizer+purchaseButtons+'</div></section>'+betControls+secretRedeem+'<section class="nexus-mall-map" aria-label="Mall directory map"><div class="nexus-mall-map-title">MALL DIRECTORY <span>'+businesses.length+' BUSINESSES</span></div><div class="nexus-mall-map-grid">'+businessTiles+'</div></section>';
+    return '<section class="nexus-mall-heading"><div><span>SEKTOR · SHARED MARKETPLACE</span><h2>The Mall</h2><p>Open a storefront, browse local goods, or play at a casino.</p></div><div class="nexus-mall-open-actions">'+businessCustomizer+purchaseButtons+ownedBusinessShortcuts+'</div></section>'+betControls+secretRedeem+'<section class="nexus-mall-map" aria-label="Mall directory map"><div class="nexus-mall-map-title">MALL DIRECTORY <span>'+businesses.length+' BUSINESSES</span></div><div class="nexus-mall-map-grid">'+businessTiles+'</div></section>';
   }
 
   function renderMallBusiness(user,business) {
@@ -1132,13 +1141,19 @@
         const winRate=Math.max(1,Math.min(config.maxWinRate||100,Number(machine.winRate)||config.defaultWinRate||5));
         const payout=Math.max(2,Math.min(config.maxPayout||100,Number(machine.payoutMultiplier)||config.defaultPayout||2));
         const rouletteChoice=config.game==='roulette'?'<label>Bet on <select data-roulette-choice><option value="red">Red</option><option value="black">Black</option></select></label>':'';
+        const gameDisplay=config.game==='slots'
+          ?'<div class="nexus-casino-play-display nexus-slot-display" data-casino-display aria-label="Slot reels"><span class="nexus-slot-reel">7</span><span class="nexus-slot-reel">◆</span><span class="nexus-slot-reel">★</span></div>'
+          :config.game==='roulette'
+            ?'<div class="nexus-casino-play-display nexus-roulette-display" data-casino-display aria-label="Roulette wheel"><div class="nexus-roulette-wheel"><span data-roulette-number>0</span></div><i class="nexus-roulette-pointer"></i></div>'
+            :'<div class="nexus-casino-play-display nexus-blackjack-display" data-casino-display aria-label="Blackjack cards"><span class="nexus-blackjack-card" data-player-card>YOU · ?</span><span class="nexus-blackjack-card" data-dealer-card>HOUSE · ?</span></div>';
         const machineSettings=owned&&config.game==='slots'
           ?'<form class="nexus-casino-machine-settings" data-form="casino-machine-settings" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'"><label>Win chance %<input name="winRate" type="number" min="1" max="'+config.maxWinRate+'" value="'+winRate+'" required></label><label>Payout ×<input name="payoutMultiplier" type="number" min="2" max="'+config.maxPayout+'" value="'+payout+'" required></label><button class="nexus-button secondary">Save slot settings</button><small>Max '+config.maxWinRate+'% chance · '+config.maxPayout+'× payout for this tier</small></form>':'';
-        return '<article class="nexus-casino-machine" style="--mall-accent:'+accent+'"><span class="nexus-casino-machine-lights">✦ · ✦ · ✦</span><strong>'+escapeHtml(machine.name||config.label)+'</strong><small>'+escapeHtml(config.label)+(config.game==='slots'?' · '+winRate+'% chance · up to '+payout+'×':'')+'</small>'+rouletteChoice+'<button class="nexus-button" type="button" data-action="play-casino" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'" data-game="'+escapeHtml(config.game)+'" '+(!user||owned?'disabled':'')+'>'+(owned?'Owner cannot play':'Play')+'</button>'+machineSettings+'</article>';
+        return '<article class="nexus-casino-machine" data-game="'+escapeHtml(config.game)+'" style="--mall-accent:'+accent+'"><span class="nexus-casino-machine-lights">✦ · ✦ · ✦</span><strong>'+escapeHtml(machine.name||config.label)+'</strong><small>'+escapeHtml(config.label)+(config.game==='slots'?' · '+winRate+'% chance · up to '+payout+'×':'')+'</small>'+gameDisplay+rouletteChoice+'<p class="nexus-casino-game-result" data-casino-result aria-live="polite"></p><button class="nexus-button" type="button" data-action="play-casino" data-business-id="'+escapeHtml(business.id)+'" data-machine-id="'+escapeHtml(machine.id)+'" data-game="'+escapeHtml(config.game)+'" '+(!user||owned?'disabled':'')+'>'+(owned?'Owner cannot play':'Play')+'</button>'+machineSettings+'</article>';
       }).join('')||'<p class="nexus-mall-empty">No machines are installed yet.</p>';
       const upgrades=owned?'<section class="nexus-casino-upgrades"><h3>Add a machine</h3>'+Object.entries(casinoMachineTypes).filter(([id])=>id!=='basic_slots').map(([id,machine])=>'<button class="nexus-button secondary" type="button" data-action="buy-casino-machine" data-business-id="'+escapeHtml(business.id)+'" data-machine="'+id+'">Add '+machine.label+' · '+machine.price.toLocaleString()+'</button>').join('')+'</section>':'';
+      const deposit=owned?'<form class="nexus-form nexus-casino-fund-form" data-form="casino-deposit" data-business-id="'+escapeHtml(business.id)+'"><label>Deposit from wallet · '+currency(user.balance||0)+'<input name="amount" type="number" min="1" max="'+Math.floor(Number(user.balance||0))+'" step="1" placeholder="Amount" required></label><button class="nexus-button secondary" '+(Number(user.balance||0)<1?'disabled':'')+'>Deposit to reserve</button></form>':'';
       const withdrawal=owned?'<form class="nexus-casino-withdraw" data-form="casino-withdraw" data-business-id="'+escapeHtml(business.id)+'"><label>Withdraw reserve <span>'+currency(business.bankroll||0)+'</span><input name="amount" type="number" min="1" max="'+Math.floor(Number(business.bankroll||0))+'" step="1" placeholder="Amount"></label><button class="nexus-button secondary" '+(Number(business.bankroll||0)<1?'disabled':'')+'>Withdraw to wallet</button></form>':'';
-      roomContent='<section class="nexus-casino-floor"><div class="nexus-casino-marquee"><span>CASINO</span><strong>'+escapeHtml(business.name||'LUCKY NEXUS')+'</strong><small>'+(business.description?escapeHtml(business.description)+' · ':'')+'House reserve '+currency(business.bankroll||0)+'</small></div>'+(user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>')+'<div class="nexus-casino-machine-grid">'+machineMarkup+'</div>'+upgrades+withdrawal+'</section>';
+      roomContent='<section class="nexus-casino-floor"><div class="nexus-casino-marquee"><span>CASINO</span><strong>'+escapeHtml(business.name||'LUCKY NEXUS')+'</strong><small>'+(business.description?escapeHtml(business.description)+' · ':'')+'House reserve '+currency(business.bankroll||0)+'</small></div>'+(user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>')+'<div class="nexus-casino-machine-grid">'+machineMarkup+'</div>'+upgrades+deposit+withdrawal+'</section>';
     } else {
       const shelfCount=Math.max(1,Math.min(6,Math.floor(Number(business.shelfCount)||3)));
       const shelves=Array.from({length:shelfCount},(_,shelfIndex)=>{
@@ -1341,15 +1356,15 @@
         business.accent=/^#[0-9a-f]{6}$/i.test(accent)?accent:'#65e6ad';
         if (business.type!=='casino') business.shelfCount=Math.max(1,Math.min(6,Number(formData.get('shelfCount'))||3));
         await persist('Storefront settings saved.');
-      } else if (form.dataset.form==='casino-withdraw') {
+      } else if (form.dataset.form==='casino-deposit') {
         const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
         const amount=Number(formData.get('amount'));
-        const reserve=Number(business&&business.bankroll||0);
-        if (!business) throw new Error('Only this casino owner can withdraw its reserve.');
-        if (!Number.isInteger(amount)||amount<1||amount>reserve) throw new Error('Choose a whole amount up to the current house reserve.');
-        business.bankroll=reserve-amount;
-        user.balance=Number(user.balance||0)+amount;
-        await persist(amount.toLocaleString()+' Sektorium withdrawn to your wallet.');
+        const wallet=Number(user&&user.balance||0);
+        if (!business) throw new Error('Only this casino owner can deposit into its reserve.');
+        if (!Number.isInteger(amount)||amount<1||amount>wallet) throw new Error('Choose a whole amount up to your wallet balance.');
+        user.balance=wallet-amount;
+        business.bankroll=Number(business.bankroll||0)+amount;
+        await persist(amount.toLocaleString()+' Sektorium deposited into the house reserve.');
       } else if (form.dataset.form==='casino-withdraw') {
         const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&entry.owner===user?.username&&entry.type==='casino');
         const amount=Number(formData.get('amount'));
@@ -1759,7 +1774,20 @@
         if (!Number.isInteger(bet)||bet<10||bet>5000) throw new Error('Choose a whole-number wager from 10 to 5000.');
         if (Number(gambler.balance||0)<bet) throw new Error('You do not have enough Sektorium for that wager.');
         const game=casinoMachineTypes[machine.type]?.game||'slots';
+        const rouletteChoice=game==='roulette'?button.closest('.nexus-casino-machine')?.querySelector('[data-roulette-choice]')?.value:'';
+        if (game==='roulette'&&!['red','black'].includes(rouletteChoice)) throw new Error('Choose red or black before playing roulette.');
+        const machineCard=button.closest('.nexus-casino-machine');
+        const gameDisplay=machineCard?.querySelector('[data-casino-display]');
+        const gameResult=machineCard?.querySelector('[data-casino-result]');
+        const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        button.disabled=true;
+        button.textContent='Playing…';
+        machineCard?.classList.remove('is-win','is-loss','is-push');
+        machineCard?.classList.add('is-playing');
+        if (gameResult) gameResult.textContent='Round in progress…';
+        await new Promise(resolve=>window.setTimeout(resolve,reducedMotion?80:1000));
         let payout=0,result='No win this round.',slotWon=false,slotReels='',slotPayoutMultiplier=0;
+        let gameOutcome='loss';
         if (game==='slots') {
           const config=casinoMachineTypes[machine.type]||casinoMachineTypes.basic_slots;
           const winRate=Math.max(1,Math.min(config.maxWinRate,Number(machine.winRate)||config.defaultWinRate));
@@ -1775,15 +1803,24 @@
           }
           slotReels=reels.map(symbol=>symbols[symbol]).join('  ');
           if (slotWon) payout=bet*slotPayoutMultiplier;
+          gameOutcome=slotWon?'win':'loss';
+          gameDisplay?.querySelectorAll('.nexus-slot-reel').forEach((reel,index)=>{reel.textContent=reels[index]===undefined?'':symbols[reels[index]];});
         } else if (game==='roulette') {
-          const rouletteChoice=button.closest('.nexus-casino-machine')?.querySelector('[data-roulette-choice]')?.value;
-          if (!['red','black'].includes(rouletteChoice)) throw new Error('Choose red or black before playing roulette.');
           const roll=Math.floor(Math.random()*37),color=roll===0?'green':roll%2?'red':'black';
           if (color===rouletteChoice) payout=bet*2;
+          gameOutcome=payout?'win':'loss';
+          const numberDisplay=gameDisplay?.querySelector('[data-roulette-number]');
+          if (numberDisplay) numberDisplay.textContent=String(roll)+' · '+color.toUpperCase();
+          gameDisplay?.classList.add('result-'+color);
           result='Roulette landed '+roll+' '+color+'. '+(payout?'Payout '+payout.toLocaleString():'No win this round.');
         } else {
           const playerTotal=2+Math.floor(Math.random()*20),dealerTotal=2+Math.floor(Math.random()*20);
           payout=playerTotal>dealerTotal?bet*2:playerTotal===dealerTotal?bet:0;
+          gameOutcome=playerTotal===dealerTotal?'push':playerTotal>dealerTotal?'win':'loss';
+          const playerCard=gameDisplay?.querySelector('[data-player-card]');
+          const dealerCard=gameDisplay?.querySelector('[data-dealer-card]');
+          if (playerCard) playerCard.textContent='YOU · '+playerTotal;
+          if (dealerCard) dealerCard.textContent='HOUSE · '+dealerTotal;
           result='Blackjack · You '+playerTotal+' / House '+dealerTotal+'. '+(payout?'Payout '+payout.toLocaleString():'No win this round.');
         }
         gambler.balance=Number(gambler.balance||0)-bet;
@@ -1794,8 +1831,31 @@
         if (game==='slots') result=slotWon
           ?'YOU WON! Slots '+slotReels+' · '+paid.toLocaleString()+' Sektorium paid ('+slotPayoutMultiplier+'×)'
           :'YOU LOST · Slots '+slotReels+' · no payout';
+        const resultLabel=gameOutcome==='win'?'YOU WON! ':gameOutcome==='push'?'PUSH · ':'YOU LOST · ';
+        if (gameResult) gameResult.textContent=resultLabel+result;
+        machineCard?.classList.remove('is-playing');
+        machineCard?.classList.add('is-'+gameOutcome);
         world.chat.push({user:'Casino',text:user.username+' wagered '+bet+' at '+business.name+': '+result});
         await persist(result+' House reserve '+Number(business.bankroll).toLocaleString()+'.');
+        const refreshedButton=[...content.querySelectorAll('[data-action="play-casino"]')].find(entry=>entry.dataset.businessId===business.id&&entry.dataset.machineId===machine.id);
+        const refreshedCard=refreshedButton?.closest('.nexus-casino-machine');
+        if (refreshedCard) {
+          refreshedCard.classList.add('is-'+gameOutcome);
+          const refreshedResult=refreshedCard.querySelector('[data-casino-result]');
+          if (refreshedResult) refreshedResult.textContent=resultLabel+result;
+          if (game==='slots') refreshedCard.querySelectorAll('.nexus-slot-reel').forEach((reel,index)=>{reel.textContent=slotReels.split('  ')[index]||'';});
+          if (game==='roulette') {
+            const refreshedNumber=refreshedCard.querySelector('[data-roulette-number]');
+            if (refreshedNumber) refreshedNumber.textContent=gameDisplay?.querySelector('[data-roulette-number]')?.textContent||'';
+            refreshedCard.querySelector('[data-casino-display]')?.classList.add(...(gameDisplay?.className.match(/result-(?:red|black|green)/g)||[]));
+          }
+          if (game==='blackjack') {
+            const refreshedPlayer=refreshedCard.querySelector('[data-player-card]');
+            const refreshedDealer=refreshedCard.querySelector('[data-dealer-card]');
+            if (refreshedPlayer) refreshedPlayer.textContent=gameDisplay?.querySelector('[data-player-card]')?.textContent||'';
+            if (refreshedDealer) refreshedDealer.textContent=gameDisplay?.querySelector('[data-dealer-card]')?.textContent||'';
+          }
+        }
       } else if (action === 'copy-code') {
         const code = button.closest('.nexus-code-card')?.querySelector('pre code');
         if (!code) throw new Error('The code block could not be found.');
