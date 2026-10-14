@@ -1,3 +1,4 @@
+window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
 (() => {
   const sharedPath = 'nexus/sharedWorld';
   const gamePath = sharedPath + '/war';
