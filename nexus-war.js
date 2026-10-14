@@ -31,7 +31,7 @@
       gameFirebaseApi=firebaseApi.initializeApp(dropzoneFirebaseConfig,'nexus-dropzone');
     }
   }
-  const firebaseWarMode=!lanMode&&!!(gameFirebaseApi&&gameFirebaseApi.apps&&gameFirebaseApi.apps.length);
+  const firebaseWarMode=!lanMode&&!!(firebaseMode&&gameFirebaseApi&&typeof gameFirebaseApi.auth==='function'&&typeof gameFirebaseApi.database==='function');
   const weapons = {
     ar_pulse:{name:'Pulse AR',type:'Assault rifle',damage:22,rate:180,mag:30,range:680,spread:.035,reload:1500,level:1},
     ar_bulldog:{name:'Bulldog 7.62',type:'Assault rifle',damage:31,rate:290,mag:24,range:620,spread:.05,reload:1750,level:5},

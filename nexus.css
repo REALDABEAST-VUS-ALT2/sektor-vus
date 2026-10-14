@@ -705,7 +705,8 @@ body::before {
 .nexus-war-notice[data-kind="loot"] { border-color:#83dca9aa; color:#d8ffe7; }
 .nexus-war-notice[data-kind="error"] { border-color:#ff788799; color:#ffc0c3; }
 .nexus-war-notice[hidden] { display:none; }
-.nexus-war-chat { position:absolute; z-index:4; right:12px; bottom:12px; display:grid; width:min(310px,42%); gap:6px; pointer-events:auto; }
+.nexus-war-chat { position:relative; z-index:4; display:grid; width:100%; gap:6px; margin-top:8px; pointer-events:auto; }
+.nexus-war-map-wrap:fullscreen .nexus-war-chat { position:absolute; right:12px; bottom:12px; width:min(310px,42%); margin:0; }
 .nexus-war-chat form { display:flex; gap:5px; padding:5px; border:1px solid #d5e2d544; border-radius:6px; background:rgba(7,13,9,.92); }
 .nexus-war-chat input { min-width:0; flex:1; padding:7px 8px; border:1px solid #d5e2d522; border-radius:4px; background:#0d1410; color:#edf5ef; font:inherit; font-size:11px; }
 .nexus-war-chat button { padding:6px 9px; border:1px solid #65e6ad77; border-radius:4px; background:#183b2a; color:#e7fff0; font-size:10px; font-weight:800; cursor:pointer; }
@@ -862,7 +863,7 @@ body::before {
   .nexus-war-match-timer { top:8px; font-size:9px; }
   .nexus-war-resource-hud { top:36px; right:8px; max-width:48%; font-size:8px; text-align:right; }
   .nexus-war-notice { top:62px; font-size:10px; }
-  .nexus-war-chat { right:8px; bottom:8px; width:min(240px,55%); }
+  .nexus-war-map-wrap:fullscreen .nexus-war-chat { right:8px; bottom:8px; width:min(240px,55%); }
   .nexus-war-capture { bottom:138px; left:8px; width:min(210px,calc(100% - 16px)); }
   .nexus-war-chat [data-war-chat-log] { max-height:100px; }
   .nexus-war-hud-ammo { flex-basis:100%; }

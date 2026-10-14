@@ -1084,7 +1084,7 @@
 
   function renderMall(user) {
     if (activeMallBusinessId) {
-      const selectedBusiness=world.mallBusinesses.find(business=>business.id===activeMallBusinessId);
+      const selectedBusiness=world.mallBusinesses.find(business=>String(business.id)===String(activeMallBusinessId));
       if (selectedBusiness) return renderMallBusiness(user,selectedBusiness);
       activeMallBusinessId='';
       selectedMallProductId='';
@@ -1098,7 +1098,7 @@
     const businessTiles=businesses.map((business,index)=>{
       const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
       const owned=ownsMallBusiness(user,business);
-      const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
+      const products=world.mallProducts.filter(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0);
       const productMarkup=products.map(product=>{
         const itemData=product.itemData||{};
         const canAfford=user&&Number(user.balance||0)>=Number(product.price||0);
@@ -1132,8 +1132,8 @@
     const owned=ownsMallBusiness(user,business);
     const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
     const theme=['forest','midnight','neon','royal'].includes(business.theme)?business.theme:'forest';
-    const products=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
-    const selected=products.find(product=>product.id===selectedMallProductId)||products[0]||null;
+    const products=world.mallProducts.filter(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0);
+    const selected=products.find(product=>String(product.id)===String(selectedMallProductId))||products[0]||null;
     const checkout=selected&&user
       ?'<form class="nexus-mall-checkout-form" data-form="mall-checkout" data-business-id="'+escapeHtml(business.id)+'"><input type="hidden" name="productId" value="'+escapeHtml(selected.id)+'"><div><strong>'+escapeHtml(selected.name)+'</strong><small>'+currency(selected.price)+' each · '+Number(selected.stock)+' in stock</small></div><label>Quantity<input name="quantity" type="number" min="1" max="'+Number(selected.stock)+'" value="1" required></label><button type="submit" class="nexus-button" '+(Number(user.balance||0)<Number(selected.price||0)?'disabled':'')+'>Checkout</button></form>'
       :'<div class="nexus-mall-checkout-empty">'+(user?'Select an item from a shelf.':'Sign in to shop here.')+'</div>';
@@ -1173,7 +1173,7 @@
       :'';
     const settings=owned
       ?'<details class="nexus-mall-owner-settings"><summary>Customize this '+escapeHtml(type.label.toLowerCase())+'</summary><form class="nexus-form" data-form="mall-business-settings" data-business-id="'+escapeHtml(business.id)+'"><label>Business name<input name="name" maxlength="32" value="'+escapeHtml(business.name)+'" required></label><label>Welcome text<textarea name="description" maxlength="100" rows="2">'+escapeHtml(business.description||'')+'</textarea></label><label>Interior style<select name="theme"><option value="forest" '+(theme==='forest'?'selected':'')+'>Forest market</option><option value="midnight" '+(theme==='midnight'?'selected':'')+'>Midnight</option><option value="neon" '+(theme==='neon'?'selected':'')+'>Neon</option><option value="royal" '+(theme==='royal'?'selected':'')+'>Royal</option></select></label><label>Brand color<input type="color" name="accent" value="'+accent+'"></label>'+(business.type!=='casino'?'<label>Shelf count<select name="shelfCount">'+[1,2,3,4,5,6].map(count=>'<option value="'+count+'" '+(count===shelfCount?'selected':'')+'>'+count+' shelves</option>').join('')+'</select></label>':'')+'<button class="nexus-button">Save storefront</button></form></details>':'';
-    return '<section class="nexus-mall-room" data-theme="'+theme+'" style="--mall-accent:'+accent+'"><header class="nexus-mall-room-header"><button class="nexus-button secondary" type="button" data-action="exit-mall-business">← Mall directory</button><div><span>'+escapeHtml(type.label.toUpperCase())+' · OWNED BY '+escapeHtml(business.owner.toUpperCase())+'</span><h2>'+escapeHtml(business.name)+'</h2></div><small>'+products.length+'/'+type.productLimit+' products</small></header><div class="nexus-mall-room-layout">'+roomContent+'</div>'+productForm+settings+'</section>';
+    return '<section class="nexus-mall-room" data-theme="'+theme+'" style="--mall-accent:'+accent+'"><header class="nexus-mall-room-header"><button class="nexus-button secondary" type="button" data-action="exit-mall-business">← Mall directory</button><div><span>'+escapeHtml(type.label.toUpperCase())+' · OWNED BY '+escapeHtml(String(business.owner||'STORE OWNER').toUpperCase())+'</span><h2>'+escapeHtml(business.name)+'</h2></div><small>'+products.length+'/'+type.productLimit+' products</small></header><div class="nexus-mall-room-layout">'+roomContent+'</div>'+productForm+settings+'</section>';
   }
 
   function renderChatPane(scrollState) {
@@ -1423,7 +1423,7 @@
         const business=world.mallBusinesses.find(entry=>entry.id===form.dataset.businessId&&ownsMallBusiness(user,entry));
         if (!business) throw new Error('You do not own this Mall business.');
         const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
-        const currentProducts=world.mallProducts.filter(product=>product.businessId===business.id&&Number(product.stock)>0);
+        const currentProducts=world.mallProducts.filter(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0);
         if (currentProducts.length>=type.productLimit) throw new Error('This business is at its '+type.productLimit+' product limit.');
         const item=inventoryFor(user).find(entry=>entry.id===formData.get('itemId'));
         const stock=Number(formData.get('quantity'));
@@ -1695,10 +1695,10 @@
     const user = currentUser();
     try {
       if (action==='enter-mall-business') {
-        const business=world.mallBusinesses.find(entry=>entry.id===button.dataset.id);
+        const business=world.mallBusinesses.find(entry=>String(entry.id)===String(button.dataset.id));
         if (!business) throw new Error('That Mall business is no longer available.');
         activeMallBusinessId=business.id;
-        selectedMallProductId=world.mallProducts.find(product=>product.businessId===business.id&&Number(product.stock)>0)?.id||'';
+        selectedMallProductId=world.mallProducts.find(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0)?.id||'';
         render();
       } else if (action==='exit-mall-business') {
         activeMallBusinessId='';selectedMallProductId='';render();
@@ -1750,7 +1750,7 @@
         await persist(machineType.label+' added to your casino.');
       } else if (action === 'buy-mall-product') {
         if (!user) throw new Error('Sign in to buy Mall products.');
-        const product=world.mallProducts.find(entry=>entry.id===button.dataset.id);
+        const product=world.mallProducts.find(entry=>String(entry.id)===String(button.dataset.id));
         const business=product&&world.mallBusinesses.find(entry=>entry.id===product.businessId);
         if (!product||!business||Number(product.stock)<1) throw new Error('That product is sold out.');
         if (ownsMallBusiness(user,business)) throw new Error('You cannot buy your own product.');
