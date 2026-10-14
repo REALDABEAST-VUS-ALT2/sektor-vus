@@ -4,9 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sektor · Nexus</title>
-  <link rel="stylesheet" href="./style.css?v=20261013-4">
+  <link rel="stylesheet" href="./style.css?v=20261014-13">
 </head>
 <body>
+      <div class="phen228-screen-static" aria-hidden="true"></div>
+      <div class="phen228-screen-tear" aria-hidden="true"></div>
   <main id="authView" class="auth-view">
     <div class="auth-card">
       <div class="brand-mark" aria-label="Sektor"><span>S</span></div>
@@ -22,6 +24,7 @@
   </main>
 
   <main id="appView" class="app-view" hidden>
+    <div class="phen228-wire-stage" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <aside class="server-rail">
       <div class="rail-logo" aria-label="Sektor"><span>S</span></div>
       <div id="serverList" class="server-list"></div>
@@ -54,7 +57,7 @@
       <div id="videoStage" class="video-stage" hidden></div>
       <div id="gamesPanel" hidden></div>
       <div id="messages" class="messages"><div class="empty-state">Select a channel to start talking.</div></div>
-      <form id="messageForm" class="message-form"><div id="mentionSuggestions" class="mention-suggestions" hidden></div><input id="messageInput" maxlength="500" placeholder="Message #general" autocomplete="off"><input id="imageInput" type="file" accept="image/*" hidden><input id="audioInput" type="file" accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" hidden><button id="imageButton" type="button" title="Attach image">＋</button><button id="audioButton" type="button" title="Attach MP3, WAV, or OGG">♪</button><button type="submit">Send</button></form>
+      <form id="messageForm" class="message-form"><div id="mentionSuggestions" class="mention-suggestions" hidden></div><textarea id="messageInput" rows="1" maxlength="500" placeholder="Message #general" autocomplete="off"></textarea><input id="imageInput" type="file" accept="image/*" hidden><input id="audioInput" type="file" accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" hidden><button id="imageButton" type="button" title="Attach image">＋</button><button id="audioButton" type="button" title="Attach MP3, WAV, or OGG">♪</button><button type="submit">Send</button></form>
     </section>
     <aside class="members-sidebar"><header>MEMBERS <span id="memberCount">0</span></header><button id="addFriendBtn" class="add-friend-btn">＋ Add friend</button><div id="membersList"></div></aside>
   </main>
@@ -77,6 +80,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="./lan-adapter.js?v=20261008-10"></script>
-  <script src="./app.js?v=20261013-3"></script>
+  <script src="./app.js?v=20261014-5"></script>
 </body>
 </html>

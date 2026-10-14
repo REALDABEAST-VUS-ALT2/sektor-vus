@@ -157,14 +157,25 @@ function selectPrivateMessages() {
   const friendKey=state.dmFriend.key;
   const ref=db.ref('dms/'+friendConversationId(friendKey)+'/messages').limitToLast(100);
   state.dmRef=ref;
-  state.dmHandler=snap=>{
-    if (state.activeView!=='friends'||state.dmFriend?.key!==friendKey) return;
-    const value=snap.val();
-    if (value) renderMessage({...value,id:snap.key,
-      key:value.key||value.fromAccountKey||value.senderKey,
+  const renderPrivateMessage=(value,id)=>{
+    if (!value||state.activeView!=='friends'||state.dmFriend?.key!==friendKey) return;
+    renderMessage({...value,id,key:value.key||value.fromAccountKey||value.senderKey,
       name:value.name||value.fromUsername||'Friend'});
   };
-  ref.on('child_added',state.dmHandler);
+  state.dmHandler=snap=>{
+    renderPrivateMessage(snap.val(),snap.key);
+  };
+  ref.on('child_added',state.dmHandler,error=>{
+    if (state.activeView==='friends'&&state.dmFriend?.key===friendKey)
+      els.channelTopic.textContent='Private messages disconnected: '+(error.message||'check your connection');
+  });
+  ref.get().then(snapshot=>{
+    if (state.activeView!=='friends'||state.dmFriend?.key!==friendKey) return;
+    Object.entries(snapshot.val()||{}).forEach(([id,value])=>renderPrivateMessage(value,id));
+  }).catch(error=>{
+    if (state.activeView==='friends'&&state.dmFriend?.key===friendKey)
+      els.channelTopic.textContent='Could not load private messages: '+(error.message||'check your connection');
+  });
 }
 async function sendPrivateMessage(text) {
   if (!state.dmFriend || !state.user || (!text&&!pendingImage&&!pendingAudio&&!pendingFile)) return;
@@ -172,16 +183,27 @@ async function sendPrivateMessage(text) {
   const payload={fromAccountKey:state.user.key,name:state.user.username,avatar:state.user.avatar||'',
     key:state.user.key,text,image:pendingImage||'',audioData:pendingAudio||'',audioName:pendingAudioName||'',
     fileData:pendingFile?.data||'',fileName:pendingFile?.name||'',fileType:pendingFile?.type||'',
+    messageStyle:currentMessageStyle(),replyTo,
     ts:firebase.database.ServerValue.TIMESTAMP};
   try {
-    await db.ref('dms/'+friendConversationId(friend.key)+'/messages').push(payload);
+    const messageRef=db.ref('dms/'+friendConversationId(friend.key)+'/messages').push();
+    payload.id=messageRef.key;
+    payload.ts=Date.now();
+    renderMessage(payload);
+    await messageRef.set(payload);
     if (state.dmFriend?.key===friend.key) {
-      els.messageInput.value='';pendingImage='';pendingAudio='';pendingAudioName='';pendingFile=null;replyTo=null;
+      els.messageInput.value='';autosizeMessageInput();pendingImage='';pendingAudio='';pendingAudioName='';pendingFile=null;replyTo=null;
+      els.messageInput.placeholder='Message @'+friend.username;
       els.imageInput.value='';els.imageButton.textContent='＋';els.audioInput.value='';els.audioButton.textContent='♪';
       fileInput.value='';fileButton.textContent='▤';
       els.mentionSuggestions.hidden=true;
     }
-  } catch(error) { els.channelTopic.textContent='Message failed. Check your connection and retry.';showError('Could not send that private message.'); }
+  } catch(error) {
+    const failed=[...els.messages.querySelectorAll('.message')].find(item=>item.dataset.messageId===payload.id);
+    failed?.remove();
+    delete messageCache[payload.id];
+    els.channelTopic.textContent='Message failed: '+(error.message||'check your connection and retry');
+  }
 }
 function makeLocalStorageDatabase() {
   const STORE_KEY = 'sektorLocalDatabase';
@@ -393,7 +415,7 @@ function makeLocalAuth() {
 }
 
 const useLanBackend = new URLSearchParams(location.search).get('lan') === '1';
-const firebase = globalThis.firebase || {
+const localFirebase = {
   initializeApp: () => ({
     database: () => makeLocalStorageDatabase(),
     auth: () => makeLocalAuth()
@@ -401,6 +423,7 @@ const firebase = globalThis.firebase || {
   database: { ServerValue: { TIMESTAMP: { '.sv': 'timestamp' } } },
   auth: () => makeLocalAuth()
 };
+const firebase = globalThis.firebase || localFirebase;
 
 const firebaseApp = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp();
 const db = firebaseApp.database();
@@ -416,13 +439,14 @@ const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab
 els.audioInput = $('audioInput');
 els.popupStopShareBtn=$('popupStopShareBtn');
 const fileInput = document.createElement('input');
+const maxMessageAttachmentBytes = 10 * 1024 * 1024;
 fileInput.type = 'file';
 fileInput.hidden = true;
 fileInput.setAttribute('aria-label', 'Choose a file to attach');
 els.messageForm.appendChild(fileInput);
 const fileButton = document.createElement('button');
 fileButton.type = 'button';
-fileButton.title = 'Attach a file (up to 4 MB)';
+fileButton.title = 'Attach a file (up to 10 MB)';
 fileButton.setAttribute('aria-label', fileButton.title);
 fileButton.textContent = '▤';
 els.messageForm.insertBefore(fileButton, els.messageForm.querySelector('button[type="submit"]'));
@@ -728,7 +752,7 @@ async function ensureFirebaseAccess() {
     throw new Error('Could not connect to the account service. Anonymous sign-in may need to be enabled in Firebase Authentication.');
   }
 }
-async function showApp() { els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); await loadServers(); const joinCode = new URLSearchParams(location.search).get('join'); if (joinCode) { const existing = state.servers.find(server => String(server.code).toUpperCase() === joinCode.toUpperCase()); if (existing) selectServer(existing.code); else openJoinServerModal(joinCode); } }
+async function showApp() { applyProfileTheme(); els.authView.hidden = true; els.appView.hidden = false; els.logout.textContent = state.user.username.slice(0,2).toUpperCase(); await ensureFirebaseAccess(); startOnlinePresence(); loadFriends(); await loadServers(); const joinCode = new URLSearchParams(location.search).get('join'); if (joinCode) { const existing = state.servers.find(server => String(server.code).toUpperCase() === joinCode.toUpperCase()); if (existing) selectServer(existing.code); else openJoinServerModal(joinCode); } }
 const showAppWithPendingRefresh=showApp;
 showApp=async function() {
   await showAppWithPendingRefresh();
@@ -925,7 +949,167 @@ async function selectServer(code) {
   }
 }
 async function openJoinServerModal(inviteCode = '') { els.modalTitle.textContent = 'Join a server'; els.modalBody.innerHTML = '<label class="modal-label" for="joinCode">Invite code</label><input id="joinCode" class="modal-input" maxlength="20" placeholder="Paste an invite code"><div id="modalError" class="error"></div><button id="confirmJoin" class="primary-btn">Join server</button>'; els.modal.hidden = false; const codeInput = document.getElementById('joinCode'); codeInput.value = inviteCode; codeInput.focus(); document.getElementById('confirmJoin').onclick = async () => { const code = codeInput.value.trim().toUpperCase(); const error = document.getElementById('modalError'); if (!code) { error.textContent = 'Enter an invite code.'; return; } try { const local = localServers().find(server => String(server.code).toUpperCase() === code); const snap = local ? null : await db.ref('serverMeta/' + safe(code)).get(); if (!local && !snap.exists()) throw new Error('Server not found.'); const joinedServer = local || {code,...snap.val()}; state.servers = [...state.servers.filter(server => String(server.code).toUpperCase() !== code), joinedServer]; els.modal.hidden = true; await selectServer(joinedServer.code); } catch (joinError) { error.textContent = joinError.message || 'Could not join server.'; } }; }
-function openProfileModal() { if (!state.user) return; state.user.avatar = state.user.avatar || ''; els.modalTitle.textContent = 'Your profile'; els.modalBody.innerHTML = '<img id="profilePreview" class="profile-preview" src="' + esc(state.user.avatar) + '" alt=""><label class="modal-label" for="profileFile">Profile picture</label><input id="profileFile" class="profile-file" type="file" accept="image/*"><div id="modalError" class="error"></div><button id="saveProfile" class="primary-btn" type="button">Save profile</button>'; const preview = document.getElementById('profilePreview'); if (!state.user.avatar) preview.style.display = 'none'; document.getElementById('profileFile').onchange = event => { const file = event.target.files[0]; if (!file) return; if (file.size > 2 * 1024 * 1024) { document.getElementById('modalError').textContent = 'Choose an image under 2 MB.'; return; } const reader = new FileReader(); reader.onload = () => { preview.src = reader.result; preview.style.display = 'block'; preview.dataset.value = reader.result; }; reader.readAsDataURL(file); }; document.getElementById('saveProfile').onclick = () => { state.user.avatar = preview.dataset.value || state.user.avatar || ''; localStorage.setItem('vusServersSession', JSON.stringify(state.user)); renderServerRail(); els.modal.hidden = true; if (state.server) selectServer(state.server.code); }; els.modal.hidden = false; }
+const profileThemeOptions=[
+  {id:'nexus',name:'Nexus Night',colors:['#65e6ad','#101820'],description:'Graphite with mint highlights'},
+  {id:'ocean',name:'Ocean',colors:['#82c8ff','#0c1623'],description:'Deep blue and clear cyan'},
+  {id:'daylight',name:'Daylight',colors:['#187a5e','#e9eff1'],description:'Bright, cool green-gray'},
+  {id:'ember',name:'Ember',colors:['#ff9d55','#211711'],description:'Warm copper on charcoal'},
+  {id:'forest',name:'Forest',colors:['#8bdb8a','#0b1512'],description:'Deep woodland green'},
+  {id:'lavender',name:'Lavender',colors:['#c4a7ff','#15131b'],description:'Soft violet and graphite'},
+  {id:'rose',name:'Rose',colors:['#ff8eae','#170f15'],description:'Rose light over plum'},
+  {id:'synthwave',name:'Synthwave',colors:['#65eddf','#11182b'],description:'Electric cyan and midnight'},
+  {id:'phen228',name:'Phen-228 Signal Horror',colors:['#ff3047','#060506'],description:'Red-black static signal'},
+  {id:'signalblue',name:'Signal Blue',colors:['#3de4ff','#061426'],description:'Ice-blue signal and pulsing lights'},
+  {id:'onyx',name:'Onyx',colors:['#d7e0ec','#090b10'],description:'Monochrome graphite and silver'},
+  {id:'arctic',name:'Arctic',colors:['#3486bd','#e7f2f6'],description:'Clear blue over cool white'},
+  {id:'cobalt',name:'Cobalt',colors:['#7d9bff','#080f28'],description:'Electric blue and deep navy'},
+  {id:'citrus',name:'Citrus',colors:['#f1d45a','#17170c'],description:'Signal yellow and ink'},
+  {id:'paper',name:'Paper',colors:['#347d87','#e9edef'],description:'Cool light gray and teal'}
+];
+const profileThemeNames=profileThemeOptions.map(theme=>theme.id);
+function profileThemeStorageKey(user=state.user) { return user?'vusTheme_'+safe(user.key):''; }
+function currentProfileTheme(user=state.user) {
+  const key=profileThemeStorageKey(user);
+  const saved=key?localStorage.getItem(key):'';
+  const theme=saved||user?.theme||'nexus';
+  return profileThemeNames.includes(theme)?theme:'nexus';
+}
+function applyProfileTheme(theme=currentProfileTheme()) {
+  document.documentElement.dataset.theme=profileThemeNames.includes(theme)?theme:'nexus';
+}
+const messageTextEffects=['solid','gradient','rgb'];
+const messageFonts=['system','rounded','serif','mono'];
+const messageBubbleStyles=['none','soft','gradient','outline','glow','rgb'];
+const messageBubbleShapes=['square','rounded','pill'];
+function messageStyleStorageKey(user=state.user) { return user?'vusMessageStyle_'+safe(user.key):''; }
+function normalizeMessageStyle(value) {
+  const style=value&&typeof value==='object'?value:{};
+  const validColor=color=>typeof color==='string'&&/^#[0-9a-f]{6}$/i.test(color);
+  return {
+    effect:messageTextEffects.includes(style.effect)?style.effect:'solid',
+    font:messageFonts.includes(style.font)?style.font:'system',
+    colorA:validColor(style.colorA)?style.colorA:'#65e6ad',
+    colorB:validColor(style.colorB)?style.colorB:'#79a9ff',
+    bubbleStyle:messageBubbleStyles.includes(style.bubbleStyle)?style.bubbleStyle:'soft',
+    bubbleShape:messageBubbleShapes.includes(style.bubbleShape)?style.bubbleShape:'rounded',
+    bubbleColorA:validColor(style.bubbleColorA)?style.bubbleColorA:'#14211c',
+    bubbleColorB:validColor(style.bubbleColorB)?style.bubbleColorB:'#1a2a36',
+    bubbleBorder:validColor(style.bubbleBorder)?style.bubbleBorder:'#65e6ad',
+    bubbleOpacity:Number.isFinite(Number(style.bubbleOpacity))?Math.max(0,Math.min(70,Number(style.bubbleOpacity))):24
+  };
+}
+function currentMessageStyle(user=state.user) {
+  const key=messageStyleStorageKey(user);
+  try {
+    const saved=key?JSON.parse(localStorage.getItem(key)||'null'):null;
+    return normalizeMessageStyle(saved||user?.messageStyle);
+  } catch(error) { return normalizeMessageStyle(user?.messageStyle); }
+}
+function openProfileModal() {
+  if (!state.user) return;
+  state.user.avatar=state.user.avatar||'';
+  els.modalTitle.textContent='Your profile';
+  els.modalBody.innerHTML='<img id="profilePreview" class="profile-preview" src="'+esc(state.user.avatar)+'" alt=""><label class="modal-label" for="profileFile">Profile picture</label><input id="profileFile" class="profile-file" type="file" accept="image/*"><label class="modal-label" for="profileTheme">Color theme</label><select id="profileTheme" class="modal-input"><option value="nexus">Nexus Night</option><option value="ocean">Ocean</option><option value="daylight">Daylight</option><option value="ember">Ember</option><option value="forest">Forest</option><option value="lavender">Lavender</option><option value="rose">Rose</option><option value="synthwave">Synthwave</option><option value="phen228">Phen-228 Signal Horror</option><option value="paper">Paper</option></select><label class="modal-label" for="messageTextEffect">Message text effect</label><select id="messageTextEffect" class="modal-input"><option value="solid">Single color</option><option value="gradient">Two-color gradient</option><option value="rgb">Smooth RGB cycle</option></select><div class="message-style-colors"><label class="modal-label">Text color A<input id="messageColorA" class="modal-color" type="color"></label><label class="modal-label">Text color B<input id="messageColorB" class="modal-color" type="color"></label></div><label class="modal-label" for="messageFont">Message font</label><select id="messageFont" class="modal-input"><option value="system">System sans</option><option value="rounded">Rounded sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select><label class="modal-label" for="messageBubbleStyle">Bubble style</label><select id="messageBubbleStyle" class="modal-input"><option value="none">No bubble</option><option value="soft">Soft fill</option><option value="gradient">Gradient fill</option><option value="outline">Outline</option><option value="glow">Glow</option></select><div class="message-style-colors"><label class="modal-label">Bubble fill A<input id="bubbleColorA" class="modal-color" type="color"></label><label class="modal-label">Bubble fill B<input id="bubbleColorB" class="modal-color" type="color"></label><label class="modal-label">Bubble edge<input id="bubbleBorder" class="modal-color" type="color"></label></div><label class="modal-label" for="messageBubbleOpacity">Bubble strength <input id="messageBubbleOpacity" type="range" min="0" max="70" step="1"></label><label class="modal-label" for="messageBubbleShape">Bubble corners</label><select id="messageBubbleShape" class="modal-input"><option value="square">Square</option><option value="rounded">Rounded</option><option value="pill">Pill</option></select><div class="message-style-preview" aria-live="polite"><small>MESSAGE PREVIEW</small><span id="messageStylePreview">Your message, your style.</span></div><div id="modalError" class="error"></div><button id="saveProfile" class="primary-btn" type="button">Save profile</button>';
+  const preview=document.getElementById('profilePreview');
+  const themeSelect=document.getElementById('profileTheme');
+  const themePicker=document.createElement('div');
+  themePicker.className='profile-theme-options';
+  themePicker.setAttribute('role','radiogroup');
+  themePicker.setAttribute('aria-label','Color theme');
+  themePicker.innerHTML=profileThemeOptions.map(theme=>'<label class="profile-theme-option"><input type="radio" name="profileTheme" value="'+esc(theme.id)+'"><span class="profile-theme-swatch" aria-hidden="true" style="--theme-swatch-a:'+theme.colors[0]+';--theme-swatch-b:'+theme.colors[1]+'"></span><span class="profile-theme-option-copy"><strong>'+esc(theme.name)+'</strong><small>'+esc(theme.description)+'</small></span></label>').join('');
+  themeSelect.replaceWith(themePicker);
+  const themeInputs=[...themePicker.querySelectorAll('input[name="profileTheme"]')];
+  const themePreview=document.createElement('div');
+  themePreview.className='profile-theme-preview';
+  themePreview.setAttribute('role','status');
+  themePicker.insertAdjacentElement('afterend',themePreview);
+  const messageEffectSelect=document.getElementById('messageTextEffect');
+  const messageColorA=document.getElementById('messageColorA');
+  const messageColorB=document.getElementById('messageColorB');
+  const messageFontSelect=document.getElementById('messageFont');
+  const bubbleStyleSelect=document.getElementById('messageBubbleStyle');
+  const rgbBubbleOption=document.createElement('option');
+  rgbBubbleOption.value='rgb';
+  rgbBubbleOption.textContent='RGB cycle';
+  bubbleStyleSelect.appendChild(rgbBubbleOption);
+  const bubbleColorA=document.getElementById('bubbleColorA');
+  const bubbleColorB=document.getElementById('bubbleColorB');
+  const bubbleBorder=document.getElementById('bubbleBorder');
+  const bubbleOpacity=document.getElementById('messageBubbleOpacity');
+  const bubbleShape=document.getElementById('messageBubbleShape');
+  const messagePreview=document.getElementById('messageStylePreview');
+  const initialMessageStyle=currentMessageStyle();
+  const initialTheme=currentProfileTheme();
+  themeInputs.forEach(input=>{input.checked=input.value===initialTheme;});
+  const selectedTheme=()=>themeInputs.find(input=>input.checked)?.value||'nexus';
+  const updateThemePreview=()=>{
+    const theme=profileThemeOptions.find(option=>option.id===selectedTheme())||profileThemeOptions[0];
+    themePreview.innerHTML='<span aria-hidden="true" style="--theme-swatch-a:'+theme.colors[0]+';--theme-swatch-b:'+theme.colors[1]+'"></span><div><strong>'+theme.name+'</strong><small>'+theme.description+'</small></div>';
+  };
+  messageEffectSelect.value=initialMessageStyle.effect;
+  messageColorA.value=initialMessageStyle.colorA;
+  messageColorB.value=initialMessageStyle.colorB;
+  messageFontSelect.value=initialMessageStyle.font;
+  bubbleStyleSelect.value=initialMessageStyle.bubbleStyle;
+  bubbleColorA.value=initialMessageStyle.bubbleColorA;
+  bubbleColorB.value=initialMessageStyle.bubbleColorB;
+  bubbleBorder.value=initialMessageStyle.bubbleBorder;
+  bubbleOpacity.value=String(initialMessageStyle.bubbleOpacity);
+  bubbleShape.value=initialMessageStyle.bubbleShape;
+  applyProfileTheme(initialTheme);
+  const updateMessagePreview=()=>{
+    const style=normalizeMessageStyle({effect:messageEffectSelect.value,font:messageFontSelect.value,colorA:messageColorA.value,colorB:messageColorB.value,bubbleStyle:bubbleStyleSelect.value,bubbleColorA:bubbleColorA.value,bubbleColorB:bubbleColorB.value,bubbleBorder:bubbleBorder.value,bubbleOpacity:bubbleOpacity.value,bubbleShape:bubbleShape.value});
+    messagePreview.dataset.textEffect=style.effect;
+    messagePreview.dataset.messageFont=style.font;
+    messagePreview.dataset.bubbleStyle=style.bubbleStyle;
+    messagePreview.dataset.bubbleShape=style.bubbleShape;
+    messagePreview.style.setProperty('--message-color-a',style.colorA);
+    messagePreview.style.setProperty('--message-color-b',style.colorB);
+    messagePreview.style.setProperty('--message-bubble-a',style.bubbleColorA);
+    messagePreview.style.setProperty('--message-bubble-b',style.bubbleColorB);
+    messagePreview.style.setProperty('--message-bubble-border',style.bubbleBorder);
+    messagePreview.style.setProperty('--message-bubble-opacity',style.bubbleOpacity+'%');
+  };
+  if (!state.user.avatar) preview.style.display='none';
+  document.getElementById('profileFile').onchange=event=>{
+    const file=event.target.files[0];
+    if (!file) return;
+    if (file.size>2*1024*1024) {
+      document.getElementById('modalError').textContent='Choose an image under 2 MB.';
+      return;
+    }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      preview.src=reader.result;
+      preview.style.display='block';
+      preview.dataset.value=reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  themeInputs.forEach(input=>input.addEventListener('change',()=>{
+    if (!input.checked) return;
+    applyProfileTheme(input.value);
+    updateThemePreview();
+  }));
+  updateThemePreview();
+  const styleControls=[messageEffectSelect,messageColorA,messageColorB,messageFontSelect,bubbleStyleSelect,bubbleColorA,bubbleColorB,bubbleBorder,bubbleOpacity,bubbleShape];
+  styleControls.forEach(control=>control.addEventListener('input',updateMessagePreview));
+  styleControls.forEach(control=>control.addEventListener('change',updateMessagePreview));
+  updateMessagePreview();
+  document.getElementById('saveProfile').onclick=()=>{
+    state.user.avatar=preview.dataset.value||state.user.avatar||'';
+    state.user.theme=selectedTheme();
+    state.user.messageStyle=normalizeMessageStyle({effect:messageEffectSelect.value,font:messageFontSelect.value,colorA:messageColorA.value,colorB:messageColorB.value,bubbleStyle:bubbleStyleSelect.value,bubbleColorA:bubbleColorA.value,bubbleColorB:bubbleColorB.value,bubbleBorder:bubbleBorder.value,bubbleOpacity:bubbleOpacity.value,bubbleShape:bubbleShape.value});
+    localStorage.setItem(profileThemeStorageKey(),state.user.theme);
+    localStorage.setItem(messageStyleStorageKey(),JSON.stringify(state.user.messageStyle));
+    localStorage.setItem('vusServersSession',JSON.stringify(state.user));
+    applyProfileTheme(state.user.theme);
+    renderServerRail();
+    els.modal.hidden=true;
+    if (state.server) selectServer(state.server.code);
+  };
+  els.modal.hidden=false;
+}
 function openFriendModal() { els.modalTitle.textContent = 'Add a friend'; els.modalBody.innerHTML = '<label class="modal-label" for="friendSearch">Search by username</label><div class="friend-search-row"><input id="friendSearch" class="modal-input" maxlength="24" placeholder="username"><button id="friendSearchBtn" class="modal-secondary">Search</button></div><div id="friendResults" class="friend-results"></div><div id="modalError" class="error"></div>'; els.modal.hidden = false; const input = document.getElementById('friendSearch'); const search = async () => { const query = input.value.trim().toLowerCase(); const results = document.getElementById('friendResults'); const error = document.getElementById('modalError'); results.innerHTML = ''; error.textContent = ''; if (!query) { error.textContent = 'Enter a username.'; return; } const localMatches = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().includes(query) && member.key !== state.user.key); if (localMatches.length) renderFriendResults(localMatches.map(member => ({key:member.key,username:member.name})), results, error); else { try { const snap = await db.ref('usernameIndex/' + query).get(); if (!snap.exists()) throw new Error('No user found with that username.'); const key = snap.val(); const userSnap = await db.ref('users/' + key).get(); const user = userSnap.val(); if (!user) throw new Error('No user found with that username.'); renderFriendResults([{key,username:user.username}], results, error); } catch (searchError) { error.textContent = searchError.message || 'Could not search right now.'; } } }; document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus(); }
 function renderFriendResults(users, container, error) { users.forEach(user => { const row = document.createElement('div'); row.className = 'friend-result'; row.innerHTML = '<span>@' + esc(user.username) + '</span><button class="modal-secondary">Add</button>'; row.querySelector('button').onclick = async () => { try { await db.ref('users/' + user.key + '/friendRequestsIncoming/' + state.user.key).set({fromUsername:state.user.username,sentAt:firebase.database.ServerValue.TIMESTAMP}); row.querySelector('button').textContent = 'Sent'; row.querySelector('button').disabled = true; } catch (requestError) { error.textContent = 'Could not send the friend request.'; } }; container.appendChild(row); }); }
 function openFriendModal() {
@@ -1765,10 +1949,31 @@ function renderMessage(message) {
   const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : '';
   const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join('');
   const rank = rankForMember(message.key, message.name);
-  const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + esc(rank.color || '#9aa5b4') + '">' + esc(rank.name) + '</span>' : '';
+  const rankColor=rank&&typeof rank.color==='string'&&/^#[0-9a-f]{6}$/i.test(rank.color)?rank.color:'#9aa5b4';
+  const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + rankColor + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
   const canModerateMessages=hasServerPermission('manageMessages');
   item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button>' : '') + (ownMessage||canModerateMessages ? '<button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  const nameElement=item.querySelector('.message-name');
+  if (rank&&nameElement) {nameElement.classList.add('message-name-role');nameElement.style.setProperty('--rank-color',rankColor);}
+  const style=normalizeMessageStyle(message.messageStyle);
+  const messageContent=item.querySelector('.message-content');
+  const messageText=item.querySelector('.message-text');
+  messageContent.dataset.textEffect=style.effect;
+  messageContent.dataset.bubbleStyle=style.bubbleStyle;
+  messageContent.dataset.bubbleShape=style.bubbleShape;
+  messageContent.style.setProperty('--message-color-a',style.colorA);
+  messageContent.style.setProperty('--message-color-b',style.colorB);
+  messageContent.style.setProperty('--message-bubble-a',style.bubbleColorA);
+  messageContent.style.setProperty('--message-bubble-b',style.bubbleColorB);
+  messageContent.style.setProperty('--message-bubble-border',style.bubbleBorder);
+  messageContent.style.setProperty('--message-bubble-opacity',style.bubbleOpacity+'%');
+  if (messageText) {
+    messageText.dataset.textEffect=style.effect;
+    messageText.dataset.messageFont=style.font;
+    messageText.style.setProperty('--message-color-a',style.colorA);
+    messageText.style.setProperty('--message-color-b',style.colorB);
+  }
   const escapedUsername = String(state.user.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   if (state.server && !existing && !ownMessage && !pingedMessages.has(message.id) && new RegExp('(^|\\s)(?::@|@)\\(?' + escapedUsername + '\\)?(?=$|\\s|[,.!?])', 'i').test(message.text || '')) {
     pingedMessages.add(message.id);
@@ -1790,7 +1995,8 @@ function renderMessage(message) {
   const deleteButton = item.querySelector('[data-action="delete"]');
   if (deleteButton) deleteButton.onclick = () => deleteMessage(item, message);
   const hideButton = item.querySelector('[data-action="hide"]');
-  if (hideButton) hideButton.onclick = () => hideMessage(item, message);
+  if (state.dmFriend) hideButton?.remove();
+  else if (hideButton) hideButton.onclick = () => hideMessage(item, message);
   if (existing) existing.replaceWith(item);
   else els.messages.appendChild(item);
   if (!existing && wasAtBottom) els.messages.scrollTop = els.messages.scrollHeight;
@@ -1811,6 +2017,13 @@ function openReactionPicker(event, item, message) { event.stopPropagation(); doc
 function startReply(message) { replyTo = {id:message.id || '', name:message.name, text:message.text}; els.messageInput.placeholder = 'Reply to ' + message.name + '…'; els.messageInput.focus(); }
 function messageRef(message, server = state.server, channelId = state.channel) { return db.ref('serverMessages/' + server.code + '/' + safe(channelId) + '/' + message.id); }
 async function saveMessage(message, updates) {
+  if (state.dmFriend) {
+    const friendKey=state.dmFriend.key;
+    await db.ref('dms/'+friendConversationId(friendKey)+'/messages/'+message.id).update(updates);
+    Object.assign(message,updates);
+    if (state.dmFriend?.key===friendKey) renderMessage(message);
+    return;
+  }
   const server = state.server;
   const channelId = state.channel;
   if (server.localOnly) {
@@ -1824,6 +2037,19 @@ async function saveMessage(message, updates) {
   if (state.server === server && state.channel === channelId) renderMessage(message);
 }
 async function deleteMessage(item, message) {
+  if (state.dmFriend) {
+    if (String(message.key)!==String(state.user.key)||!message.id) return;
+    const friendKey=state.dmFriend.key;
+    try {
+      await db.ref('dms/'+friendConversationId(friendKey)+'/messages/'+message.id).remove();
+      delete messageCache[message.id];
+      if (state.dmFriend?.key===friendKey) {
+        item.remove();
+        if (!els.messages.querySelector('.message')) els.messages.innerHTML='<div class="empty-state">No messages yet. Say hello.</div>';
+      }
+    } catch(error) { els.channelTopic.textContent='Could not delete private message: '+(error.message||'check your connection'); }
+    return;
+  }
   if (!state.server || (String(message.key) !== String(state.user.key)&&!hasServerPermission('manageMessages')) || !message.id) return;
   const server = state.server;
   const channelId = state.channel;
@@ -1835,15 +2061,24 @@ async function deleteMessage(item, message) {
     } else {
       await messageRef(message, server, channelId).remove();
     }
-    item.remove();
     delete messageCache[message.id];
-    if (state.server === server && state.channel === channelId && !els.messages.querySelector('.message')) els.messages.innerHTML = '<div class="empty-state">No messages yet. Say hello.</div>';
+    if (state.server === server && state.channel === channelId) selectMessages(channelId);
   } catch (error) {
     showError('Could not delete that message.');
   }
 }
 async function toggleReaction(message, emoji) { if (!message.id) { showError('This message is still loading. Try again.'); return; } const reactions = {...(message.reactions || {})}; const users = {...(reactions[emoji] || {})}; if (users[state.user.key]) delete users[state.user.key]; else users[state.user.key] = true; if (Object.keys(users).length) reactions[emoji] = users; else delete reactions[emoji]; try { await saveMessage(message, {reactions}); } catch (error) { showError('Could not update reaction.'); } }
 function startEdit(item, message) { const text = item.querySelector('.message-text'); const original = message.text; const input = document.createElement('textarea'); input.className = 'edit-input'; input.value = original; input.rows = 2; text.replaceWith(input); input.focus(); input.onkeydown = async event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const value = input.value.trim(); if (value) await saveMessage(message, {text:value, edited:true}); } if (event.key === 'Escape') selectMessages(state.channel); }; }
+function autosizeMessageInput() {
+  const input=els.messageInput;
+  if (!input) return;
+  const maxHeight=Math.max(44,Math.min(220,window.innerHeight*.32));
+  input.style.height='auto';
+  const contentHeight=input.scrollHeight;
+  input.style.height=Math.max(44,Math.min(contentHeight,maxHeight))+'px';
+  input.style.overflowY=contentHeight>maxHeight?'auto':'hidden';
+  if (contentHeight>maxHeight) input.scrollTop=input.scrollHeight;
+}
 function mentionMatches() {
   if (!state.server) {els.mentionSuggestions.hidden=true;return;}
   const value=els.messageInput.value;
@@ -2626,7 +2861,26 @@ const stopYoutubeDrag = () => { youtubeDrag = null; youtubePopupCard.classList.r
 youtubePopupCard.addEventListener('pointerup', stopYoutubeDrag);
 youtubePopupCard.addEventListener('pointercancel', stopYoutubeDrag);
 els.signupTab.onclick = () => { signupMode = true; els.signupTab.classList.add('active'); els.loginTab.classList.remove('active'); els.authSubmit.textContent = 'Create account'; };
-els.authSubmit.onclick = auth; els.password.onkeydown = event => { if (event.key === 'Enter') auth(); }; els.newServer.onclick = openCreateServerModal; els.joinServer.onclick = openJoinServerModal; els.messageForm.onsubmit = async event => { event.preventDefault(); const text = els.messageInput.value.trim(); const channel = channels().find(item => item.id === state.channel); if ((!text && !pendingImage) || !state.server || channel.type === 'announcement') return; try { const payload = {id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,image:pendingImage || '',replyTo,ts:firebase.database.ServerValue.TIMESTAMP}; if (state.server.localOnly) { const key = 'vusMessages_' + state.server.code + '_' + safe(state.channel); const messages = JSON.parse(localStorage.getItem(key) || '[]'); payload.ts = Date.now(); messages.push(payload); localStorage.setItem(key, JSON.stringify(messages)); renderMessage(payload); } else { await db.ref('serverMessages/' + state.server.code + '/' + safe(state.channel)).push(payload); } els.messageInput.value = ''; pendingImage = ''; replyTo = null; els.messageInput.placeholder = 'Message #' + (channel.name || 'channel'); els.imageInput.value = ''; els.imageButton.textContent = '＋'; els.mentionSuggestions.hidden = true; } catch (error) { showError('Could not send that message.'); } }; els.messageInput.oninput = mentionMatches; els.imageButton.onclick = () => els.imageInput.click(); els.imageInput.onchange = async event => { const file = event.target.files[0]; if (!file) return; if (!file.type.startsWith('image/')) { showError('Choose an image file.'); return; } try { pendingImage = await resizeImage(file); els.imageButton.textContent = '✓'; } catch (error) { showError('Could not prepare that image.'); } }; els.publish.onclick = publishAnnouncement; els.addChannel.onclick = openAddChannelModal; els.rank.onclick = openRankModal;
+els.authSubmit.onclick = auth; els.password.onkeydown = event => { if (event.key === 'Enter') auth(); }; els.newServer.onclick = openCreateServerModal; els.joinServer.onclick = openJoinServerModal;
+els.messageForm.onsubmit=async event=>{
+  event.preventDefault();
+  const text=els.messageInput.value.trim();
+  const channel=channels().find(item=>item.id===state.channel);
+  if ((!text&&!pendingImage)||!state.server||channel.type==='announcement') return;
+  try {
+    const payload={id:'local-'+Date.now(),name:state.user.username,avatar:state.user.avatar||'',key:state.user.key,text,
+      image:pendingImage||'',replyTo,messageStyle:currentMessageStyle(),ts:firebase.database.ServerValue.TIMESTAMP};
+    if (state.server.localOnly) {
+      const key='vusMessages_'+state.server.code+'_'+safe(state.channel);
+      const messages=JSON.parse(localStorage.getItem(key)||'[]');
+      payload.ts=Date.now();messages.push(payload);localStorage.setItem(key,JSON.stringify(messages));renderMessage(payload);
+    } else await db.ref('serverMessages/'+state.server.code+'/'+safe(state.channel)).push(payload);
+    els.messageInput.value='';autosizeMessageInput();pendingImage='';replyTo=null;
+    els.messageInput.placeholder='Message #'+(channel.name||'channel');
+    els.imageInput.value='';els.imageButton.textContent='＋';els.mentionSuggestions.hidden=true;
+  } catch(error) { showError('Could not send that message.'); }
+};
+els.messageInput.oninput=mentionMatches;els.imageButton.onclick=()=>els.imageInput.click();els.imageInput.onchange=async event=>{const file=event.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showError('Choose an image file.');return;}try{pendingImage=await resizeImage(file);els.imageButton.textContent='✓';}catch(error){showError('Could not prepare that image.');}};els.publish.onclick=publishAnnouncement;els.addChannel.onclick=openAddChannelModal;els.rank.onclick=openRankModal;
 els.muteVoice.onclick = () => { if (!state.localStream) return; const track = state.localStream.getAudioTracks()[0]; if (!track) return; track.enabled = !track.enabled; els.muteVoice.textContent = track.enabled ? 'Mute' : 'Unmute'; els.popupMuteBtn.textContent = track.enabled ? 'Mute' : 'Unmute'; };
 window.addEventListener('pagehide',()=>{
   if (!useLanBackend||!state.server||!state.voiceChannel||!state.voicePeerId) return;
@@ -2641,7 +2895,7 @@ els.popupScreenBtn.onclick = () => switchVideoSource('screen');
 els.popupStopShareBtn.onclick=stopScreenShare;
 els.popupLeaveBtn.onclick = leaveVoice;
 els.serverSettings.onclick = openServerSettings;
-els.modalClose.onclick = () => { els.modal.hidden = true; };
+els.modalClose.onclick = () => { els.modal.hidden = true; applyProfileTheme(); };
 els.addFriend.onclick = openFriendModal;
 new MutationObserver(() => {
   const channelType = document.getElementById('newChannelType');
@@ -2695,6 +2949,20 @@ els.serverList.addEventListener('click', () => {
   els.friendHome.hidden = true;
 });
 els.serverList.addEventListener('click', () => { els.friendRequestsPanel.hidden = true; els.friendsDirectory.hidden = true; els.textChannelsLabel.hidden = false; els.textChannels.hidden = false; els.voiceChannelsLabel.hidden = false; els.voiceChannels.hidden = false; els.voiceMembers.hidden = false; els.voiceControls.hidden = false; els.friendsBtn.classList.remove('active'); });
+const originalMessageSubmit=els.messageForm.onsubmit;
+els.messageForm.onsubmit=async event=>{
+  await originalMessageSubmit.call(els.messageForm,event);
+  autosizeMessageInput();
+};
+els.messageInput.addEventListener('input',autosizeMessageInput);
+els.messageInput.addEventListener('keydown',event=>{
+  if (event.key==='Enter'&&!event.shiftKey&&!event.isComposing) {
+    event.preventDefault();
+    els.messageForm.requestSubmit();
+  }
+});
+window.addEventListener('resize',autosizeMessageInput);
+autosizeMessageInput();
 els.messageForm.addEventListener('submit',event=>{
   if (!state.dmFriend) return;
   event.preventDefault();
@@ -2717,14 +2985,14 @@ els.audioInput.addEventListener('change', () => {
   const file = els.audioInput.files[0];
   if (!file) return;
   if (!/^(audio\/(mpeg|wav|ogg)|audio\/x-wav)$/i.test(file.type) && !/\.(mp3|wav|ogg)$/i.test(file.name)) { showError('Choose an MP3, WAV, or OGG file.'); return; }
-  if (file.size > 8 * 1024 * 1024) { showError('Audio files must be 8 MB or smaller.'); return; }
+  if (file.size > maxMessageAttachmentBytes) { showError('Audio files must be 10 MB or smaller.'); return; }
   const reader = new FileReader(); reader.onload = () => { pendingAudio = reader.result; pendingAudioName = file.name; els.audioButton.textContent = '✓'; }; reader.readAsDataURL(file); els.audioInput.value = '';
 });
 fileButton.onclick = () => fileInput.click();
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
-  if (file.size > 4 * 1024 * 1024) { showError('Files must be 4 MB or smaller.'); fileInput.value = ''; return; }
+  if (file.size > maxMessageAttachmentBytes) { showError('Files must be 10 MB or smaller.'); fileInput.value = ''; return; }
   const reader = new FileReader();
   reader.onload = () => {
     if (typeof reader.result !== 'string') { showError('Could not prepare that file.'); return; }
@@ -2744,6 +3012,7 @@ els.messageForm.addEventListener('submit', async event => {
   const payload = {id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,
     image:pendingImage || '',audioData:pendingAudio || '',audioName:pendingAudioName || '',
     fileData:pendingFile?.data || '',fileName:pendingFile?.name || '',fileType:pendingFile?.type || '',
+    messageStyle:currentMessageStyle(),
     replyTo,ts:firebase.database.ServerValue.TIMESTAMP};
   try {
     if (state.server.localOnly) {
@@ -2757,6 +3026,7 @@ els.messageForm.addEventListener('submit', async event => {
     pendingAudio = ''; pendingAudioName = ''; pendingFile = null; pendingImage = ''; replyTo = null;
     els.audioButton.textContent = '♪'; fileButton.textContent = '▤'; els.imageButton.textContent = '＋';
     els.messageInput.value = ''; fileInput.value = ''; els.audioInput.value = ''; els.imageInput.value = '';
+    autosizeMessageInput();
   } catch (error) { showError('Could not send that attachment.'); }
 }, true);
 new MutationObserver(() => {
