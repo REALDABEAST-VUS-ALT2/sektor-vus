@@ -371,7 +371,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       blocks.slice(0,activeMapId==='floodplain'?4:blocks.length).forEach(([x,y],index)=>urbanBuildings.push({id:'map-'+activeMapId+'-block-'+index,
         x:x*mapScale,y:y*mapScale,w:size*mapScale,h:(activeMapId==='steel-district'?310:380)*mapScale,
         type:'building',label:'MULTI-LEVEL BLOCK',floorCount:4,enterable:true,
-        doorX:(x+size/2)*mapScale,doorY:(y-20)*mapScale,
+        doorX:(x+size/2)*mapScale,doorY:y*mapScale,
         stairs:{x:(x+size/2)*mapScale,y:(y+((activeMapId==='steel-district'?310:380)/2))*mapScale}}));
     }
     if (activeMapId==='red-canyon') {
@@ -5001,6 +5001,15 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     return {atOwnBase,insideBuilding,friendlyRelay};
   }
 
+  function selectShopTab(tab) {
+    const panels=ui?.spawnMenu?.querySelectorAll('[data-shop-panel]')||[];
+    if (![...panels].some(panel=>panel.dataset.shopPanel===tab)) return;
+    ui.spawnMenu.querySelectorAll('[data-shop-tab]').forEach(button=>{
+      button.setAttribute('aria-pressed',String(button.dataset.shopTab===tab));
+    });
+    panels.forEach(panel=>{panel.hidden=panel.dataset.shopPanel!==tab;});
+  }
+
   function openVehicleSpawnMenu() {
     if (!ui?.spawnMenu) return;
     if (!ui.spawnMenu.hidden) { closeVehicleSpawnMenu();return; }
@@ -5770,6 +5779,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       renderMapVotes();
     }
     if (button.dataset.warAction==='pause-game') togglePause(true);
+    if (button.dataset.warAction==='shop-tab') selectShopTab(button.dataset.shopTab);
     if (button.dataset.warAction==='resume-game') togglePause(false);
     if (button.dataset.warAction==='audio-toggle') toggleSound();
     if (button.dataset.warAction==='voice-toggle') toggleVoiceMute();
@@ -6002,7 +6012,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     ui.spawnMenu=document.createElement('div');
     ui.spawnMenu.className='nexus-war-spawn-menu';
     ui.spawnMenu.hidden=true;
-    ui.spawnMenu.innerHTML='<section><header><div><span>FIELD SHOP</span><h3>Base deployment</h3></div><button class="nexus-button secondary" type="button" data-war-action="close-spawn-menu" aria-label="Close field shop">×</button></header><p data-war-spawn-hint></p><nav class="nexus-war-shop-tabs" aria-label="Field shop"><button type="button" data-shop-tab="vehicle" aria-pressed="true">Vehicle</button><button type="button" data-shop-tab="loadout" aria-pressed="false">Loadout</button><button type="button" data-shop-tab="streaks" aria-pressed="false">Scorestreaks</button></nav><div data-shop-panel="vehicle"><label>Vehicle<select data-war-spawn-vehicle><option value="scout_bike">Scout bike</option><option value="assault_rover">Assault rover</option><option value="tank">Battle tank</option><option value="anti_air">Anti-air</option><option value="transport_helicopter">Transport helicopter</option><option value="apache">Apache attack helicopter</option></select></label><p data-war-vehicle-price></p><div class="nexus-war-spawn-actions"><button class="nexus-button" type="button" data-war-action="spawn-selected-vehicle">Deploy selected</button></div></div><div data-shop-panel="loadout" hidden></div><div data-shop-panel="streaks" hidden><p>Purchased scorestreaks are separate from your weapon loadout.</p><div class="nexus-war-streak-shop"><button class="nexus-button secondary" type="button" data-war-action="bunker-buster-buy">Bunker buster · 2,600 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="rc-car-buy">RC kamikaze · 1,200 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="airstrike-buy">Precision airstrike · 1,800 Sektorium</button></div></div></section>';
+    ui.spawnMenu.innerHTML='<section><header><div><span>FIELD SHOP</span><h3>Base deployment</h3></div><button class="nexus-button secondary" type="button" data-war-action="close-spawn-menu" aria-label="Close field shop">×</button></header><p data-war-spawn-hint></p><nav class="nexus-war-shop-tabs" aria-label="Field shop"><button type="button" data-war-action="shop-tab" data-shop-tab="vehicle" aria-pressed="true">Vehicle</button><button type="button" data-war-action="shop-tab" data-shop-tab="loadout" aria-pressed="false">Loadout</button><button type="button" data-war-action="shop-tab" data-shop-tab="streaks" aria-pressed="false">Scorestreaks</button></nav><div data-shop-panel="vehicle"><label>Vehicle<select data-war-spawn-vehicle><option value="scout_bike">Scout bike</option><option value="assault_rover">Assault rover</option><option value="tank">Battle tank</option><option value="anti_air">Anti-air</option><option value="transport_helicopter">Transport helicopter</option><option value="apache">Apache attack helicopter</option></select></label><p data-war-vehicle-price></p><div class="nexus-war-spawn-actions"><button class="nexus-button" type="button" data-war-action="spawn-selected-vehicle">Deploy selected</button></div></div><div data-shop-panel="loadout" hidden></div><div data-shop-panel="streaks" hidden><p>Purchased scorestreaks are separate from your weapon loadout.</p><div class="nexus-war-streak-shop"><button class="nexus-button secondary" type="button" data-war-action="bunker-buster-buy">Bunker buster · 2,600 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="rc-car-buy">RC kamikaze · 1,200 Sektorium</button><button class="nexus-button secondary" type="button" data-war-action="airstrike-buy">Precision airstrike · 1,800 Sektorium</button></div></div></section>';
     ui.spawnVehicle=ui.spawnMenu.querySelector('[data-war-spawn-vehicle]');
     ui.spawnVehicle.add(new Option('Five-seat gun jeep · turret','jeep'));
     ui.spawnHint=ui.spawnMenu.querySelector('[data-war-spawn-hint]');
@@ -6010,7 +6020,6 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     ui.shopVehiclePrice=ui.spawnMenu.querySelector('[data-war-vehicle-price]');
     ui.shopVehiclePanel=ui.spawnMenu.querySelector('[data-shop-panel="vehicle"]');
     ui.shopLoadoutPanel.append(ui.form,ui.attachmentShop);
-    ui.spawnMenu.querySelectorAll('[data-shop-tab]').forEach(button=>button.addEventListener('click',()=>selectShopTab(button.dataset.shopTab)));
     ui.spawnVehicle.value=ui.vehicle.value;
     ui.spawnVehicle.addEventListener('change',()=>{ui.vehicle.value=ui.spawnVehicle.value;updateVehicleShopPrice();});
     updateVehicleShopPrice();

@@ -1256,6 +1256,13 @@
           (ownListing || !user || !canAfford ? 'disabled' : '') + '>' + buttonText + '</button></div>';
       }).join('')
       : '<div class="nexus-empty">No items are listed yet.</div>';
+    const ownedStorefronts=world.mallBusinesses.filter(business=>business.type!=='casino'&&ownsMallBusiness(user,business))
+      .map(business=>{
+        const type=mallBusinessTypes[business.type]||mallBusinessTypes.shop;
+        return '<button class="nexus-button secondary" type="button" data-action="enter-mall-business" data-id="'+escapeHtml(business.id)+'">Open '+escapeHtml(type.label)+': '+escapeHtml(business.name)+'</button>';
+      }).join('');
+    const ownedStorefrontSection=ownedStorefronts
+      ?'<section class="nexus-card"><h2>Your storefronts</h2><div class="nexus-form-actions">'+ownedStorefronts+'</div></section>':'';
     const messages = world.chat.slice(-30).map(renderChatMessage).join('') || '<div class="nexus-empty">No messages yet.</div>';
     const shopTab = activeTab === 'shop';
     const mallTab = activeTab === 'mall';
@@ -1269,7 +1276,7 @@
       '<a class="nexus-tab" href="' + escapeHtml(dropzoneUrl()) + '"><span>⚔</span> Dropzone</a>' +
       '</nav>' + (mallTab ? renderMall(user) : shopTab
           ?
-            '<section class="nexus-card nexus-spectator-panel" data-nexus-war-spectator><details class="nexus-spectator-details" data-war-spectator-details'+(spectatorExpanded?' open':'')+'><summary class="nexus-spectator-summary"><div><span>LIVE FRONTLINE</span><h2>Spectator view</h2></div></summary><div class="nexus-spectator-content"><label>Watch<select data-war-spectator-select aria-label="Choose a live player to watch"><option value="">Loading players…</option></select></label><p class="nexus-spectator-status" data-war-spectator-status role="status" aria-live="polite">Connecting to the frontline…</p><canvas class="nexus-war-canvas nexus-spectator-canvas" width="1200" height="640" aria-label="Read-only live view of the Dropzone battlefield"></canvas></div></details></section>' +
+            ownedStorefrontSection+'<section class="nexus-card nexus-spectator-panel" data-nexus-war-spectator><details class="nexus-spectator-details" data-war-spectator-details'+(spectatorExpanded?' open':'')+'><summary class="nexus-spectator-summary"><div><span>LIVE FRONTLINE</span><h2>Spectator view</h2></div></summary><div class="nexus-spectator-content"><label>Watch<select data-war-spectator-select aria-label="Choose a live player to watch"><option value="">Loading players…</option></select></label><p class="nexus-spectator-status" data-war-spectator-status role="status" aria-live="polite">Connecting to the frontline…</p><canvas class="nexus-war-canvas nexus-spectator-canvas" width="1200" height="640" aria-label="Read-only live view of the Dropzone battlefield"></canvas></div></details></section>' +
             '<section class="nexus-card"><h2>Marketplace</h2><div class="nexus-list">' + marketplaceListings + '</div></section>' +
             '<section class="nexus-card"><h2>Auction room</h2><div class="nexus-list">' + auctions + '</div></section>' +
             (user ? walletListing : '<section class="nexus-card nexus-shop-signin"><h2>Join the marketplace</h2><p class="nexus-wheel-help">Create an account or log in from Home to buy, bid, and list your items.</p><button class="nexus-button" type="button" data-nexus-tab="home">Go to account</button></section>')
@@ -1697,6 +1704,7 @@
       if (action==='enter-mall-business') {
         const business=world.mallBusinesses.find(entry=>String(entry.id)===String(button.dataset.id));
         if (!business) throw new Error('That Mall business is no longer available.');
+        activeTab='mall';
         activeMallBusinessId=business.id;
         selectedMallProductId=world.mallProducts.find(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0)?.id||'';
         render();
