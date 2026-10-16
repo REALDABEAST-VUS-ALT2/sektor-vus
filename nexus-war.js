@@ -448,6 +448,9 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
   let grapplePull=null;
   let supportTargeting='';
   let movementVelocity={x:0,y:0};
+  function resetMovementMomentum() {
+    movementVelocity={x:0,y:0};
+  }
   const renderPositions=new Map();
   let stockTimer = 0;
   let marketHistory = [];
@@ -1814,9 +1817,23 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         moveY=Math.sin(angle)*forward+Math.cos(angle)*strafe;
       }
       const length=Math.hypot(moveX,moveY)||1;
-      const ease=1-Math.exp(-12*elapsed);
-      movementVelocity.x+=(moveX/length*topSpeed-movementVelocity.x)*ease;
-      movementVelocity.y+=(moveY/length*topSpeed-movementVelocity.y)*ease;
+      const ease=1-Math.exp(-10*elapsed);
+      const inputActive = Math.abs(moveX) > 0 || Math.abs(moveY) > 0 || grapplePull;
+      if (!inputActive) {
+        movementVelocity.x *= Math.max(0, 1 - 18 * elapsed);
+        movementVelocity.y *= Math.max(0, 1 - 18 * elapsed);
+        if (Math.hypot(movementVelocity.x, movementVelocity.y) < 10) resetMovementMomentum();
+      } else {
+        movementVelocity.x += (moveX/length*topSpeed - movementVelocity.x) * ease;
+        movementVelocity.y += (moveY/length*topSpeed - movementVelocity.y) * ease;
+      }
+      const maxSpeed = Math.max(80, topSpeed * 1.1);
+      const speed = Math.hypot(movementVelocity.x, movementVelocity.y);
+      if (speed > maxSpeed) {
+        const scale = maxSpeed / speed;
+        movementVelocity.x *= scale;
+        movementVelocity.y *= scale;
+      }
       let next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
         y:Math.max(110,Math.min(worldHeight-110,localPosition.y+movementVelocity.y*elapsed))};
       const grappling=!!grapplePull;
@@ -5054,7 +5071,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       throw error;
     }
     localPosition={x:Number(position.x),y:Number(position.y)};
-    movementVelocity={x:0,y:0};
+    resetMovementMomentum();
     setStatus('Dismounted. This vehicle will remain for 3 minutes, then explode.');
   }
 
@@ -5078,7 +5095,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       x:Number(updated.x),y:Number(updated.y),lastSeen:Date.now()}:current);
     localTransportId=crewVehicle?nearest.id:'';
     localPosition={x:Number(updated.x),y:Number(updated.y)};
-    movementVelocity={x:0,y:0};
+    resetMovementMomentum();
     showGameNotice('Re-entered '+(vehicles[updated.type]?.name||'vehicle')+'.','info');
     return true;
   }
@@ -5149,7 +5166,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
             vehiclePad:nearby[1].padId||'',x:nearby[1].x,y:nearby[1].y,lastSeen:Date.now()}));
           localPosition={x:nearby[1].x,y:nearby[1].y};
           localTransportId=id;
-          movementVelocity={x:0,y:0};
+          resetMovementMomentum();
           closeVehicleSpawnMenu();
           setStatus('Boarded '+vehicles[crewType].name+' as '+boardedRole+' ('+(nearby[1].passengers.length+1)+'/'+
             (crewType==='jeep'?5:10)+'). '+(boardedRole==='pilot'||boardedRole==='driver'
@@ -5177,7 +5194,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
           vehicleAmmo:vehicleWeapons[type]?.mag||0,transportId:id,vehiclePad:padId,lastSeen:Date.now()}));
         localPosition={x:pad.x,y:pad.y};
         localTransportId=id;
-        movementVelocity={x:0,y:0};
+        resetMovementMomentum();
         paidCost=0;
         closeVehicleSpawnMenu();
         setStatus(type==='jeep'?'Gun jeep deployed. Five seats: driver, three passengers, and a cursor-aimed turret gunner. Hold V to change seats.':
@@ -5199,7 +5216,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       paidCost=0;
       closeVehicleSpawnMenu();
       localPosition={x:spawnPosition.x,y:spawnPosition.y};
-      movementVelocity={x:0,y:0};
+      resetMovementMomentum();
       closeVehicleSpawnMenu();
       setStatus('Spawned '+vehicles[type].name+' '+(atOwnBase?'at its base pad. ':'at the friendly relay. ')+'Press V to dismount.');
     } catch(error) {
@@ -5246,7 +5263,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     await mutatePlayer(current=>current?{...current,vehicle:'',vehiclePad:'',transportId:'',
       x:position.x,y:position.y,lastSeen:Date.now()}:current);
     localPosition=position;
-    movementVelocity={x:0,y:0};
+    resetMovementMomentum();
     localTransportId='';
     setStatus(remaining&&remaining.parked
       ?(vehicles[remaining.type]?.name||'Vehicle')+' parked. Re-enter it within 3 minutes to continue driving.'

@@ -104,6 +104,7 @@ async function openFriendsArea() {
   state.server=null;state.channel='';state.editMode=false;
   els.appView.classList.add('friends-view','friends-home-view');els.appView.classList.remove('private-dm-view');
   els.friendsBtn.classList.add('active');els.friendsList.hidden=false;
+  els.friendsBackBtn.hidden=true;
   els.friendRequestsPanel.hidden=false;els.friendsDirectory.hidden=false;
   els.textChannelsLabel.hidden=true;els.textChannels.hidden=true;
   els.voiceChannelsLabel.hidden=true;els.voiceChannels.hidden=true;
@@ -131,6 +132,7 @@ async function openPrivateDm(friend) {
   state.server=null;state.channel='';state.editMode=false;
   els.appView.classList.add('friends-view','private-dm-view'); els.appView.classList.remove('friends-home-view');
   els.friendsBtn.classList.add('active'); els.friendsList.hidden = false;
+  els.friendsBackBtn.hidden=false;
   els.friendRequestsPanel.hidden = false; els.friendsDirectory.hidden = false;
   els.textChannelsLabel.hidden = true; els.textChannels.hidden = true;
   els.voiceChannelsLabel.hidden = true; els.voiceChannels.hidden = true;
@@ -437,6 +439,8 @@ const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUU
 const $ = id => document.getElementById(id);
 const els = { authView:$('authView'), appView:$('appView'), loginTab:$('loginTab'), signupTab:$('signupTab'), username:$('usernameInput'), password:$('passwordInput'), authError:$('authError'), authStatus:$('authStatus'), authSubmit:$('authSubmit'), serverList:$('serverList'), serverName:$('serverName'), serverCode:$('serverCode'), friendsBtn:$('friendsBtn'), friendsList:$('friendsList'), friendRequestsPanel:$('friendRequestsPanel'), friendRequestsList:$('friendRequestsList'), friendsDirectory:$('friendsDirectory'), textChannelsLabel:$('textChannelsLabel'), textChannels:$('textChannels'), voiceChannelsLabel:$('voiceChannelsLabel'), voiceChannels:$('voiceChannels'), voiceMembers:$('voiceMembers'), voiceControls:$('voiceControls'), muteVoice:$('muteVoiceBtn'), leaveVoice:$('leaveVoiceBtn'), videoStage:$('videoStage'), gamesPanel:$('gamesPanel'), mediaControlPopup:$('mediaControlPopup'), popupMuteBtn:$('popupMuteBtn'), popupCameraBtn:$('popupCameraBtn'), popupScreenBtn:$('popupScreenBtn'), popupLeaveBtn:$('popupLeaveBtn'), remoteAudio:$('remoteAudio'), ownerTools:$('ownerTools'), editModeBtn:$('editModeBtn'), channelName:$('channelName'), channelTopic:$('channelTopic'), channelPermission:$('channelPermission'), announcement:$('announcement'), announcementText:$('announcementText'), ownerComposer:$('ownerComposer'), announcementInput:$('announcementInput'), messages:$('messages'), messageForm:$('messageForm'), messageInput:$('messageInput'), mentionSuggestions:$('mentionSuggestions'), imageInput:$('imageInput'), imageButton:$('imageButton'), memberCount:$('memberCount'), membersList:$('membersList'), addFriend:$('addFriendBtn'), logout:$('logoutBtn'), newServer:$('newServerBtn'), joinServer:$('joinServerBtn'), serverSettings:$('serverSettingsBtn'), addChannel:$('addChannelBtn'), rank:$('rankBtn'), publish:$('publishAnnouncement'), modal:$('modal'), modalTitle:$('modalTitle'), modalBody:$('modalBody'), modalClose:$('modalClose'), youtubeOpenBtn:$('youtubeOpenBtn'), youtubePopup:$('youtubePopup'), youtubePopupClose:$('youtubePopupClose') };
 els.audioInput = $('audioInput');
+els.channelHash = $('channelHash');
+els.friendsBackBtn = $('friendsBackBtn');
 els.popupStopShareBtn=$('popupStopShareBtn');
 const fileInput = document.createElement('input');
 const maxMessageAttachmentBytes = 10 * 1024 * 1024;
@@ -740,6 +744,11 @@ async function auth() {
       state.user = { key, username:user.username, id:user.id, avatar:user.avatar || '' };
     }
     localStorage.setItem('vusServersSession', JSON.stringify(state.user));
+    const returnTo = new URLSearchParams(location.search).get('returnTo');
+    if (returnTo === 'rally' || returnTo === 'drift-sim') {
+      location.replace(returnTo === 'drift-sim' ? './drifting-sim-multiplayer.html' : './rally.html');
+      return;
+    }
     showApp();
   } catch (error) { els.authError.textContent = error.message || 'Could not sign in.'; } finally { els.authStatus.textContent = ''; }
 }
@@ -854,6 +863,7 @@ async function selectServer(code) {
   const navigationVersion = state.navigationVersion = (state.navigationVersion || 0) + 1;
   state.activeView = 'server';
   els.appView.classList.remove('friends-view','friends-home-view','private-dm-view');
+  els.friendsBackBtn.hidden=true;
   try {
     await clearSubscriptions();
     closePrivateDm();
@@ -1410,6 +1420,7 @@ function selectChannel(id) {
   els.voiceMembers.hidden = false;
   els.voiceControls.hidden = false;
   els.friendsBtn.classList.remove('active');
+  els.friendsBackBtn.hidden=true;
   els.friendHome.hidden = true;
   state.channel = id;
   markChannelRead(id);
@@ -2938,6 +2949,7 @@ new MutationObserver(() => {
   }
 }).observe(els.modalBody, {childList:true});
 els.friendsBtn.onclick = openFriendsArea;
+els.friendsBackBtn.onclick = openFriendsArea;
 els.editModeBtn.onclick = () => {
   if (!hasServerPermission('manageChannels')) return;
   state.editMode = !state.editMode;

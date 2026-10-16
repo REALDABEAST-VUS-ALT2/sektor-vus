@@ -1132,6 +1132,7 @@
     const owned=ownsMallBusiness(user,business);
     const accent=/^#[0-9a-f]{6}$/i.test(business.accent||'')?business.accent:'#65e6ad';
     const theme=['forest','midnight','neon','royal'].includes(business.theme)?business.theme:'forest';
+    const shelfCount=Math.max(1,Math.min(6,Math.floor(Number(business.shelfCount)||3)));
     const products=world.mallProducts.filter(product=>String(product.businessId)===String(business.id)&&Number(product.stock)>0);
     const selected=products.find(product=>String(product.id)===String(selectedMallProductId))||products[0]||null;
     const checkout=selected&&user
@@ -1159,7 +1160,6 @@
       const withdrawal=owned?'<form class="nexus-casino-withdraw" data-form="casino-withdraw" data-business-id="'+escapeHtml(business.id)+'"><label>Withdraw reserve <span>'+currency(business.bankroll||0)+'</span><input name="amount" type="number" min="1" max="'+Math.floor(Number(business.bankroll||0))+'" step="1" placeholder="Amount"></label><button class="nexus-button secondary" '+(Number(business.bankroll||0)<1?'disabled':'')+'>Withdraw to wallet</button></form>':'';
       roomContent='<section class="nexus-casino-floor"><div class="nexus-casino-marquee"><span>CASINO</span><strong>'+escapeHtml(business.name||'LUCKY NEXUS')+'</strong><small>'+(business.description?escapeHtml(business.description)+' · ':'')+'House reserve '+currency(business.bankroll||0)+'</small></div>'+(user?'<label class="nexus-casino-bet">Wager <input type="number" min="10" max="5000" step="10" value="50" data-mall-bet></label>':'<p class="nexus-wheel-help">Sign in to play.</p>')+'<div class="nexus-casino-machine-grid">'+machineMarkup+'</div>'+upgrades+deposit+withdrawal+'</section>';
     } else {
-      const shelfCount=Math.max(1,Math.min(6,Math.floor(Number(business.shelfCount)||3)));
       const shelves=Array.from({length:shelfCount},(_,shelfIndex)=>{
         const shelfProducts=products.filter((product,index)=>index%shelfCount===shelfIndex);
         const items=shelfProducts.map(product=>'<article class="nexus-shop-item"><div class="nexus-shop-item-media">'+mediaPreview(product.itemData?.media,product.name)+'</div><strong>'+escapeHtml(product.name)+'</strong><small>'+currency(product.price)+' · '+Number(product.stock)+' available</small><button class="nexus-button secondary" type="button" data-action="select-mall-product" data-id="'+escapeHtml(product.id)+'">Add to checkout</button></article>').join('')||'<span class="nexus-shop-shelf-empty">Shelf space available</span>';

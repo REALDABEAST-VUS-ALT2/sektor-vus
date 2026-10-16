@@ -1,0 +1,170 @@
+:root {
+  --bg: #07130f;
+  --panel: rgba(10, 18, 16, 0.82);
+  --panel-border: rgba(120, 173, 155, 0.28);
+  --accent: #8ff0c7;
+  --accent-2: #6fc8ff;
+  --danger: #ff7e7e;
+  --warning: #ffd166;
+  --text: #edf7f4;
+  --muted: #a8c5bc;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Inter, "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top, rgba(68, 129, 107, 0.28), transparent 42%), #050d0a;
+  color: var(--text);
+}
+
+body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.rally-shell {
+  width: min(1280px, 100%);
+  padding: 18px 18px 24px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: rgba(7, 18, 15, 0.84);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+}
+
+.rally-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 18px;
+}
+
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.brand-kicker {
+  letter-spacing: 0.24em;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  font-weight: 800;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.ghost-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(143, 240, 199, 0.45);
+}
+
+.rally-stage-wrap {
+  position: relative;
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #253d35, #101d1b 68%);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.rally-hud {
+  position: absolute;
+  inset: 12px 12px auto 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.player-panel {
+  min-width: 190px;
+  padding: 12px 14px 10px;
+  border-radius: 14px;
+  background: rgba(7, 12, 10, 0.44);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(4px);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.red { background: #ff7d7d; }
+.dot.blue { background: #7db8ff; }
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.stat-row strong {
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .rally-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .rally-hud {
+    flex-direction: column;
+    width: calc(100% - 24px);
+  }
+
+  .player-panel {
+    min-width: 0;
+    width: 100%;
+  }
+}
