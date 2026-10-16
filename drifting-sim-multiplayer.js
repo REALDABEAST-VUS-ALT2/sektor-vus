@@ -43,6 +43,10 @@ const trackVariants = {
 };
 
 let socket = null;
+let firebaseTransport = false;
+let firebasePlayerRef = null;
+let firebasePlayersRef = null;
+let firebasePlayersHandler = null;
 let signedInUser = readSession();
 let localSlot = 0;
 let activeRoom = 'drift-sim-6';
@@ -53,6 +57,7 @@ let gameMode = 'race';
 let modeRunId = '';
 let observedModeRunId = '';
 let modeStartPending = false;
+let modeStartSent = false;
 let chaseHoldStartedAt = 0;
 let stageTarget = null;
 let colliderTarget = null;
@@ -88,29 +93,34 @@ function startNativeGame() {
 }
 
 function startMode(mode, broadcast = true) {
-  if (socket?.readyState === WebSocket.OPEN && roomHostId && roomHostId !== signedInUser?.key) {
+  if (isMultiplayerConnected() && roomHostId && roomHostId !== signedInUser?.key) {
     modeHint.textContent = 'The room host chooses the game mode.';
     return;
   }
   gameMode = mode === 'chase' ? 'chase' : 'race';
   modeRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   chaseHoldStartedAt = 0;
-  if (!startNativeGame()) {
-    modeHint.textContent = 'Loading the game…';
-    return;
-  }
   observedModeRunId = modeRunId;
   modeStartPending = true;
+  modeStartSent = startNativeGame();
   modeScreen.hidden = true;
-  modeHint.textContent = gameMode === 'race' ? 'Race started' : 'Chase started';
+  modeHint.textContent = modeStartSent
+    ? (gameMode === 'race' ? 'Race started' : 'Chase started')
+    : 'Loading the game…';
   modeStatus.textContent = gameMode === 'race' ? 'RACE · 2 LAPS' : 'CHASE · TAG THE RUNNER';
-  if (broadcast && socket?.readyState === WebSocket.OPEN) sendState(performance.now(), true);
+  if (broadcast && isMultiplayerConnected()) sendState(performance.now(), true);
 }
 
 function updateModeScreen() {
-  const inMenu = variable(stageTarget, 'IN MENU');
-  if (modeStartPending && inMenu === false) modeStartPending = false;
-  if (!modeStartPending && typeof inMenu === 'boolean') modeScreen.hidden = !inMenu;
+  const menuValue = variable(stageTarget, 'IN MENU');
+  if (menuValue === null) return;
+  const inMenu = menuValue === true || String(menuValue).toLowerCase() === 'true';
+  if (modeStartPending && !inMenu) {
+    modeStartPending = false;
+    modeStartSent = false;
+  }
+  if (modeStartPending && inMenu && !modeStartSent) modeStartSent = startNativeGame();
+  if (!modeStartPending) modeScreen.hidden = !inMenu;
 }
 
 function formatRaceTime(seconds) {
@@ -169,16 +179,6 @@ function applyTrack(trackId, switchNativeMap = false) {
   const selectedTheme = track.theme;
   document.documentElement.dataset.worldTheme = selectedTheme;
   document.documentElement.dataset.trackVariant = activeTrackId;
-  try {
-    const canvases = frame.contentDocument.querySelectorAll('#app canvas');
-    canvases.forEach((canvas) => {
-      canvas.style.filter = selectedTheme === 'nexus'
-        ? 'hue-rotate(138deg) saturate(1.65) brightness(.82) contrast(1.15)'
-        : 'saturate(1.15) brightness(.86) contrast(1.18)';
-    });
-  } catch (error) {
-    // The wrapper theme still updates if the packaged runtime does not expose a master gain.
-  }
   if (switchNativeMap && setStageVariable('MAP', track.map)) {
     vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'map select' });
   }
@@ -199,8 +199,19 @@ function syncTrackFromNativeGame() {
 }
 
 function updateWorldThemeAccess() {
-  const connected = socket && socket.readyState === WebSocket.OPEN;
+  const connected = isMultiplayerConnected();
   trackSelect.disabled = !!(connected && roomHostId !== signedInUser?.key);
+}
+
+function isMultiplayerConnected() {
+  return (socket && socket.readyState === WebSocket.OPEN) ||
+    (firebaseTransport && !!firebasePlayerRef);
+}
+
+function shouldUseFirebaseTransport() {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.app.github.dev')) return false;
+  return window.location.protocol === 'https:';
 }
 
 function getMultiplayerUrl() {
@@ -340,10 +351,18 @@ function connect() {
     return;
   }
   activeRoom = room;
-  if (socket) socket.close();
+  if (socket || firebaseTransport) disconnect();
   removeAllRemoteCarClones();
   remotePlayers.clear();
   renderPlayers();
+
+  if (shouldUseFirebaseTransport()) {
+    connectFirebase(room).catch((error) => {
+      setStatus(`Firebase multiplayer failed: ${error.message || 'check Firebase setup'}`);
+      connectButton.textContent = 'Connect';
+    });
+    return;
+  }
 
   socket = new WebSocket(getMultiplayerUrl());
   setStatus('Connecting to multiplayer…');
@@ -376,7 +395,7 @@ function connect() {
       roomHostId = roomOrder[0] || signedInUser.key;
       updateWorldThemeAccess();
       const host = players.find((player) => player.id === roomHostId);
-      if (host?.trackId in trackVariants) applyTrack(host.trackId, true);
+      if (host && trackVariants[host.trackId] && host.trackId !== activeTrackId) applyTrack(host.trackId, true);
       removeAllRemoteCarClones();
       remotePlayers.clear();
       players.forEach((player, index) => {
@@ -403,12 +422,14 @@ function connect() {
       remote.state = message.state;
       if (message.id === roomHostId && message.state?.modeRunId && message.state.modeRunId !== observedModeRunId) {
         observedModeRunId = message.state.modeRunId;
+        modeRunId = message.state.modeRunId;
         gameMode = message.state.gameMode === 'chase' ? 'chase' : 'race';
         modeStartPending = true;
+        modeStartSent = false;
         modeScreen.hidden = true;
-        startNativeGame();
+        modeStartSent = startNativeGame();
       }
-      if (message.id === roomHostId && trackVariants[message.state?.trackId]) {
+      if (message.id === roomHostId && trackVariants[message.state?.trackId] && message.state.trackId !== activeTrackId) {
         applyTrack(message.state.trackId, true);
       }
       renderPlayers();
@@ -439,9 +460,97 @@ function connect() {
   socket.addEventListener('error', () => setStatus('Could not connect. Check that the multiplayer server is running.'));
 }
 
+async function connectFirebase(room) {
+  const api = globalThis.firebase;
+  if (!api?.apps?.length || typeof api.database !== 'function') {
+    throw new Error('Firebase SDK or database config is missing.');
+  }
+  if (api.auth && !api.auth().currentUser) await api.auth().signInAnonymously();
+
+  const safeRoom = room.replace(/[.#$\[\]/]/g, '_');
+  const safePlayerId = signedInUser.key.replace(/[.#$\[\]/]/g, '_');
+  firebasePlayersRef = api.database().ref(`driftRooms/${safeRoom}/players`);
+  firebasePlayerRef = firebasePlayersRef.child(safePlayerId);
+  firebaseTransport = true;
+  await firebasePlayerRef.onDisconnect().remove();
+
+  firebasePlayersHandler = (snapshot) => syncFirebaseRoom(snapshot.val() || {});
+  firebasePlayersRef.on('value', firebasePlayersHandler, (error) => {
+    setStatus(`Firebase room disconnected: ${error.message}`, false);
+  });
+
+  const state = localState();
+  await firebasePlayerRef.set({
+    id: signedInUser.key,
+    name: signedInUser.username,
+    color: colorForPlayer(signedInUser.key),
+    carName: getSelectedCarName(),
+    trackId: activeTrackId,
+    joinedAt: Date.now(),
+    state: state ? { ...state, name: signedInUser.username, trackId: activeTrackId } : null,
+  });
+  setStatus(`Joining Firebase room ${room}…`);
+  connectButton.textContent = 'Disconnect';
+}
+
+function syncFirebaseRoom(values) {
+  const players = Object.entries(values)
+    .map(([id, player]) => ({ ...player, id: player.id || id }))
+    .sort((a, b) => Number(a.joinedAt || 0) - Number(b.joinedAt || 0));
+  roomOrder = players.map((player) => player.id);
+  roomHostId = roomOrder[0] || signedInUser.key;
+  localSlot = Math.max(0, roomOrder.indexOf(signedInUser.key));
+  updateWorldThemeAccess();
+
+  const host = players.find((player) => player.id === roomHostId);
+  if (host?.trackId && trackVariants[host.trackId] && host.trackId !== activeTrackId) applyTrack(host.trackId, true);
+
+  const activeIds = new Set();
+  for (const player of players) {
+    if (player.id === signedInUser.key) continue;
+    activeIds.add(player.id);
+    let remote = remotePlayers.get(player.id);
+    if (!remote) {
+      remote = { id: player.id, name: player.name, color: player.color || colorForPlayer(player.id), carName: player.carName || 'Selecting car', state: null };
+      remotePlayers.set(player.id, remote);
+    }
+    remote.name = player.name || remote.name;
+    remote.color = player.color || remote.color;
+    remote.carName = player.carName || remote.carName;
+    remote.state = player.state || remote.state;
+    if (player.id === roomHostId && remote.state?.modeRunId && remote.state.modeRunId !== observedModeRunId) {
+      observedModeRunId = remote.state.modeRunId;
+      modeRunId = remote.state.modeRunId;
+      gameMode = remote.state.gameMode === 'chase' ? 'chase' : 'race';
+      modeStartPending = true;
+      modeStartSent = false;
+      modeScreen.hidden = true;
+      modeStartSent = startNativeGame();
+    }
+  }
+  for (const [id, player] of remotePlayers) {
+    if (activeIds.has(id)) continue;
+    removeRemoteCarClones(player);
+    remotePlayers.delete(id);
+  }
+  setStatus(`Firebase · @${signedInUser.username} · ${players.length} driver${players.length === 1 ? '' : 's'}`, true);
+  renderPlayers();
+}
+
 function disconnect() {
   if (socket) socket.close();
   socket = null;
+  if (firebasePlayersRef && firebasePlayersHandler) firebasePlayersRef.off('value', firebasePlayersHandler);
+  if (firebasePlayerRef) {
+    firebasePlayerRef.onDisconnect().cancel();
+    firebasePlayerRef.remove();
+  }
+  firebasePlayerRef = null;
+  firebasePlayersRef = null;
+  firebasePlayersHandler = null;
+  firebaseTransport = false;
+  removeAllRemoteCarClones();
+  remotePlayers.clear();
   connectButton.textContent = 'Connect';
 }
 
@@ -465,24 +574,25 @@ function escapeHtml(value) {
 }
 
 function sendState(timestamp, force = false) {
-  if (!socket || socket.readyState !== WebSocket.OPEN || (!force && timestamp < nextRoomSync)) return;
+  if (!isMultiplayerConnected() || (!force && timestamp < nextRoomSync)) return;
   const state = localState();
   if (!state) return;
   nextRoomSync = timestamp + 70;
-  socket.send(JSON.stringify({
-    type: 'state',
-    room: activeRoom,
-    state: {
-      ...state,
-      name: signedInUser.username,
-      slot: localSlot,
-      carColor: colorForPlayer(signedInUser.key),
-      carName: state.carName,
-      trackId: activeTrackId,
-      gameMode,
-      modeRunId,
-    },
-  }));
+  const payload = {
+    ...state,
+    name: signedInUser.username,
+    slot: localSlot,
+    carColor: colorForPlayer(signedInUser.key),
+    carName: state.carName,
+    trackId: activeTrackId,
+    gameMode,
+    modeRunId,
+  };
+  if (firebaseTransport && firebasePlayerRef) {
+    firebasePlayerRef.update({ state: payload, carName: state.carName, trackId: activeTrackId });
+  } else if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'state', room: activeRoom, state: payload }));
+  }
 }
 
 function syncMultiplayer(timestamp) {
@@ -537,7 +647,12 @@ function playSong(index) {
   if (!songs.length) return;
   currentSongIndex = (index + songs.length) % songs.length;
   audio.src = songs[currentSongIndex].url;
-  audio.play().then(() => setScratchAudioMuted(true)).catch(() => {
+  audio.muted = true;
+  audio.play().then(() => {
+    audio.muted = false;
+    setScratchAudioMuted(true);
+  }).catch(() => {
+    audio.muted = false;
     currentSong.textContent = `${songs[currentSongIndex].name} · press play if autoplay is blocked`;
   });
   currentSong.textContent = songs[currentSongIndex].name;
@@ -572,11 +687,11 @@ modeScreen.querySelectorAll('[data-mode]').forEach((button) => {
   button.addEventListener('click', () => startMode(button.dataset.mode));
 });
 connectButton.addEventListener('click', () => {
-  if (socket && socket.readyState < WebSocket.CLOSING) disconnect();
+  if (isMultiplayerConnected() || (socket && socket.readyState < WebSocket.CLOSING)) disconnect();
   else connect();
 });
 trackSelect.addEventListener('change', () => {
-  if (socket?.readyState === WebSocket.OPEN && roomHostId !== signedInUser?.key) return;
+  if (isMultiplayerConnected() && roomHostId !== signedInUser?.key) return;
   applyTrack(trackSelect.value, true);
 });
 songFilesInput.addEventListener('change', (event) => addSongs(Array.from(event.target.files || [])));
