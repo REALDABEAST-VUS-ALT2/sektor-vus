@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sektor Rally Drift</title>
+    <link rel="stylesheet" href="./rally.css" />
+  </head>
+  <body>
+    <main class="rally-shell">
+      <header class="rally-topbar">
+        <div class="brand-block">
+          <span class="brand-kicker">SEKTOR</span>
+          <h1>Rally Drift</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="map-picker">
+            <span>Map</span>
+            <select id="mapSelect">
+              <option value="0">Canyon Run</option>
+              <option value="1">Neon Circuit</option>
+              <option value="2">Mountain Pass</option>
+            </select>
+          </label>
+          <button id="resetRaceBtn" class="ghost-btn" type="button">Reset race</button>
+          <button id="connectBtn" class="ghost-btn" type="button">Connect cross-PC</button>
+          <a class="ghost-btn" href="./VUS-Servers.html">Back to Sektor</a>
+        </div>
+      </header>
+
+      <div id="statusBar" class="status-bar">Offline mode</div>
+
+      <section class="rally-stage-wrap">
+        <canvas id="gameCanvas" width="1280" height="720" aria-label="Rally drift game"></canvas>
+
+        <div class="rally-hud">
+          <div class="player-panel player-one">
+            <div class="panel-header">
+              <span class="dot red"></span>
+              <strong id="p1Name">Player 1</strong>
+            </div>
+            <div class="stat-row"><span>Lap</span><strong id="p1Lap">1</strong></div>
+            <div class="stat-row"><span>Speed</span><strong id="p1Speed">0</strong></div>
+            <div class="stat-row"><span>Drift</span><strong id="p1Drift">0</strong></div>
+          </div>
+
+          <div class="player-panel player-two">
+            <div class="panel-header">
+              <span class="dot blue"></span>
+              <strong id="p2Name">Player 2</strong>
+            </div>
+            <div class="stat-row"><span>Lap</span><strong id="p2Lap">1</strong></div>
+            <div class="stat-row"><span>Speed</span><strong id="p2Speed">0</strong></div>
+            <div class="stat-row"><span>Drift</span><strong id="p2Drift">0</strong></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./rally.js"></script>
+  </body>
+</html>

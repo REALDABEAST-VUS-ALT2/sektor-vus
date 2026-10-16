@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drifting Sim 6 · Multiplayer</title>
+  <link rel="stylesheet" href="./drifting-sim-multiplayer.css?v=20261016-1">
+</head>
+<body>
+  <main class="sim-shell">
+    <iframe id="gameFrame" title="Drifting Sim 6" src="./Drifting Sim 6 - surlo.html"></iframe>
+    <div id="worldSkin" aria-hidden="true"></div>
+    <div id="worldLabel" class="world-label" aria-hidden="true">SEKTOR / FOREST STAGE</div>
+
+    <section id="modeScreen" class="mode-screen" aria-label="Choose a game mode" hidden>
+      <div class="mode-brand"><span class="mode-mark">S</span><div><small>SEKTOR MOTORSPORTS</small><h1>DRIFT / RUN</h1></div></div>
+      <p class="mode-prompt">Choose your run</p>
+      <div class="mode-options">
+        <button class="mode-option race-option" type="button" data-mode="race"><strong>RACE</strong><span>Beat the clock. Complete two laps.</span></button>
+        <button class="mode-option chase-option" type="button" data-mode="chase"><strong>CHASE</strong><span>One driver runs. The room hunts.</span></button>
+      </div>
+      <div id="modeHint" class="mode-hint">Game loaded · choose Race or Chase to start</div>
+    </section>
+
+    <nav class="panel-toggles" aria-label="Game panels">
+      <button id="togglePlayers" class="panel-toggle" type="button" aria-controls="onlinePanel" aria-expanded="false" title="Show multiplayer panel">♟<span>Players</span></button>
+      <button id="toggleMusic" class="panel-toggle" type="button" aria-controls="musicPanel" aria-expanded="false" title="Show music player">♪<span>Music</span></button>
+    </nav>
+
+    <header id="onlinePanel" class="online-panel" hidden>
+      <a class="brand" href="./VUS-Servers.html" aria-label="Back to Sektor">S</a>
+      <div class="panel-content">
+        <div class="panel-title">
+          <div><strong>DRIFT SIM 6</strong><span id="accountName">Offline practice</span></div>
+          <span id="connectionDot" class="connection-dot"></span>
+        </div>
+        <div class="room-row">
+          <label for="roomCode">Room</label>
+          <input id="roomCode" value="drift-sim-6" maxlength="24" autocomplete="off">
+          <button id="connectButton" type="button">Connect</button>
+        </div>
+        <div class="customize-row"><label>Track<select id="trackSelect"><option value="forest">Forest Run</option><option value="desert">Desert Drift</option><option value="tokyo">Tokyo Circuit</option><option value="nexus-afterdark">Nexus Afterdark</option><option value="nexus-greenline">Nexus Greenline</option><option value="sektor-foundry">Sektor Foundry</option></select></label></div>
+        <p id="connectionStatus" role="status">Sign in to Sektor, then connect to race online.</p>
+        <p id="modeStatus" class="mode-status" aria-live="polite">Practice</p>
+        <div id="playerList" class="player-list"></div>
+      </div>
+    </header>
+
+    <section id="musicPanel" class="music-panel" aria-label="Music player" hidden>
+      <div class="music-heading"><strong>YOUR MUSIC</strong><span id="songCount">No added tracks</span></div>
+      <div class="music-actions">
+        <label class="add-songs" for="songFiles">Add songs</label>
+        <input id="songFiles" type="file" accept="audio/*" multiple>
+        <button id="previousSong" type="button" aria-label="Previous song" title="Previous song">|◀</button>
+        <button id="playSong" type="button" aria-label="Play or pause" title="Play or pause">▶</button>
+        <button id="nextSong" type="button" aria-label="Next song" title="Next song">▶|</button>
+      </div>
+      <div id="currentSong" class="current-song">Loading rally songs…</div>
+      <audio id="musicPlayer" preload="metadata"></audio>
+      <div id="playlist" class="playlist"></div>
+    </section>
+  </main>
+  <script src="./drifting-sim-multiplayer.js?v=20261016-1"></script>
+</body>
+</html>

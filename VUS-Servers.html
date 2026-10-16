@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sektor · Nexus</title>
-  <link rel="stylesheet" href="./style.css?v=20261014-14">
+  <link rel="stylesheet" href="./style.css?v=20261015-2">
 </head>
 <body>
       <div class="phen228-screen-static" aria-hidden="true"></div>
@@ -32,6 +32,7 @@
       <div id="friendsList" class="friends-list"></div>
       <a id="nexusPageLink" class="server-button blobtown-server-btn" href="./nexus.html" title="Open Nexus" aria-label="Open Nexus">🌐</a>
       <a id="dropzonePageLink" class="server-button dropzone-server-btn" href="./dropzone.html" title="Open nexus:dropzone" aria-label="Open nexus:dropzone">⬇</a>
+      <a id="rallyPageLink" class="server-button rally-server-btn" href="./drifting-sim-multiplayer.html" title="Open Drifting Sim 6 Multiplayer" aria-label="Open Drifting Sim 6 Multiplayer">🏁</a>
       <button id="newServerBtn" class="rail-add" title="Create server">+</button>
       <button id="joinServerBtn" class="rail-join" title="Join server">↗</button>
       <button id="logoutBtn" class="rail-user" type="button" title="Open profile" aria-label="Open profile"></button>
@@ -50,7 +51,7 @@
     </aside>
     <section class="chat-column">
       <section class="youtube-player" aria-label="YouTube audio player"><button id="youtubeOpenBtn" class="youtube-open-btn" type="button"><span class="youtube-player-icon">♪</span><span><strong>Sektor audio</strong><small id="youtubeTopStatus">Open player</small></span></button></section>
-      <header class="chat-header"><div><span id="channelHash">#</span><strong id="channelName">general</strong><span id="channelTopic"></span></div><span id="channelPermission"></span></header>
+      <header class="chat-header"><button id="friendsBackBtn" class="friends-back-btn" type="button" aria-label="Back to Friends and DMs" title="Back to Friends and DMs" hidden>←</button><div><span id="channelHash">#</span><strong id="channelName">general</strong><span id="channelTopic"></span></div><span id="channelPermission"></span></header>
       <section id="friendHome" class="friend-home" hidden></section>
       <div id="announcement" class="announcement" hidden><small>OWNER ANNOUNCEMENT</small><div id="announcementText"></div></div>
       <div id="ownerComposer" class="owner-composer" hidden><input id="announcementInput" maxlength="240" placeholder="Write an announcement"><button id="publishAnnouncement">Publish</button></div>
@@ -80,6 +81,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="./lan-adapter.js?v=20261008-10"></script>
-  <script src="./app.js?v=20261014-6"></script>
+  <script src="./app.js?v=20261015-2"></script>
 </body>
 </html>
