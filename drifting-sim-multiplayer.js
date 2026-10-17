@@ -1,9 +1,22 @@
 const frame = document.getElementById('gameFrame');
+const playerTwoFrame = document.getElementById('playerTwoFrame');
+const simShell = document.querySelector('.sim-shell');
 const worldLabel = document.getElementById('worldLabel');
 const roomInput = document.getElementById('roomCode');
 const connectButton = document.getElementById('connectButton');
 const trackSelect = document.getElementById('trackSelect');
+const modeTrackSelect = document.getElementById('modeTrackSelect');
+const carSelect = document.getElementById('carSelect');
+const modeCarSelect = document.getElementById('modeCarSelect');
 const modeScreen = document.getElementById('modeScreen');
+const menuBackdrop = document.getElementById('menuBackdrop');
+const playTypeStep = document.getElementById('playTypeStep');
+const multiplayerStep = document.getElementById('multiplayerStep');
+const setupStep = document.getElementById('setupStep');
+const returnToMainMenuButton = document.getElementById('returnToMainMenu');
+const offlineChaseHud = document.getElementById('offlineChaseHud');
+const offlineChaseStatus = document.getElementById('offlineChaseStatus');
+const disconnectRoomButton = document.getElementById('disconnectRoomButton');
 const modeHint = document.getElementById('modeHint');
 const modeStatus = document.getElementById('modeStatus');
 const playersPanel = document.getElementById('onlinePanel');
@@ -11,6 +24,7 @@ const musicPanel = document.getElementById('musicPanel');
 const togglePlayersButton = document.getElementById('togglePlayers');
 const toggleMusicButton = document.getElementById('toggleMusic');
 const connectionStatus = document.getElementById('connectionStatus');
+const onlineStatus = document.getElementById('onlineStatus');
 const connectionDot = document.getElementById('connectionDot');
 const accountName = document.getElementById('accountName');
 const playerList = document.getElementById('playerList');
@@ -23,23 +37,21 @@ const songs = [];
 const remotePlayers = new Map();
 const playerColors = ['#cdf36a', '#73d5d0', '#ff8d70', '#b19cff', '#ffca70', '#f478ad'];
 const carNamesByLetter = {
-  a: 'Sektor Viper',
-  b: 'Nexus Phantom',
-  c: 'Tokyo Comet',
-  d: 'Sektor Spectre',
-  e: 'Nexus Apex',
-  f: 'Tokyo Tempest',
-  g: 'Sektor Nova',
-  h: 'Nexus Rift',
-  i: 'Tokyo Mistral',
+  a: 'Cobra',
+  b: 'Tofu',
+  c: 'Mustang',
+  d: 'Hornet',
+  e: 'Lynx',
+  f: 'Rocket',
+  g: 'Buster',
+  h: 'Hot Rod',
+  i: 'Max',
 };
 const trackVariants = {
   forest: { label: 'Forest Run', map: 'forest', theme: 'sektor' },
   desert: { label: 'Desert Drift', map: 'desert', theme: 'sektor' },
   tokyo: { label: 'Tokyo Circuit', map: 'tokyo', theme: 'sektor' },
-  'nexus-afterdark': { label: 'Nexus Afterdark', map: 'tokyo', theme: 'nexus' },
-  'nexus-greenline': { label: 'Nexus Greenline', map: 'forest', theme: 'nexus' },
-  'sektor-foundry': { label: 'Sektor Foundry', map: 'desert', theme: 'sektor' },
+  'cobra-circuit': { label: 'Cobra Circuit', map: 'cobra-circuit', theme: 'sektor' },
 };
 
 let socket = null;
@@ -53,6 +65,8 @@ let activeRoom = 'drift-sim-6';
 let roomHostId = null;
 let roomOrder = [];
 let activeTrackId = 'forest';
+let activeCarLetter = 'a';
+let selectedPlayType = null;
 let gameMode = 'race';
 let modeRunId = '';
 let observedModeRunId = '';
@@ -62,6 +76,18 @@ let chaseHoldStartedAt = 0;
 let stageTarget = null;
 let colliderTarget = null;
 let vm = null;
+let playerTwoVm = null;
+let playerTwoStage = null;
+let playerTwoCollider = null;
+let playerTwoLoading = false;
+let playerTwoReady = false;
+let originalKeyboardGetKeyIsDown = null;
+let playerTwoVm = null;
+let playerTwoStage = null;
+let playerTwoCollider = null;
+let playerTwoLoading = false;
+let playerTwoReady = false;
+let cobraTrackRegistered = false;
 let currentSongIndex = -1;
 let nextRoomSync = 0;
 
@@ -74,8 +100,23 @@ function readSession() {
   }
 }
 
+function guestSession() {
+  let id = '';
+  try {
+    id = sessionStorage.getItem('driftSimGuestId') || '';
+    if (!id) {
+      id = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2, 14);
+      sessionStorage.setItem('driftSimGuestId', id);
+    }
+  } catch (error) {
+    id = Math.random().toString(36).slice(2, 14);
+  }
+  return { key: `guest-${id}`, username: `Guest ${id.slice(0, 5)}` };
+}
+
 function setStatus(message, online = false) {
   connectionStatus.textContent = message;
+  onlineStatus.textContent = message;
   connectionDot.classList.toggle('online', online);
 }
 
@@ -86,10 +127,70 @@ function togglePanel(panel, button) {
   button.title = `${open ? 'Hide' : 'Show'} ${button.id === 'togglePlayers' ? 'multiplayer panel' : 'music player'}`;
 }
 
+function showPlayTypeStep() {
+  playTypeStep.hidden = false;
+  multiplayerStep.hidden = true;
+  setupStep.hidden = true;
+}
+
+function showMultiplayerStep() {
+  playTypeStep.hidden = true;
+  multiplayerStep.hidden = false;
+  setupStep.hidden = true;
+  connectButton.textContent = isMultiplayerConnected() ? 'Disconnect' : 'Connect';
+}
+
+function showSetupStep() {
+  playTypeStep.hidden = true;
+  multiplayerStep.hidden = true;
+  setupStep.hidden = false;
+  disconnectRoomButton.hidden = !isMultiplayerConnected();
+}
+
+function chooseOffline() {
+  selectedPlayType = 'offline';
+  if (isMultiplayerConnected()) disconnect();
+  setStatus('Offline practice · no room connected.');
+  showSetupStep();
+}
+
+function chooseMultiplayer() {
+  selectedPlayType = 'multiplayer';
+  if (isMultiplayerConnected()) showSetupStep();
+  else showMultiplayerStep();
+}
+
+function returnToNativeMenu() {
+  if (!waitForGameRuntime()) return;
+  selectedPlayType = null;
+  modeStartPending = false;
+  modeStartSent = false;
+  clearOfflineChasePlayer2();
+  vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'menu' });
+}
+
 function startNativeGame() {
   if (!waitForGameRuntime()) return false;
+  prepareSelectedCar();
   vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'enter game' });
   return true;
+}
+
+function prepareSelectedCar() {
+  const selectedLetter = String(modeCarSelect.value || activeCarLetter || 'a').toLowerCase();
+  activeCarLetter = carNamesByLetter[selectedLetter] ? selectedLetter : 'a';
+  const carNumber = 'abcdefghi'.indexOf(activeCarLetter) + 1;
+  carSelect.value = activeCarLetter;
+  modeCarSelect.value = activeCarLetter;
+  setStageVariable('car number', carNumber);
+  setStageVariable('CAR LETTER', activeCarLetter);
+}
+
+function resumeScratchAudio() {
+  try {
+    const context = frame.contentWindow.vm?.runtime?.audioEngine?.audioContext;
+    if (context?.state === 'suspended') context.resume().catch(() => {});
+  } catch {}
 }
 
 function startMode(mode, broadcast = true) {
@@ -98,15 +199,15 @@ function startMode(mode, broadcast = true) {
     return;
   }
   gameMode = mode === 'chase' ? 'chase' : 'race';
+  clearOfflineChasePlayer2();
+  const splitScreen = selectedPlayType === 'offline' && gameMode === 'chase';
+  simShell.classList.toggle('offline-split', splitScreen);
   modeRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   chaseHoldStartedAt = 0;
   observedModeRunId = modeRunId;
   modeStartPending = true;
   modeStartSent = startNativeGame();
-  modeScreen.hidden = true;
-  modeHint.textContent = modeStartSent
-    ? (gameMode === 'race' ? 'Race started' : 'Chase started')
-    : 'Loading the game…';
+  modeHint.textContent = modeStartSent ? 'Starting race…' : 'Loading the game…';
   modeStatus.textContent = gameMode === 'race' ? 'RACE · 2 LAPS' : 'CHASE · TAG THE RUNNER';
   if (broadcast && isMultiplayerConnected()) sendState(performance.now(), true);
 }
@@ -116,11 +217,24 @@ function updateModeScreen() {
   if (menuValue === null) return;
   const inMenu = menuValue === true || String(menuValue).toLowerCase() === 'true';
   if (modeStartPending && !inMenu) {
+    if (modeStartSent) modeHint.textContent = gameMode === 'race' ? 'Race started' : 'Chase started';
     modeStartPending = false;
     modeStartSent = false;
   }
   if (modeStartPending && inMenu && !modeStartSent) modeStartSent = startNativeGame();
-  if (!modeStartPending) modeScreen.hidden = !inMenu;
+  if (!modeStartPending) {
+    modeScreen.hidden = !inMenu;
+    menuBackdrop.hidden = !inMenu;
+    returnToMainMenuButton.hidden = inMenu;
+    offlineChaseHud.hidden = inMenu || selectedPlayType !== 'offline' || gameMode !== 'chase';
+    if (inMenu) clearOfflineChasePlayer2();
+    if (inMenu) {
+      if (!selectedPlayType) showPlayTypeStep();
+      else if (selectedPlayType === 'multiplayer' && !isMultiplayerConnected()) showMultiplayerStep();
+      else showSetupStep();
+    }
+  }
+  updateWorldThemeAccess();
 }
 
 function formatRaceTime(seconds) {
@@ -134,6 +248,28 @@ function updateModeStatus(timestamp) {
   if (gameMode === 'race') {
     const lap = Math.min(Math.max(1, Number(local.lap) || 1), 2);
     modeStatus.textContent = `RACE · LAP ${lap}/2 · ${formatRaceTime(local.timer)}`;
+    return;
+  }
+
+  if (selectedPlayType === 'offline') {
+    const secondX = Number(variable(playerTwoCollider, 'x'));
+    const secondY = Number(variable(playerTwoCollider, 'y'));
+    if (!playerTwoReady || !Number.isFinite(secondX) || !Number.isFinite(secondY)) {
+      modeStatus.textContent = 'CHASE · Player 2 is joining';
+      offlineChaseStatus.textContent = 'Joining the chase…';
+      return;
+    }
+    const gap = Math.hypot(local.x - secondX, local.y - secondY);
+    offlineChaseStatus.textContent = `P2 · WASD · ${Math.round(gap)}m`;
+    if (gap < 64) {
+      if (!chaseHoldStartedAt) chaseHoldStartedAt = timestamp;
+      modeStatus.textContent = timestamp - chaseHoldStartedAt >= 1500
+        ? `CHASE · TAG COMPLETE · ${Math.round(gap)}m`
+        : `CHASE · P2 CLOSING · ${Math.round(gap)}m`;
+    } else {
+      chaseHoldStartedAt = 0;
+      modeStatus.textContent = `CHASE · P1 RUNNER · P2 WASD · GAP ${Math.round(gap)}m`;
+    }
     return;
   }
 
@@ -164,25 +300,213 @@ function updateModeStatus(timestamp) {
   }
 }
 
+function startOfflineChasePlayer2() {
+  if (playerTwoLoading || playerTwoReady) return true;
+  playerTwoLoading = true;
+  playerTwoFrame.hidden = true;
+  const source = new URL('./Drifting Sim 6 - surlo.html?monitors=clean-1&splitPlayer=2', window.location.href);
+  playerTwoFrame.addEventListener('load', initializePlayerTwoGame, { once: true });
+  playerTwoFrame.src = source.href;
+  return true;
+}
+
+function initializePlayerTwoGame() {
+  try {
+    playerTwoVm = playerTwoFrame.contentWindow.vm;
+    playerTwoStage = playerTwoVm?.runtime?.getTargetForStage?.() || playerTwoVm?.runtime?.targets?.find((target) => target.isStage) || null;
+    playerTwoCollider = playerTwoVm?.runtime?.targets?.find((target) => target.sprite?.name === 'player collider' && target.isOriginal) || null;
+    if (!playerTwoVm || !playerTwoStage || !playerTwoCollider) throw new Error('Player 2 game did not finish loading.');
+    registerCobraTrackFor(playerTwoVm, playerTwoStage, playerTwoCollider);
+    syncPlayerTwoSelection();
+    playerTwoVm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'enter game' });
+    waitForPlayerTwoGame(0);
+  } catch (error) {
+    playerTwoLoading = false;
+    modeHint.textContent = `Could not start Player 2: ${error.message}`;
+  }
+}
+
+function syncPlayerTwoSelection() {
+  if (!playerTwoVm || !playerTwoStage) return;
+  setTargetVariable(playerTwoStage, 'MAP', trackVariants[activeTrackId].map);
+  setTargetVariable(playerTwoStage, 'CAR LETTER', activeCarLetter);
+  setTargetVariable(playerTwoStage, 'car number', 'abcdefghi'.indexOf(activeCarLetter) + 1);
+  playerTwoVm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'map select' });
+  playerTwoVm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'car select' });
+}
+
+function waitForPlayerTwoGame(attempt) {
+  const inGame = variable(playerTwoStage, 'IN GAME');
+  const inMenu = variable(playerTwoStage, 'IN MENU');
+  if (inGame === true && inMenu === false) {
+    playerTwoReady = true;
+    playerTwoLoading = false;
+    playerTwoFrame.hidden = false;
+    offlineChaseStatus.textContent = 'P2 WASD · second view ready';
+    return;
+  }
+  if (attempt >= 180) {
+    playerTwoLoading = false;
+    modeHint.textContent = 'Player 2 did not enter the track.';
+    return;
+  }
+  requestAnimationFrame(() => waitForPlayerTwoGame(attempt + 1));
+}
+
+function clearOfflineChasePlayer2() {
+  if (!playerTwoLoading && !playerTwoReady) return;
+  playerTwoFrame.hidden = true;
+  playerTwoFrame.src = 'about:blank';
+  playerTwoVm = null;
+  playerTwoStage = null;
+  playerTwoCollider = null;
+  playerTwoLoading = false;
+  playerTwoReady = false;
+  simShell.classList.remove('offline-split');
+  setPrimaryKeyboardWASD(true);
+}
+
+function setPrimaryKeyboardWASD(enabled) {
+  const keyboard = vm?.runtime?.ioDevices?.keyboard;
+  if (!keyboard) return;
+  if (enabled) {
+    if (originalKeyboardGetKeyIsDown) keyboard.getKeyIsDown = originalKeyboardGetKeyIsDown;
+    originalKeyboardGetKeyIsDown = null;
+    return;
+  }
+  if (!originalKeyboardGetKeyIsDown) originalKeyboardGetKeyIsDown = keyboard.getKeyIsDown;
+  keyboard.getKeyIsDown = function (key) {
+    if (['w', 'a', 's', 'd'].includes(String(key).toLowerCase())) return false;
+    return originalKeyboardGetKeyIsDown.call(this, key);
+  };
+}
+
 function setStageVariable(name, value) {
-  if (!stageTarget) return false;
-  const entry = Object.values(stageTarget.variables || {}).find((item) => item.name === name);
+  return setTargetVariable(stageTarget, name, value);
+}
+
+function setTargetVariable(target, name, value) {
+  if (!target) return false;
+  const entry = Object.values(target.variables || {}).find((item) => item.name === name);
   if (!entry) return false;
   entry.value = value;
   return true;
 }
 
 function applyTrack(trackId, switchNativeMap = false) {
+  if (trackId === 'cobra-circuit' && !cobraTrackRegistered) {
+    modeHint.textContent = 'Cobra Circuit is still loading.';
+    return;
+  }
   const track = trackVariants[trackId] || trackVariants.forest;
   activeTrackId = trackId in trackVariants ? trackId : 'forest';
   trackSelect.value = activeTrackId;
+  modeTrackSelect.value = activeTrackId;
   const selectedTheme = track.theme;
   document.documentElement.dataset.worldTheme = selectedTheme;
   document.documentElement.dataset.trackVariant = activeTrackId;
   if (switchNativeMap && setStageVariable('MAP', track.map)) {
     vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'map select' });
   }
+  if (playerTwoReady) syncPlayerTwoSelection();
   updateWorldLabel();
+}
+
+function applyCar(letter, switchNativeCar = false) {
+  const carLetter = String(letter || 'a').toLowerCase();
+  activeCarLetter = carNamesByLetter[carLetter] ? carLetter : 'a';
+  carSelect.value = activeCarLetter;
+  modeCarSelect.value = activeCarLetter;
+  if (switchNativeCar) {
+    const carNumber = 'abcdefghi'.indexOf(activeCarLetter) + 1;
+    setStageVariable('car number', carNumber);
+    if (setStageVariable('CAR LETTER', activeCarLetter)) {
+      vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'car select' });
+    }
+  }
+  if (playerTwoReady) syncPlayerTwoSelection();
+  renderPlayers();
+}
+
+function registerCobraTrack() {
+  if (cobraTrackRegistered || !window.driftingTrackCobra || !waitForGameRuntime()) return cobraTrackRegistered;
+
+  registerCobraTrackFor(vm, stageTarget, colliderTarget);
+  for (const select of [trackSelect, modeTrackSelect]) {
+    const option = select.querySelector('option[value="cobra-circuit"]');
+    if (option) {
+      option.disabled = false;
+      option.textContent = 'Cobra Circuit';
+    }
+  }
+  cobraTrackRegistered = true;
+  return true;
+}
+
+function registerCobraTrackFor(gameVm, gameStage, gameCollider) {
+  if (!window.driftingTrackCobra) throw new Error('Cobra Circuit data is missing.');
+  const track = window.driftingTrackCobra;
+  const renderer = gameVm.renderer || gameVm.runtime.renderer;
+  const storage = gameVm.runtime.storage;
+  const findInGame = (name) => gameVm.runtime.targets.find((target) => target.sprite?.name === name && target.isOriginal) || null;
+  const targets = [
+    [gameStage, track.stage, 480, 360],
+    [findInGame('map bottom'), track.road, 480, 360],
+    [findInGame('map top'), track.scenery, 480, 360],
+    [findInGame('map collider'), track.collision, 480, 360],
+    [findInGame('mini map'), track.minimap, 391, 270],
+  ];
+
+  for (const [target, svg, rotationCenterX, rotationCenterY] of targets) {
+    if (!target) throw new Error('A required original map sprite is missing.');
+    if (target.getCostumes().some((costume) => costume.name === track.id)) continue;
+    const asset = storage.createAsset(
+      storage.AssetType.ImageVector,
+      storage.DataFormat.SVG,
+      new TextEncoder().encode(svg),
+      null,
+      true,
+    );
+    const costume = {
+      ...target.getCostumes()[0],
+      name: track.id,
+      asset,
+      assetId: asset.assetId,
+      md5: `${asset.assetId}.svg`,
+      dataFormat: storage.DataFormat.SVG,
+      bitmapResolution: 2,
+      rotationCenterX,
+      rotationCenterY,
+      skinId: renderer.createSVGSkin(svg, [rotationCenterX, rotationCenterY]),
+    };
+    target.addCostume(costume);
+  }
+
+  const mapNames = gameStage.lookupVariableByNameAndType('MAP NAMES', 'list')?.value;
+  const mapStarts = gameStage.lookupVariableByNameAndType('MAP CHECKPOINT START VALUE', 'list')?.value;
+  const highScores = gameStage.lookupVariableByNameAndType('MAP HIGH SCORES', 'list')?.value;
+  const recordCars = gameStage.lookupVariableByNameAndType('RECORD HOLDER CARS', 'list')?.value;
+  const checkpointsX = gameCollider.lookupVariableByNameAndType('Checkpoints x', 'list')?.value;
+  const checkpointsY = gameCollider.lookupVariableByNameAndType('Checkpoints y', 'list')?.value;
+  if (![mapNames, mapStarts, highScores, recordCars, checkpointsX, checkpointsY].every(Array.isArray)) {
+    throw new Error('The original map/checkpoint tables could not be found.');
+  }
+
+  if (!mapNames.includes(track.id)) {
+    mapNames.push(track.id);
+    mapStarts.push(String(checkpointsX.length + 1));
+    highScores.push('00.00');
+    recordCars.push('0');
+    track.checkpoints.forEach(({ x, y }) => {
+      checkpointsX.push(x);
+      checkpointsY.push(y);
+    });
+  }
+
+}
+
+function syncCarFromNativeGame() {
+  applyCar(String(variable(stageTarget, 'CAR LETTER') || 'a').toLowerCase());
 }
 
 function updateWorldLabel() {
@@ -200,7 +524,13 @@ function syncTrackFromNativeGame() {
 
 function updateWorldThemeAccess() {
   const connected = isMultiplayerConnected();
-  trackSelect.disabled = !!(connected && roomHostId !== signedInUser?.key);
+  const hostRestricted = !!(connected && roomHostId !== signedInUser?.key);
+  const menuValue = variable(stageTarget, 'IN MENU');
+  const inMenu = menuValue === null || menuValue === true || String(menuValue).toLowerCase() === 'true';
+  trackSelect.disabled = hostRestricted || !inMenu;
+  modeTrackSelect.disabled = hostRestricted || !inMenu;
+  carSelect.disabled = !inMenu;
+  modeCarSelect.disabled = !inMenu;
 }
 
 function isMultiplayerConnected() {
@@ -337,13 +667,10 @@ function localState() {
 }
 
 function connect() {
-  signedInUser = readSession();
-  if (!signedInUser) {
-    const returnUrl = new URL('./VUS-Servers.html', window.location.href);
-    returnUrl.searchParams.set('returnTo', 'drift-sim');
-    window.location.href = returnUrl.href;
-    return;
-  }
+  signedInUser = readSession() || guestSession();
+  accountName.textContent = signedInUser.key.startsWith('guest-')
+    ? `Online as @${signedInUser.username}`
+    : `Signed in as @${signedInUser.username}`;
 
   const room = roomInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 24);
   if (!room) {
@@ -360,14 +687,23 @@ function connect() {
     connectFirebase(room).catch((error) => {
       setStatus(`Firebase multiplayer failed: ${error.message || 'check Firebase setup'}`);
       connectButton.textContent = 'Connect';
+      if (selectedPlayType === 'multiplayer') showMultiplayerStep();
     });
     return;
   }
 
-  socket = new WebSocket(getMultiplayerUrl());
+  let currentSocket;
+  try {
+    currentSocket = new WebSocket(getMultiplayerUrl());
+  } catch (error) {
+    setStatus(`Could not open multiplayer connection: ${error.message}`);
+    return;
+  }
+  socket = currentSocket;
   setStatus('Connecting to multiplayer…');
-  socket.addEventListener('open', () => {
-    socket.send(JSON.stringify({
+  currentSocket.addEventListener('open', () => {
+    if (socket !== currentSocket) return;
+    currentSocket.send(JSON.stringify({
       type: 'join',
       room,
       id: signedInUser.key,
@@ -380,7 +716,8 @@ function connect() {
     connectButton.textContent = 'Disconnect';
   });
 
-  socket.addEventListener('message', (event) => {
+  currentSocket.addEventListener('message', (event) => {
+    if (socket !== currentSocket) return;
     let message;
     try {
       message = JSON.parse(event.data);
@@ -409,6 +746,7 @@ function connect() {
       });
       setStatus(`Online as @${signedInUser.username} · ${players.length} driver${players.length === 1 ? '' : 's'}`, true);
       renderPlayers();
+      if (selectedPlayType === 'multiplayer') showSetupStep();
     }
 
     if (message.type === 'player-update' && message.id !== signedInUser.key) {
@@ -446,7 +784,9 @@ function connect() {
     }
   });
 
-  socket.addEventListener('close', () => {
+  currentSocket.addEventListener('close', () => {
+    if (socket !== currentSocket) return;
+    socket = null;
     removeAllRemoteCarClones();
     remotePlayers.clear();
     roomOrder = [];
@@ -455,9 +795,15 @@ function connect() {
     renderPlayers();
     setStatus('Disconnected · offline practice remains available.');
     connectButton.textContent = 'Connect';
+    if (selectedPlayType === 'multiplayer') showMultiplayerStep();
   });
 
-  socket.addEventListener('error', () => setStatus('Could not connect. Check that the multiplayer server is running.'));
+  currentSocket.addEventListener('error', () => {
+    if (socket === currentSocket) {
+      setStatus('Could not connect. Check the multiplayer server or hosting configuration.');
+      if (selectedPlayType === 'multiplayer') showMultiplayerStep();
+    }
+  });
 }
 
 async function connectFirebase(room) {
@@ -465,32 +811,38 @@ async function connectFirebase(room) {
   if (!api?.apps?.length || typeof api.database !== 'function') {
     throw new Error('Firebase SDK or database config is missing.');
   }
-  if (api.auth && !api.auth().currentUser) await api.auth().signInAnonymously();
-
   const safeRoom = room.replace(/[.#$\[\]/]/g, '_');
   const safePlayerId = signedInUser.key.replace(/[.#$\[\]/]/g, '_');
-  firebasePlayersRef = api.database().ref(`driftRooms/${safeRoom}/players`);
-  firebasePlayerRef = firebasePlayersRef.child(safePlayerId);
-  firebaseTransport = true;
-  await firebasePlayerRef.onDisconnect().remove();
-
-  firebasePlayersHandler = (snapshot) => syncFirebaseRoom(snapshot.val() || {});
-  firebasePlayersRef.on('value', firebasePlayersHandler, (error) => {
-    setStatus(`Firebase room disconnected: ${error.message}`, false);
-  });
-
+  const playersRef = api.database().ref(`driftRooms/${safeRoom}/players`);
+  const playerRef = playersRef.child(safePlayerId);
   const state = localState();
-  await firebasePlayerRef.set({
-    id: signedInUser.key,
-    name: signedInUser.username,
-    color: colorForPlayer(signedInUser.key),
-    carName: getSelectedCarName(),
-    trackId: activeTrackId,
-    joinedAt: Date.now(),
-    state: state ? { ...state, name: signedInUser.username, trackId: activeTrackId } : null,
-  });
-  setStatus(`Joining Firebase room ${room}…`);
-  connectButton.textContent = 'Disconnect';
+  try {
+    await playerRef.onDisconnect().remove();
+    await playerRef.set({
+      id: signedInUser.key,
+      name: signedInUser.username,
+      color: colorForPlayer(signedInUser.key),
+      carName: getSelectedCarName(),
+      trackId: activeTrackId,
+      joinedAt: Date.now(),
+      state: state ? { ...state, name: signedInUser.username, trackId: activeTrackId } : null,
+    });
+
+    firebasePlayersRef = playersRef;
+    firebasePlayerRef = playerRef;
+    firebasePlayersHandler = (snapshot) => syncFirebaseRoom(snapshot.val() || {});
+    firebaseTransport = true;
+    playersRef.on('value', firebasePlayersHandler, (error) => {
+      disconnect();
+      setStatus(`Firebase room disconnected: ${error.message}`, false);
+    });
+    setStatus(`Joining Firebase room ${room}…`);
+    connectButton.textContent = 'Disconnect';
+  } catch (error) {
+    await playerRef.onDisconnect().cancel().catch(() => {});
+    await playerRef.remove().catch(() => {});
+    throw error;
+  }
 }
 
 function syncFirebaseRoom(values) {
@@ -535,11 +887,13 @@ function syncFirebaseRoom(values) {
   }
   setStatus(`Firebase · @${signedInUser.username} · ${players.length} driver${players.length === 1 ? '' : 's'}`, true);
   renderPlayers();
+  if (selectedPlayType === 'multiplayer') showSetupStep();
 }
 
 function disconnect() {
-  if (socket) socket.close();
+  const oldSocket = socket;
   socket = null;
+  if (oldSocket && oldSocket.readyState < WebSocket.CLOSING) oldSocket.close();
   if (firebasePlayersRef && firebasePlayersHandler) firebasePlayersRef.off('value', firebasePlayersHandler);
   if (firebasePlayerRef) {
     firebasePlayerRef.onDisconnect().cancel();
@@ -551,7 +905,15 @@ function disconnect() {
   firebaseTransport = false;
   removeAllRemoteCarClones();
   remotePlayers.clear();
+  roomOrder = [];
+  roomHostId = null;
+  localSlot = 0;
+  updateWorldThemeAccess();
+  renderPlayers();
+  setStatus('Disconnected · offline practice remains available.');
   connectButton.textContent = 'Connect';
+  disconnectRoomButton.hidden = true;
+  if (selectedPlayType === 'multiplayer') showMultiplayerStep();
 }
 
 function renderPlayers() {
@@ -598,6 +960,7 @@ function sendState(timestamp, force = false) {
 function syncMultiplayer(timestamp) {
   updateWorldLabel();
   updateModeScreen();
+  updateOfflineChasePlayer2(timestamp);
   updateModeStatus(timestamp);
   const selectedCarName = getSelectedCarName();
   if (playerList.querySelector('.player-car-name')?.textContent !== selectedCarName) renderPlayers();
@@ -683,8 +1046,23 @@ function toggleSong() {
 
 togglePlayersButton.addEventListener('click', () => togglePanel(playersPanel, togglePlayersButton));
 toggleMusicButton.addEventListener('click', () => togglePanel(musicPanel, toggleMusicButton));
+document.getElementById('playOffline').addEventListener('click', chooseOffline);
+document.getElementById('playMultiplayer').addEventListener('click', chooseMultiplayer);
+document.getElementById('backToPlayType').addEventListener('click', () => {
+  selectedPlayType = null;
+  showPlayTypeStep();
+});
+document.getElementById('backToPlayTypeFromSetup').addEventListener('click', () => {
+  selectedPlayType = null;
+  showPlayTypeStep();
+});
+disconnectRoomButton.addEventListener('click', disconnect);
+returnToMainMenuButton.addEventListener('click', returnToNativeMenu);
 modeScreen.querySelectorAll('[data-mode]').forEach((button) => {
-  button.addEventListener('click', () => startMode(button.dataset.mode));
+  button.addEventListener('click', () => {
+    resumeScratchAudio();
+    startMode(button.dataset.mode);
+  });
 });
 connectButton.addEventListener('click', () => {
   if (isMultiplayerConnected() || (socket && socket.readyState < WebSocket.CLOSING)) disconnect();
@@ -694,22 +1072,51 @@ trackSelect.addEventListener('change', () => {
   if (isMultiplayerConnected() && roomHostId !== signedInUser?.key) return;
   applyTrack(trackSelect.value, true);
 });
+modeTrackSelect.addEventListener('change', () => {
+  if (isMultiplayerConnected() && roomHostId !== signedInUser?.key) return;
+  applyTrack(modeTrackSelect.value, true);
+});
+carSelect.addEventListener('change', () => {
+  resumeScratchAudio();
+  applyCar(carSelect.value, true);
+});
+modeCarSelect.addEventListener('change', () => {
+  resumeScratchAudio();
+  applyCar(modeCarSelect.value, true);
+});
 songFilesInput.addEventListener('change', (event) => addSongs(Array.from(event.target.files || [])));
 document.getElementById('previousSong').addEventListener('click', () => playSong(currentSongIndex - 1));
 document.getElementById('nextSong').addEventListener('click', () => playSong(currentSongIndex + 1));
 document.getElementById('playSong').addEventListener('click', toggleSong);
 audio.addEventListener('ended', () => playSong(currentSongIndex + 1));
 frame.addEventListener('load', () => {
-  accountName.textContent = signedInUser ? `Signed in as @${signedInUser.username}` : 'Sign in for online play';
+  frame.contentWindow.document.addEventListener('pointerdown', resumeScratchAudio, { once: true });
+  frame.contentWindow.document.addEventListener('keydown', resumeScratchAudio, { once: true });
+  frame.contentWindow.addEventListener('keydown', handleOfflineChaseKeyDown, true);
+  frame.contentWindow.addEventListener('keyup', handleOfflineChaseKeyUp, true);
+  accountName.textContent = signedInUser
+    ? `Signed in as @${signedInUser.username}`
+    : 'Offline practice · online as guest';
   setScratchAudioMuted(true);
   syncTrackFromNativeGame();
+  syncCarFromNativeGame();
   setTimeout(() => {
     setScratchAudioMuted(true);
+    try {
+      registerCobraTrack();
+    } catch (error) {
+      modeHint.textContent = `Could not load Cobra Circuit: ${error.message}`;
+    }
     syncTrackFromNativeGame();
+    syncCarFromNativeGame();
   }, 600);
 });
+window.addEventListener('keydown', handleOfflineChaseKeyDown, true);
+window.addEventListener('keyup', handleOfflineChaseKeyUp, true);
 window.addEventListener('beforeunload', () => songs.forEach((song) => URL.revokeObjectURL(song.url)));
-accountName.textContent = signedInUser ? `Signed in as @${signedInUser.username}` : 'Sign in for online play';
+accountName.textContent = signedInUser
+  ? `Signed in as @${signedInUser.username}`
+  : 'Offline practice · online as guest';
 loadBuiltInSongs();
 setScratchAudioMuted(true);
 syncTrackFromNativeGame();
