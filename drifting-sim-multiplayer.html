@@ -4,23 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Drifting Sim 6 · Multiplayer</title>
-  <link rel="stylesheet" href="./drifting-sim-multiplayer.css?v=20261016-2">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./drifting-sim-multiplayer.css?v=20261017-1">
 </head>
 <body>
   <main class="sim-shell">
-    <iframe id="gameFrame" title="Drifting Sim 6" src="./Drifting Sim 6 - surlo.html"></iframe>
-    <div id="worldSkin" aria-hidden="true"></div>
+    <iframe id="gameFrame" title="Player 1 game view" src="./Drifting Sim 6 - surlo.html?monitors=clean-1"></iframe>
+    <iframe id="playerTwoFrame" title="Player 2 game view" hidden></iframe>
     <div id="worldLabel" class="world-label" aria-hidden="true">SEKTOR / FOREST STAGE</div>
+    <div id="menuBackdrop" class="menu-backdrop" aria-hidden="true" hidden></div>
 
     <section id="modeScreen" class="mode-screen" aria-label="Choose a game mode" hidden>
       <div class="mode-brand"><span class="mode-mark">S</span><div><small>SEKTOR MOTORSPORTS</small><h1>DRIFT / RUN</h1></div></div>
-      <p class="mode-prompt">Choose your run</p>
-      <div class="mode-options">
-        <button class="mode-option race-option" type="button" data-mode="race"><strong>RACE</strong><span>Beat the clock. Complete two laps.</span></button>
-        <button class="mode-option chase-option" type="button" data-mode="chase"><strong>CHASE</strong><span>One driver runs. The room hunts.</span></button>
-      </div>
-      <div id="modeHint" class="mode-hint">Game loaded · choose Race or Chase to start</div>
+      <section id="playTypeStep" class="mode-step" aria-label="Choose offline or multiplayer">
+        <p class="mode-prompt">How do you want to play?</p>
+        <div class="mode-options">
+          <button id="playOffline" class="mode-option race-option" type="button"><strong>OFFLINE</strong><span>Practice locally. No room needed.</span></button>
+          <button id="playMultiplayer" class="mode-option chase-option" type="button"><strong>MULTIPLAYER</strong><span>Connect to a room and race together.</span></button>
+        </div>
+      </section>
+      <section id="multiplayerStep" class="mode-step" aria-label="Join a multiplayer room" hidden>
+        <p class="mode-prompt">Join a room</p>
+        <div class="room-row">
+          <label for="roomCode">Room</label>
+          <input id="roomCode" value="drift-sim-6" maxlength="24" autocomplete="off">
+          <button id="connectButton" type="button">Connect</button>
+        </div>
+        <p id="connectionStatus" role="status">Connect as a guest to join this room.</p>
+        <button id="backToPlayType" class="mode-back" type="button">Back</button>
+      </section>
+      <section id="setupStep" class="mode-step" aria-label="Choose your car, track, and run" hidden>
+        <label class="mode-track" for="modeCarSelect">Choose your car<select id="modeCarSelect"><option value="a">Cobra</option><option value="b">Tofu</option><option value="c">Mustang</option><option value="d">Hornet</option><option value="e">Lynx</option><option value="f">Rocket</option><option value="g">Buster</option><option value="h">Hot Rod</option><option value="i">Max</option></select></label>
+        <label class="mode-track" for="modeTrackSelect">Choose your track<select id="modeTrackSelect"><option value="forest">Forest Run</option><option value="desert">Desert Drift</option><option value="tokyo">Tokyo Circuit</option><option value="cobra-circuit" disabled>Cobra Circuit · Loading</option></select></label>
+        <p class="mode-prompt">Choose your run</p>
+        <div class="mode-options">
+          <button class="mode-option race-option" type="button" data-mode="race"><strong>RACE</strong><span>Beat the clock. Complete two laps.</span></button>
+          <button class="mode-option chase-option" type="button" data-mode="chase"><strong>CHASE</strong><span>One driver runs. The room hunts.</span></button>
+        </div>
+          <div class="mode-footer"><button id="backToPlayTypeFromSetup" class="mode-back" type="button">Back</button><button id="disconnectRoomButton" class="mode-back" type="button" hidden>Disconnect</button><div id="modeHint" class="mode-hint">Choose your run</div></div>
+      </section>
     </section>
+    <button id="returnToMainMenu" class="return-main-menu" type="button" hidden>Main Menu</button>
+    <aside id="offlineChaseHud" class="offline-chase-hud" aria-label="Offline Player 2" hidden>
+      <strong>PLAYER 2</strong><span id="offlineChaseStatus">Joining the chase…</span>
+    </aside>
 
     <nav class="panel-toggles" aria-label="Game panels">
       <button id="togglePlayers" class="panel-toggle" type="button" aria-controls="onlinePanel" aria-expanded="false" title="Show multiplayer panel">♟<span>Players</span></button>
@@ -34,13 +61,8 @@
           <div><strong>DRIFT SIM 6</strong><span id="accountName">Offline practice</span></div>
           <span id="connectionDot" class="connection-dot"></span>
         </div>
-        <div class="room-row">
-          <label for="roomCode">Room</label>
-          <input id="roomCode" value="drift-sim-6" maxlength="24" autocomplete="off">
-          <button id="connectButton" type="button">Connect</button>
-        </div>
-        <div class="customize-row"><label>Track<select id="trackSelect"><option value="forest">Forest Run</option><option value="desert">Desert Drift</option><option value="tokyo">Tokyo Circuit</option><option value="nexus-afterdark">Nexus Afterdark</option><option value="nexus-greenline">Nexus Greenline</option><option value="sektor-foundry">Sektor Foundry</option></select></label></div>
-        <p id="connectionStatus" role="status">Sign in to Sektor, then connect to race online.</p>
+        <div class="customize-row"><label>Car<select id="carSelect"><option value="a">Cobra</option><option value="b">Tofu</option><option value="c">Mustang</option><option value="d">Hornet</option><option value="e">Lynx</option><option value="f">Rocket</option><option value="g">Buster</option><option value="h">Hot Rod</option><option value="i">Max</option></select></label><label>Track<select id="trackSelect"><option value="forest">Forest Run</option><option value="desert">Desert Drift</option><option value="tokyo">Tokyo Circuit</option><option value="cobra-circuit" disabled>Cobra Circuit · Loading</option></select></label></div>
+          <p id="onlineStatus" class="panel-connection" role="status">Room selection happens before the race.</p>
         <p id="modeStatus" class="mode-status" aria-live="polite">Practice</p>
         <div id="playerList" class="player-list"></div>
       </div>
@@ -64,6 +86,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="./firebase-config.js"></script>
-  <script src="./drifting-sim-multiplayer.js?v=20261016-2"></script>
+  <script src="./drifting-track-cobra.js?v=20261016-1"></script>
+  <script src="./drifting-sim-multiplayer.js?v=20261017-1"></script>
 </body>
 </html>

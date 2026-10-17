@@ -8,15 +8,6 @@
   --cyan: #73d5d0;
 }
 
-:root[data-world-theme="nexus"] {
-  --ink: #f8edff;
-  --muted: #b4a2c3;
-  --line: rgba(236, 177, 255, 0.22);
-  --glass: rgba(22, 12, 31, 0.92);
-  --lime: #f079d5;
-  --cyan: #72ddff;
-}
-
 * { box-sizing: border-box; }
 
 html, body, .sim-shell {
@@ -38,45 +29,18 @@ html, body, .sim-shell {
   background: #050605;
 }
 
-#worldSkin {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
+#playerTwoFrame {
+  position:absolute;
+  inset:0 auto 0 0;
+  width:50%;
+  height:100%;
+  border:0;
+  border-right:2px solid var(--lime);
+  background:#050605;
 }
-
-#worldSkin::before {
-  position: absolute;
-  inset: 0;
-  content: "";
-  opacity: .16;
-  mix-blend-mode: screen;
-}
-
-:root[data-world-theme="sektor"] #worldSkin::before {
-  background-image:linear-gradient(180deg,rgba(4,18,13,.08),transparent 22%,transparent 76%,rgba(4,18,13,.2)),repeating-linear-gradient(0deg,transparent 0 31px,rgba(81,255,165,.08) 32px),repeating-linear-gradient(90deg,transparent 0 31px,rgba(81,255,165,.08) 32px);
-}
-
-:root[data-world-theme="nexus"] #worldSkin::before {
-  opacity:.2;
-  background-image:radial-gradient(ellipse at 15% 18%,rgba(227,87,255,.26),transparent 30%),radial-gradient(ellipse at 88% 80%,rgba(67,216,255,.22),transparent 34%),repeating-linear-gradient(135deg,transparent 0 45px,rgba(218,116,255,.08) 46px,transparent 48px);
-}
-
-:root[data-track-variant="nexus-afterdark"] #worldSkin::before {
-  opacity:.25;
-  background-image:radial-gradient(ellipse at 78% 16%,rgba(254,54,190,.32),transparent 24%),radial-gradient(ellipse at 18% 78%,rgba(48,212,255,.26),transparent 30%),repeating-linear-gradient(90deg,transparent 0 72px,rgba(121,94,255,.12) 73px,transparent 77px);
-}
-
-:root[data-track-variant="nexus-greenline"] #worldSkin::before {
-  opacity:.22;
-  background-image:radial-gradient(ellipse at 20% 18%,rgba(71,255,164,.22),transparent 28%),radial-gradient(ellipse at 84% 72%,rgba(51,198,223,.2),transparent 34%),repeating-linear-gradient(45deg,transparent 0 54px,rgba(130,255,202,.08) 55px,transparent 58px);
-}
-
-:root[data-track-variant="sektor-foundry"] #worldSkin::before {
-  opacity:.22;
-  background-image:linear-gradient(180deg,transparent 0 72%,rgba(255,143,52,.14)),repeating-linear-gradient(0deg,transparent 0 22px,rgba(255,174,76,.09) 23px,transparent 25px),repeating-linear-gradient(90deg,transparent 0 66px,rgba(255,105,44,.08) 67px,transparent 70px);
-}
+#playerTwoFrame[hidden] { display:none; }
+.sim-shell.offline-split #gameFrame { left:50%; width:50%; }
+.sim-shell.offline-split #playerTwoFrame { display:block; }
 
 .world-label {
   position:absolute;
@@ -93,15 +57,17 @@ html, body, .sim-shell {
   pointer-events:none;
 }
 
-:root[data-world-theme="nexus"] .world-label {
-  border-color:rgba(228,111,255,.5);
-  color:#f0a5ff;
-  box-shadow:0 0 18px rgba(173,67,255,.18);
+.menu-backdrop {
+  position:absolute;
+  z-index:3;
+  inset:0;
+  background:#0a0e0d;
 }
+.menu-backdrop[hidden] { display:none; }
 
 .mode-screen {
   position:absolute;
-  z-index:3;
+  z-index:4;
   top:50%;
   left:50%;
   width:min(460px,calc(100vw - 32px));
@@ -109,15 +75,19 @@ html, body, .sim-shell {
   transform:translate(-50%,-50%);
   border:1px solid rgba(205,243,106,.32);
   border-radius:7px;
-  background:linear-gradient(145deg,rgba(12,18,16,.96),rgba(8,12,13,.94));
+  background:linear-gradient(145deg,rgba(12,18,16,.88),rgba(8,12,13,.86));
   box-shadow:0 24px 70px rgba(0,0,0,.55),inset 0 0 32px rgba(205,243,106,.035);
-  backdrop-filter:blur(15px);
+  backdrop-filter:blur(18px);
 }
 .mode-screen[hidden] { display:none; }
+.mode-step[hidden] { display:none; }
 .mode-brand { display:flex; align-items:center; gap:12px; }
 .mode-mark { display:grid; width:42px; height:42px; place-items:center; border-radius:5px; background:var(--lime); color:#11150b; font-size:24px; font-weight:900; }
 .mode-brand small { color:var(--cyan); font-size:9px; font-weight:800; letter-spacing:.12em; }
 .mode-brand h1 { margin:3px 0 0; color:var(--ink); font-size:23px; line-height:1; }
+.mode-track { display:grid; gap:6px; margin-top:12px; color:var(--muted); font-size:11px; }
+.mode-track select { width:100%; min-width:0; padding:8px 9px; border:1px solid var(--line); border-radius:4px; background:rgba(0,0,0,.3); color:var(--ink); font:inherit; font-size:11px; }
+.mode-track select:disabled { cursor:not-allowed; opacity:.58; }
 .mode-prompt { margin:22px 0 9px; color:var(--muted); font-size:12px; }
 .mode-options { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
 .mode-option { display:grid; min-height:92px; align-content:center; gap:7px; padding:13px; border:1px solid var(--line); border-radius:5px; background:rgba(255,255,255,.035); color:var(--ink); text-align:left; cursor:pointer; transition:transform .16s ease,border-color .16s ease,background .16s ease; }
@@ -127,10 +97,13 @@ html, body, .sim-shell {
 .race-option strong { color:var(--lime); }
 .chase-option strong { color:var(--cyan); }
 .mode-hint { margin-top:13px; color:var(--muted); font-size:10px; }
-:root[data-world-theme="nexus"] .mode-screen { border-color:rgba(240,121,213,.4); box-shadow:0 24px 70px rgba(0,0,0,.58),0 0 34px rgba(167,76,255,.16); }
-:root[data-world-theme="nexus"] .mode-mark { background:linear-gradient(135deg,#f079d5,#72ddff); }
-:root[data-world-theme="nexus"] .mode-brand small { color:#72ddff; }
-
+.mode-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:13px; }
+.mode-footer .mode-hint { margin:0; text-align:right; }
+.mode-back { min-height:32px; padding:0 10px; border:1px solid var(--line); border-radius:4px; background:rgba(255,255,255,.035); color:var(--muted); font:inherit; font-size:11px; cursor:pointer; }
+.mode-back:hover { border-color:var(--lime); color:var(--ink); }
+@media (min-width: 641px) {
+  .sim-shell:has(#onlinePanel:not([hidden])) .mode-screen { top:calc(50% + 66px); }
+}
 .online-panel, .music-panel {
   position: absolute;
   z-index: 3;
@@ -140,9 +113,45 @@ html, body, .sim-shell {
   backdrop-filter: blur(16px);
 }
 
+.return-main-menu {
+  position:absolute;
+  z-index:6;
+  top:16px;
+  left:16px;
+  min-height:38px;
+  padding:0 13px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  background:var(--glass);
+  color:var(--ink);
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+  backdrop-filter:blur(12px);
+}
+.return-main-menu[hidden] { display:none; }
+.offline-chase-hud {
+  position:absolute;
+  z-index:5;
+  top:66px;
+  left:16px;
+  display:grid;
+  gap:4px;
+  min-width:150px;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:5px;
+  background:var(--glass);
+  box-shadow:0 12px 36px rgba(0,0,0,.3);
+  backdrop-filter:blur(12px);
+}
+.offline-chase-hud[hidden] { display:none; }
+.offline-chase-hud strong { color:var(--lime); font-size:11px; }
+.offline-chase-hud span { color:var(--muted); font-size:11px; }
+
 .panel-toggles {
   position: absolute;
-  z-index: 4;
+  z-index: 6;
   top: 16px;
   right: 16px;
   display: flex;
@@ -236,7 +245,7 @@ html, body, .sim-shell {
   cursor: pointer;
 }
 .room-row button:hover, .add-songs:hover { filter: brightness(1.08); }
-.customize-row { display:grid; grid-template-columns:1fr; gap:6px; margin-top:9px; }
+.customize-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-top:9px; }
 .customize-row label { display:grid; gap:4px; color:var(--muted); font-size:10px; }
 .customize-row select { width:100%; min-width:0; padding:7px 5px; border:1px solid var(--line); border-radius:4px; background:rgba(0,0,0,.3); color:var(--ink); font:inherit; font-size:11px; }
 .customize-row select:disabled { cursor:not-allowed; opacity:.58; }
@@ -290,7 +299,10 @@ html, body, .sim-shell {
 @media (max-width: 640px) {
   .panel-toggles { top:10px; right:10px; }
   .panel-toggle { height:36px; min-width:38px; padding:0 8px; }
+  .return-main-menu { top:10px; left:10px; }
+  .offline-chase-hud { top:56px; left:10px; }
   .online-panel { top: 56px; right: 10px; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; width: min(330px, calc(100vw - 20px)); padding: 9px; }
+  .sim-shell:has(#onlinePanel:not([hidden])) .mode-screen { top:50%; }
   .brand { width: 32px; height: 32px; font-size: 18px; }
   .music-panel { left: 10px; bottom: 10px; width: min(300px, calc(100vw - 20px)); }
 }
