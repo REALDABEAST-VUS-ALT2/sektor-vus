@@ -61,6 +61,35 @@ html, body, .sim-shell {
   pointer-events:none;
 }
 
+.remote-car-outline {
+  position:absolute;
+  z-index:3;
+  width:58px;
+  height:34px;
+  border:2px solid var(--outline-color,#73d5d0);
+  border-radius:12px;
+  background:rgba(5,10,9,.48);
+  box-shadow:0 0 7px var(--outline-color,#73d5d0),inset 0 0 8px color-mix(in srgb,var(--outline-color,#73d5d0) 38%,transparent);
+  pointer-events:none;
+  transition:left .06s linear,top .06s linear;
+}
+.remote-car-outline::before {
+  position:absolute;
+  inset:5px 15px;
+  border:1px solid var(--outline-color,#73d5d0);
+  border-radius:5px;
+  background:color-mix(in srgb,var(--outline-color,#73d5d0) 20%,transparent);
+  content:"";
+}
+.remote-car-outline::after {
+  position:absolute;
+  top:50%;
+  right:-6px;
+  width:8px;
+  border-top:2px solid var(--outline-color,#73d5d0);
+  content:"";
+}
+
 .world-label {
   position:absolute;
   z-index:2;

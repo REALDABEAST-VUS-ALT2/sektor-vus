@@ -743,6 +743,8 @@ function removeRemoteCarClones(player) {
   player.carClones = [];
   player.nameTag?.remove();
   player.nameTag = null;
+  player.positionOutline?.remove();
+  player.positionOutline = null;
 }
 
 function removeAllRemoteCarClones() {
@@ -860,11 +862,19 @@ function updateRemoteCarClones() {
     const state = player.state;
     if (!state || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) {
       if (player.nameTag) player.nameTag.hidden = true;
+      if (player.positionOutline) player.positionOutline.hidden = true;
       continue;
     }
-    if (!player.carClones?.length && !createRemoteCarClones(player)) continue;
+    if (!player.carClones?.length) createRemoteCarClones(player);
     const x = Number(state.x) - cameraX;
     const y = Number(state.y) - cameraY;
+    if (!player.positionOutline) {
+      player.positionOutline = document.createElement('div');
+      player.positionOutline.className = 'remote-car-outline';
+      player.positionOutline.setAttribute('aria-hidden', 'true');
+      player.positionOutline.style.setProperty('--outline-color', player.color || colorForPlayer(player.id));
+      simShell.append(player.positionOutline);
+    }
     if (!player.nameTag) {
       player.nameTag = document.createElement('div');
       player.nameTag.className = 'remote-name-tag';
@@ -872,8 +882,14 @@ function updateRemoteCarClones() {
     }
     player.nameTag.textContent = player.name || 'Driver';
     player.nameTag.hidden = x < -240 || x > 240 || y < -180 || y > 180;
-    player.nameTag.style.left = `${frameRect.left + canvasRect.left + (x + 240) / 480 * canvasRect.width}px`;
-    player.nameTag.style.top = `${frameRect.top + canvasRect.top + (180 - y) / 360 * canvasRect.height}px`;
+    const screenX = frameRect.left + canvasRect.left + (x + 240) / 480 * canvasRect.width;
+    const screenY = frameRect.top + canvasRect.top + (180 - y) / 360 * canvasRect.height;
+    player.nameTag.style.left = `${screenX}px`;
+    player.nameTag.style.top = `${screenY}px`;
+    player.positionOutline.hidden = player.nameTag.hidden;
+    player.positionOutline.style.left = `${screenX}px`;
+    player.positionOutline.style.top = `${screenY}px`;
+    player.positionOutline.style.transform = `translate(-50%, -50%) rotate(${(Number(state.direction) || 90) - 90}deg)`;
     const direction = Number.isFinite(Number(state.direction))
       ? Number(state.direction)
       : 90 - (Number(state.angle) || 0) * 180 / Math.PI;
