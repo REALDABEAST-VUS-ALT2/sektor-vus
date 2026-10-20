@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sektor · Nexus</title>
-  <link rel="stylesheet" href="./style.css?v=20261015-2">
+  <link rel="stylesheet" href="./style.css?v=20261020-2">
 </head>
 <body>
       <div class="phen228-screen-static" aria-hidden="true"></div>
@@ -47,7 +47,7 @@
       <div id="voiceMembers" class="voice-members" aria-live="polite"></div>
       <div id="voiceControls" class="voice-controls" hidden><button id="muteVoiceBtn">Mute</button><button id="leaveVoiceBtn">Leave</button></div>
       <div id="friendsDirectory" class="friends-directory" hidden></div>
-      <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
+      <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><button id="createPollButton" type="button">▤ Create poll</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
     </aside>
     <section class="chat-column">
       <section class="youtube-player" aria-label="YouTube audio player"><button id="youtubeOpenBtn" class="youtube-open-btn" type="button"><span class="youtube-player-icon">♪</span><span><strong>Sektor audio</strong><small id="youtubeTopStatus">Open player</small></span></button></section>
@@ -55,6 +55,7 @@
       <section id="friendHome" class="friend-home" hidden></section>
       <div id="announcement" class="announcement" hidden><small>OWNER ANNOUNCEMENT</small><div id="announcementText"></div></div>
       <div id="ownerComposer" class="owner-composer" hidden><input id="announcementInput" maxlength="240" placeholder="Write an announcement"><button id="publishAnnouncement">Publish</button></div>
+      <section id="serverPoll" class="server-poll" aria-label="Server vote" hidden></section>
       <div id="videoStage" class="video-stage" hidden></div>
       <div id="gamesPanel" hidden></div>
       <div id="messages" class="messages"><div class="empty-state">Select a channel to start talking.</div></div>
@@ -62,6 +63,7 @@
     </section>
     <aside class="members-sidebar"><header>MEMBERS <span id="memberCount">0</span></header><button id="addFriendBtn" class="add-friend-btn">＋ Add friend</button><div id="membersList"></div></aside>
   </main>
+  <div id="nukeOverlay" class="nuke-overlay" aria-hidden="true"><span class="nuke-bomb"><i class="nuke-bomb-body"></i><i class="nuke-bomb-nose"></i><i class="nuke-bomb-fin nuke-bomb-fin-left"></i><i class="nuke-bomb-fin nuke-bomb-fin-right"></i></span><span class="nuke-blast"></span><span class="nuke-core"></span><span class="nuke-wave"></span><span class="nuke-flash"></span></div>
   <div id="remoteAudio" hidden></div>
   <div id="mediaControlPopup" class="media-control-popup" hidden><div class="media-control-card"><div class="media-control-title">Call controls</div><div class="media-control-actions"><button id="popupMuteBtn" type="button">Mute</button><button id="popupCameraBtn" type="button">Turn camera off</button><button id="popupScreenBtn" type="button">Share screen</button><button id="popupStopShareBtn" class="media-stop-share-btn" type="button" hidden>Stop sharing</button><button id="popupLeaveBtn" type="button" class="media-leave-btn">Leave call</button></div></div></div>
   <div id="youtubePopup" class="youtube-popup" hidden><section class="youtube-popup-card sektor-music-card" role="dialog" aria-modal="true" aria-labelledby="youtubePopupTitle"><header class="youtube-popup-header"><button id="sektorMusicLibraryToggle" class="sektor-library-toggle" type="button" aria-expanded="false" aria-controls="sektorMusicLibrary">Show library</button><div><strong id="youtubePopupTitle">Sektor music player</strong><small id="youtubeNowPlaying">Your local music library</small></div><button id="youtubePopupClose" class="youtube-popup-close" type="button" aria-label="Close audio player">×</button></header><div class="sektor-music-layout"><section class="sektor-music-deck" aria-label="Audio controls"><div class="sektor-music-art" aria-hidden="true"><span>♪</span><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="sektor-music-track"><strong id="sektorMusicName">Nothing playing</strong><small id="sektorMusicStatus" role="status">Add audio files from your device to begin.</small></div><div class="sektor-music-timeline"><span id="sektorMusicElapsed">0:00</span><input id="sektorMusicSeek" type="range" min="0" max="1000" value="0" aria-label="Seek through track"><span id="sektorMusicDuration">0:00</span></div><div class="sektor-music-controls"><button id="sektorMusicRepeat" type="button" class="sektor-music-repeat" aria-label="Repeat all" aria-pressed="true" title="Repeat all">↻</button><button id="sektorMusicPrevious" type="button" aria-label="Previous track" title="Previous track">|◀</button><button id="sektorMusicPlay" type="button" class="sektor-music-play" aria-label="Play" title="Play">▶</button><button id="sektorMusicNext" type="button" aria-label="Next track" title="Next track">▶|</button><label class="sektor-music-volume" title="Volume">♫<input id="sektorMusicVolume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></label></div><div class="sektor-music-options"><label>Speed<select id="sektorMusicSpeed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><div class="sektor-music-imports"><label class="sektor-file-button">＋ Add audio<input id="sektorMusicInput" type="file" accept="audio/*" multiple></label><label class="sektor-file-button">＋ Add folder<input id="sektorMusicFolderInput" type="file" accept="audio/*" multiple webkitdirectory directory></label></div></div></section><aside id="sektorMusicLibrary" class="sektor-music-library" hidden><header><div><strong>Library</strong><small id="sektorMusicCount">0 tracks</small></div><button id="sektorMusicClear" type="button" disabled>Clear</button></header><div id="sektorMusicTracks" class="sektor-music-tracks"><p class="sektor-music-empty">Your added tracks will appear here.</p></div></aside></div><audio id="sektorMusicAudio" preload="metadata"></audio></section></div>
@@ -81,6 +83,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="./lan-adapter.js?v=20261008-10"></script>
-  <script src="./app.js?v=20261015-2"></script>
+  <script src="./app.js?v=20261019-14"></script>
 </body>
 </html>

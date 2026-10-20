@@ -102,6 +102,8 @@ async function openFriendsArea() {
   closePrivateDm();
   if (navigationVersion!==state.navigationVersion) return;
   state.server=null;state.channel='';state.editMode=false;
+  applyProfileTheme();
+  renderServerPoll();
   els.appView.classList.add('friends-view','friends-home-view');els.appView.classList.remove('private-dm-view');
   els.friendsBtn.classList.add('active');els.friendsList.hidden=false;
   els.friendsBackBtn.hidden=true;
@@ -130,6 +132,8 @@ async function openPrivateDm(friend) {
   closePrivateDm();
   if (navigationVersion!==state.navigationVersion) return;
   state.server=null;state.channel='';state.editMode=false;
+  applyProfileTheme();
+  renderServerPoll();
   els.appView.classList.add('friends-view','private-dm-view'); els.appView.classList.remove('friends-home-view');
   els.friendsBtn.classList.add('active'); els.friendsList.hidden = false;
   els.friendsBackBtn.hidden=false;
@@ -433,6 +437,9 @@ const firebaseAuth = firebase.auth ? firebase.auth() : makeLocalAuth();
 const state = { user:null, servers:[], server:null, channel:"general", activeView:'server', editMode:false, gameRef:null, gameHandler:null, dmFriend:null, dmRef:null, dmHandler:null, metaRef:null, metaHandler:null, presenceListRef:null, presenceHandler:null, unsubMessages:null, presenceRef:null, voiceRef:null, voiceSignalUnsub:null, voiceMembersUnsub:null, voiceChannel:null, localStream:null, mediaMode:'audio', peers:{}, serverMembers:{}, friends:[], friendRequests:[], nexusData:null, nexusLoaded:false, nexusLoading:false, nexusInitialized:false, nexusRef:null, nexusHandler:null, nexusError:'' };
 state.serverPresence = {};
 const unreadChannelWatchers = new Map();
+let lastNukeEventId = '';
+let nukeAnimationTimer = 0;
+let glassThemeTimer = 0;
 let channelReadAt = {};
 let unreadChannels = {};
 const voiceSessionId = (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -442,6 +449,9 @@ els.audioInput = $('audioInput');
 els.channelHash = $('channelHash');
 els.friendsBackBtn = $('friendsBackBtn');
 els.popupStopShareBtn=$('popupStopShareBtn');
+els.serverPoll=$('serverPoll');
+els.nukeOverlay=$('nukeOverlay');
+els.createPollButton=$('createPollButton');
 const fileInput = document.createElement('input');
 const maxMessageAttachmentBytes = 10 * 1024 * 1024;
 fileInput.type = 'file';
@@ -548,6 +558,84 @@ function playMentionPing() {
     volume.connect(pingAudioContext.destination);
     oscillator.start();
     oscillator.stop(pingAudioContext.currentTime + .23);
+  } catch (error) {}
+}
+function playNukeSound() {
+  try {
+    const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!AudioContextClass) return;
+    pingAudioContext = pingAudioContext || new AudioContextClass();
+    const context = pingAudioContext;
+    if (context.state === 'suspended') context.resume().catch(() => {});
+    const start = context.currentTime + 2.25;
+    const roarBuffer = context.createBuffer(1, Math.floor(context.sampleRate * 2.4), context.sampleRate);
+    const roarSamples = roarBuffer.getChannelData(0);
+    for (let index = 0; index < roarSamples.length; index++) {
+      roarSamples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (context.sampleRate * .72));
+    }
+    const roar = context.createBufferSource();
+    const roarFilter = context.createBiquadFilter();
+    const roarGain = context.createGain();
+    roar.buffer = roarBuffer;
+    roarFilter.type = 'lowpass';
+    roarFilter.frequency.setValueAtTime(5200, start);
+    roarFilter.frequency.exponentialRampToValueAtTime(120, start + 2.25);
+    roarGain.gain.setValueAtTime(.0001, start);
+    roarGain.gain.exponentialRampToValueAtTime(.62, start + .025);
+    roarGain.gain.exponentialRampToValueAtTime(.0001, start + 2.35);
+    roar.connect(roarFilter);
+    roarFilter.connect(roarGain);
+    roarGain.connect(context.destination);
+    roar.start(start);
+    roar.stop(start + 2.4);
+    const crackleBuffer = context.createBuffer(1, Math.floor(context.sampleRate * .55), context.sampleRate);
+    const crackleSamples = crackleBuffer.getChannelData(0);
+    for (let index = 0; index < crackleSamples.length; index++) {
+      crackleSamples[index] = (Math.random() * 2 - 1) * Math.exp(-index / (context.sampleRate * .055));
+    }
+    const crackle = context.createBufferSource();
+    const crackleFilter = context.createBiquadFilter();
+    const crackleGain = context.createGain();
+    crackle.buffer = crackleBuffer;
+    crackleFilter.type = 'bandpass';
+    crackleFilter.frequency.setValueAtTime(1250, start);
+    crackleFilter.Q.setValueAtTime(.65, start);
+    crackleGain.gain.setValueAtTime(.0001, start);
+    crackleGain.gain.exponentialRampToValueAtTime(.72, start + .008);
+    crackleGain.gain.exponentialRampToValueAtTime(.0001, start + .5);
+    crackle.connect(crackleFilter);
+    crackleFilter.connect(crackleGain);
+    crackleGain.connect(context.destination);
+    crackle.start(start);
+    crackle.stop(start + .55);
+    const rumble = context.createOscillator();
+    const rumbleGain = context.createGain();
+    rumble.type = 'triangle';
+    rumble.frequency.setValueAtTime(58, start);
+    rumble.frequency.exponentialRampToValueAtTime(24, start + 2.15);
+    rumbleGain.gain.setValueAtTime(.0001, start);
+    rumbleGain.gain.exponentialRampToValueAtTime(.48, start + .018);
+    rumbleGain.gain.exponentialRampToValueAtTime(.0001, start + 2.25);
+    rumble.connect(rumbleGain);
+    rumbleGain.connect(context.destination);
+    rumble.start(start);
+    rumble.stop(start + 2.3);
+    const ringStart = start + 3;
+    [2360, 2394].forEach((frequency, index) => {
+      const ring = context.createOscillator();
+      const ringGain = context.createGain();
+      ring.type = 'sine';
+      ring.frequency.setValueAtTime(frequency, ringStart);
+      ring.frequency.exponentialRampToValueAtTime(frequency - 260, ringStart + 3.1);
+      ringGain.gain.setValueAtTime(.0001, ringStart);
+      ringGain.gain.exponentialRampToValueAtTime(index ? .11 : .2, ringStart + .05);
+      ringGain.gain.setValueAtTime(index ? .11 : .2, ringStart + 1.9);
+      ringGain.gain.exponentialRampToValueAtTime(.0001, ringStart + 3.15);
+      ring.connect(ringGain);
+      ringGain.connect(context.destination);
+      ring.start(ringStart);
+      ring.stop(ringStart + 3.2);
+    });
   } catch (error) {}
 }
 const unlockMentionAudio = () => {
@@ -868,6 +956,7 @@ async function selectServer(code) {
     await clearSubscriptions();
     closePrivateDm();
     state.server = state.servers.find(server => server.code === code);
+      applyProfileTheme();
     state.lastServerCode=code;
     channelReadAt = loadChannelReadState(state.server);
     unreadChannels = {};
@@ -878,6 +967,7 @@ async function selectServer(code) {
       state.servers=state.servers.filter(server=>server.code!==code);
       els.channelTopic.textContent='You are banned from this server.';
       state.server=null;
+        applyProfileTheme();
       clearServer();
       return;
     }
@@ -916,6 +1006,8 @@ async function selectServer(code) {
       } else {
         state.server = null;
       }
+      applyProfileTheme();
+      handleSharedServerEffects(state.server);
       if (state.server && state.server.bans && state.server.bans[state.user.key] && !isServerOwner()) {
         els.channelTopic.textContent='You are banned from this server.';
         leaveCurrentServer(state.server);
@@ -986,7 +1078,21 @@ function currentProfileTheme(user=state.user) {
   return profileThemeNames.includes(theme)?theme:'nexus';
 }
 function applyProfileTheme(theme=currentProfileTheme()) {
-  document.documentElement.dataset.theme=profileThemeNames.includes(theme)?theme:'nexus';
+  clearTimeout(glassThemeTimer);
+  glassThemeTimer=0;
+  const glassRecord=state.server?.glassTheme;
+  const glassUnlockedFlag=glassRecord===true||glassRecord?.unlocked===true;
+  const glassExpiresAt=Number(glassRecord?.expiresAt||(
+    glassRecord?.unlockedAt?Number(glassRecord.unlockedAt)+60000:0
+  ));
+  const glassUnlocked=glassUnlockedFlag&&(!glassExpiresAt||glassExpiresAt>Date.now());
+  if (glassUnlocked&&glassExpiresAt) {
+    glassThemeTimer=window.setTimeout(()=>{
+      glassThemeTimer=0;
+      applyProfileTheme();
+    },Math.max(0,glassExpiresAt-Date.now()));
+  }
+  document.documentElement.dataset.theme=glassUnlocked?'glass':profileThemeNames.includes(theme)?theme:'nexus';
 }
 const messageTextEffects=['solid','gradient','rgb'];
 const messageFonts=['system','rounded','serif','mono'];
@@ -1315,9 +1421,10 @@ function syncUnreadChannelWatchers(textChannels) {
 function isGamesChannel() { return false; }
 function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manageChannels:true,manageAnnouncements:true,manageMessages:true,manageRanks:true,manageServer:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
 function renderServer() {
-  if (state.activeView==='friends') return;
+  if (state.activeView==='friends') {renderServerPoll();return;}
   if (state.dmFriend) closePrivateDm();
-  if (!state.server) return clearServer();
+  if (!state.server) {els.createPollButton.hidden=true;renderServerPoll();return clearServer();}
+  renderServerPoll();
   els.serverName.textContent = state.server.name;
   els.serverCode.textContent = 'Invite code: ' + state.server.code;
   const allChannels = channels();
@@ -1364,8 +1471,10 @@ function renderServer() {
   });
   els.ownerTools.hidden = !(canManageChannels||hasServerPermission('manageRanks'));
   syncUnreadChannelWatchers(text);
-  if (!current) return;
+  if (!current) {els.createPollButton.hidden=true;renderServerPoll();return;}
   const announcementChannel = current.type === 'announcement';
+  els.createPollButton.hidden=!isServerOwner()||announcementChannel;
+  renderServerPoll();
   const announcements = serverAnnouncements(state.server);
   const latest = latestAnnouncement(state.server);
   els.channelName.textContent = current.name;
@@ -2094,12 +2203,93 @@ function autosizeMessageInput() {
 function mentionMatches() {
   if (!state.server) {els.mentionSuggestions.hidden=true;return;}
   const value=els.messageInput.value;
-  const commandMatch=value.match(/^\/(timeout\s+\d+(?:[smhd])?|ban)\s+(@?)([a-zA-Z0-9_]*)$/i);
+  if (value.startsWith('/')&&!/\s/.test(value)) {
+    const commands=[
+      {name:'/vote',hint:'Create a vote with 2–5 choices',insert:'/vote'},
+      {name:'/timeout',hint:'Choose a duration, then a member',insert:'/timeout '},
+      {name:'/untimeout',hint:'Remove a member timeout',insert:'/untimeout '},
+      {name:'/ban',hint:'Ban a member from this server',insert:'/ban '},
+      {name:'/unban',hint:'Restore a banned member',insert:'/unban '}
+    ].filter(command=>command.name!=='/vote'||(isServerOwner()&&channels().find(channel=>channel.id===state.channel)?.type!=='announcement'))
+      .filter(command=>command.name.startsWith(value.toLowerCase()));
+    els.mentionSuggestions.replaceChildren();
+    commands.forEach(command=>{
+      const option=document.createElement('button');
+      option.type='button';option.className='mention-option command-option';
+      const name=document.createElement('span');name.textContent=command.name;
+      const hint=document.createElement('small');hint.className='mention-status';hint.textContent=command.hint;
+      option.append(name,hint);
+      option.onclick=()=>{
+        els.mentionSuggestions.hidden=true;
+        if (command.name==='/vote') {
+          els.messageInput.value='/vote ';
+          els.messageInput.placeholder='Type question and choices here: /vote Question? :: Option 1 | Option 2';
+          els.messageInput.focus();
+          mentionMatches();
+          return;
+        }
+        els.messageInput.value=command.insert;
+        els.messageInput.focus();
+        mentionMatches();
+      };
+      els.mentionSuggestions.appendChild(option);
+    });
+    els.mentionSuggestions.hidden=!commands.length;
+    return;
+  }
+  const commandMatch=value.match(/^\/(timeout\s+\d+\s*[smhd]?(?:\s+\d+\s*[smhd]?)?|untimeout|ban|unban)\s+(@?)([a-zA-Z0-9_]*)$/i);
+  const timeoutInput=value.match(/^\/timeout(?:\s+(.*))?$/i);
+  if (timeoutInput&&!commandMatch) {
+    const typedDuration=(timeoutInput[1]||'').trim().toLowerCase();
+    const durations=[
+      {value:'1m',hint:'1 minute'},
+      {value:'10m',hint:'10 minutes'},
+      {value:'1h',hint:'1 hour'},
+      {value:'1h 1m',hint:'1 hour, 1 minute'},
+      {value:'1d',hint:'1 day'}
+    ].filter(duration=>!typedDuration||duration.value.startsWith(typedDuration));
+    els.mentionSuggestions.replaceChildren();
+    durations.forEach(duration=>{
+      const option=document.createElement('button');
+      option.type='button';option.className='mention-option command-option';
+      const name=document.createElement('span');name.textContent=duration.value;
+      const hint=document.createElement('small');hint.className='mention-status';hint.textContent=duration.hint;
+      option.append(name,hint);
+      option.onclick=()=>{
+        els.messageInput.value='/timeout '+duration.value+' ';
+        els.messageInput.focus();
+        mentionMatches();
+      };
+      els.mentionSuggestions.appendChild(option);
+    });
+    els.mentionSuggestions.hidden=!durations.length;
+    els.messageInput.placeholder='Choose a duration, then type a member name';
+    return;
+  }
+  if (/^\/vote(?:\s|$)/i.test(value)) {
+    els.mentionSuggestions.replaceChildren();
+    if (isServerOwner()&&channels().find(channel=>channel.id===state.channel)?.type!=='announcement') {
+      const guidance=document.createElement('div');
+      guidance.className='mention-option command-help';
+      const title=document.createElement('strong');title.textContent='Type your vote in this message box';
+      const example=document.createElement('small');example.textContent='Example: /vote Best map? :: Cobra | Forest';
+      guidance.append(title,example);
+      els.mentionSuggestions.appendChild(guidance);
+      els.messageInput.placeholder='Type question and choices here: /vote Question? :: Option 1 | Option 2';
+      els.mentionSuggestions.hidden=false;
+    } else els.mentionSuggestions.hidden=true;
+    return;
+  }
   const mentionMatch=value.match(/(^|\s)(:@\(|@\(|:@|@)([a-zA-Z0-9_]*)$/);
   if (!commandMatch&&!mentionMatch) {els.mentionSuggestions.hidden=true;return;}
   const query=(commandMatch?commandMatch[3]:mentionMatch[3]).toLowerCase();
-  const members=Object.values(state.serverMembers||{})
+  const candidates=Object.values(state.serverMembers||{});
+  if (commandMatch&&commandMatch[1].toLowerCase()==='unban') {
+    Object.entries(state.server.bans||{}).forEach(([key,ban])=>candidates.push({...ban,key,online:false}));
+  }
+  const members=[...new Map(candidates
     .filter(member=>String(member.name||'').toLowerCase().startsWith(query))
+    .map(member=>[member.key,member])).values()]
     .sort((first,second)=>Number(!!second.online)-Number(!!first.online)||String(first.name||'').localeCompare(String(second.name||'')))
     .slice(0,8);
   els.mentionSuggestions.innerHTML='';
@@ -2150,34 +2340,72 @@ function refreshMessageTimeoutState() {
   }
 }
 function parseTimeoutDuration(value) {
-  const match=String(value||'').match(/^(\d+)(s|m|h|d)?$/i);
-  if (!match) return null;
+  const text=String(value||'').trim().toLowerCase();
   const units={s:1000,m:60000,h:3600000,d:86400000};
-  const duration=Number(match[1])*(units[(match[2]||'m').toLowerCase()]);
+  let duration=0;
+  if (/^\d+$/.test(text)) duration=Number(text)*units.m;
+  else {
+    const segments=[...text.matchAll(/(\d+)\s*([smhd])/g)];
+    const remainder=text.replace(/(\d+)\s*([smhd])/g,'').replace(/\s/g,'');
+    if (!segments.length||remainder) return null;
+    const usedUnits=new Set();
+    for (const segment of segments) {
+      const unit=segment[2];
+      const amount=Number(segment[1]);
+      if (!amount||usedUnits.has(unit)) return null;
+      usedUnits.add(unit);
+      duration+=amount*units[unit];
+    }
+  }
   return duration>0&&duration<=30*86400000?duration:null;
 }
 async function runModerationCommand(text) {
-  const timeoutMatch=text.match(/^\/timeout\s+(\S+)\s+@?([a-zA-Z0-9_]+)$/i);
+  const timeoutMatch=text.match(/^\/timeout\s+(.+?)\s+@?([a-zA-Z0-9_]+)$/i);
+  const untimeoutMatch=text.match(/^\/untimeout\s+@?([a-zA-Z0-9_]+)$/i);
   const banMatch=text.match(/^\/ban\s+@?([a-zA-Z0-9_]+)$/i);
-  if (/^\/timeout(?:\s|$)/i.test(text)&&!hasServerPermission('manageMessages')) {
-    showModerationNotice('You need message-moderation permission to use /timeout.');return;
+  const unbanMatch=text.match(/^\/unban\s+@?([a-zA-Z0-9_]+)$/i);
+  const command=(text.match(/^\/(\S+)/)||[])[1]?.toLowerCase();
+  if (['timeout','untimeout'].includes(command)&&!hasServerPermission('manageMessages')) {
+    showModerationNotice('You need message-moderation permission to use /timeout and /untimeout.');return;
   }
-  if (/^\/ban(?:\s|$)/i.test(text)&&!hasServerPermission('manageServer')) {
-    showModerationNotice('You need server-management permission to use /ban.');return;
+  if (['ban','unban'].includes(command)&&!hasServerPermission('manageServer')) {
+    showModerationNotice('You need server-management permission to use /ban and /unban.');return;
   }
   if (timeoutMatch) {
     const duration=parseTimeoutDuration(timeoutMatch[1]);
     if (!duration) {showModerationNotice('Use /timeout (time) (name), up to 30 days.');return;}
   }
-  if (!timeoutMatch&&!banMatch) {
-    showModerationNotice(/^\/timeout/i.test(text)?'Use /timeout (time) (name), for example /timeout 10m Alex.':'Use /ban (name), for example /ban Alex.');return;
+  if (!timeoutMatch&&!untimeoutMatch&&!banMatch&&!unbanMatch) {
+    const usage={timeout:'Use /timeout (time) (name), for example /timeout 10m Alex.',untimeout:'Use /untimeout (name), for example /untimeout Alex.',ban:'Use /ban (name), for example /ban Alex.',unban:'Use /unban (name), for example /unban Alex.'};
+    showModerationNotice(usage[command]||'Use /timeout, /untimeout, /ban, or /unban.');return;
   }
-  const memberName=(timeoutMatch||banMatch)[timeoutMatch?2:1];
-  const target=Object.values(state.serverMembers||{}).find(member=>String(member.name||'').toLowerCase()===memberName.toLowerCase());
-  if (!target) {showModerationNotice('No server member named '+memberName+'.');return;}
+  const removingTimeout=!!untimeoutMatch;
+  const removingBan=!!unbanMatch;
+  const memberName=(timeoutMatch&&timeoutMatch[2])||(untimeoutMatch&&untimeoutMatch[1])||(banMatch&&banMatch[1])||(unbanMatch&&unbanMatch[1]);
+  let target;
+  if (removingTimeout||removingBan) {
+    const records=state.server[removingTimeout?'timeouts':'bans']||{};
+    const match=Object.entries(records).find(([,record])=>String(record?.name||'').toLowerCase()===memberName.toLowerCase());
+    if (match) target={key:match[0],...match[1]};
+  } else {
+    target=Object.values(state.serverMembers||{}).find(member=>String(member.name||'').toLowerCase()===memberName.toLowerCase());
+  }
+  if (!target) {showModerationNotice((removingTimeout?'No timeout found for ':removingBan?'No ban found for ':'No server member named ')+memberName+'.');return;}
   if (target.key===state.user.key) {showModerationNotice('You cannot moderate yourself.');return;}
   if (target.key===state.server.ownerKey) {showModerationNotice('The server owner cannot be moderated.');return;}
   const server=state.server;
+  if (removingTimeout||removingBan) {
+    const field=removingTimeout?'timeouts':'bans';
+    try {
+      if (server.localOnly) {
+        delete server[field]?.[target.key];
+        saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      } else await db.ref('serverMeta/'+server.code+'/'+field+'/'+target.key).remove();
+      if (removingTimeout) refreshMessageTimeoutState();
+      showModerationNotice('@'+target.name+(removingTimeout?' is no longer timed out.':' was unbanned.'));
+    } catch (error) {showModerationNotice('Could not '+(removingTimeout?'remove that timeout.':'unban that member.'));}
+    return;
+  }
   if (timeoutMatch) {
     const duration=parseTimeoutDuration(timeoutMatch[1]);
     const timeout={key:target.key,name:target.name,byKey:state.user.key,byName:state.user.username,expiresAt:Date.now()+duration};
@@ -2206,6 +2434,206 @@ async function runModerationCommand(text) {
     }
     showModerationNotice('@'+target.name+' was banned from the server.');
   } catch (error) {showModerationNotice('Could not ban that member.');}
+}
+async function runServerCommand(text) {
+  const voteMatch=text.match(/^\/vote\s+(.+)$/i);
+  if (/^\/vote(?:\s|$)/i.test(text)&&!isServerOwner()) {
+    showModerationNotice('Only the server owner can create a poll.');return;
+  }
+  if (/^\/vote(?:\s|$)/i.test(text)&&channels().find(channel=>channel.id===state.channel)?.type==='announcement') {
+    showModerationNotice('Polls cannot be created in announcement channels.');return;
+  }
+  if (/^\/vote(?:\s|$)/i.test(text)&&!voteMatch) {
+    showModerationNotice('Click Poll to create a vote, or use /vote Option 1 | Option 2.');return;
+  }
+  if (voteMatch) {
+    const sections=voteMatch[1].split('::');
+    const question=sections.length===2?sections[0].trim():'Community vote';
+    const options=(sections.length===2?sections[1]:sections[0]).split('|').map(option=>option.trim());
+    if (sections.length>2||!question||question.length>120||options.length<2||options.length>5||options.some(option=>!option||option.length>100)) {
+      showModerationNotice('Use Poll, /vote Option 1 | Option 2, or /vote Question? :: Option 1 | Option 2.');return;
+    }
+    await startServerPoll(question,options);
+    return;
+  }
+  if (!/^\/nuke(?:\s|$)/i.test(text)) return false;
+  if (!/^\/nuke$/i.test(text)) {showModerationNotice('Use /nuke with no extra text.');return;}
+  if (!isServerOwner()) {showModerationNotice('Only the server owner can use /nuke.');return;}
+  const server=state.server;
+  const id=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+  const unlockedAt=Date.now();
+  const glassTheme={unlocked:true,unlockedAt,expiresAt:unlockedAt+60000,unlockedBy:state.user.key};
+  const nukeEvent={id,at:Date.now(),byName:state.user.username};
+  const previousGlassTheme=server.glassTheme;
+  const previousNukeEvent=server.nukeEvent;
+  server.glassTheme=glassTheme;
+  server.nukeEvent=nukeEvent;
+  handleSharedServerEffects(server);
+  try {
+    if (server.localOnly) {
+      saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+    } else await db.ref('serverMeta/'+server.code).update({glassTheme,nukeEvent});
+    showModerationNotice('The server was nuked. Glass theme unlocked for everyone.');
+  } catch (error) {
+    server.glassTheme=previousGlassTheme;
+    server.nukeEvent=previousNukeEvent;
+    applyProfileTheme();
+    showModerationNotice('The blast played, but could not sync to everyone.');
+  }
+  return true;
+}
+async function startServerPoll(question,options) {
+  const server=state.server;
+  if (!server||!isServerOwner()||channels().find(channel=>channel.id===state.channel)?.type==='announcement'||!question||question.length>120||options.length<2||options.length>5||options.some(option=>!option||option.length>100)) return false;
+  const poll={id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8),question,options,votes:{},createdByKey:state.user.key,createdByName:state.user.username,createdAt:Date.now()};
+  try {
+    if (server.localOnly) {
+      server.activePoll=poll;
+      saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      renderServer();
+    } else await db.ref('serverMeta/'+server.code+'/activePoll').set(poll);
+    showModerationNotice('Vote started.');
+    return true;
+  } catch (error) {
+    showModerationNotice('Could not start that vote.');
+    return false;
+  }
+}
+function openPollCreator() {
+  if (!state.server||state.dmFriend||!isServerOwner()||channels().find(channel=>channel.id===state.channel)?.type==='announcement') return;
+  els.modalTitle.textContent='Create a vote';
+  els.modalBody.innerHTML='<form id="pollCreatorForm"><label class="modal-label" for="pollQuestion">What are you deciding?</label><input id="pollQuestion" class="modal-input" maxlength="120" placeholder="Choose the next map" required><div id="pollOptionFields" class="poll-option-fields"></div><button id="addPollOption" class="modal-secondary" type="button">＋ Add another choice</button><div id="pollCreatorError" class="error" role="status" aria-live="polite"></div><button class="primary-btn" type="submit">Start vote</button></form>';
+  els.modal.hidden=false;
+  const fields=document.getElementById('pollOptionFields');
+  const addButton=document.getElementById('addPollOption');
+  const form=document.getElementById('pollCreatorForm');
+  const error=document.getElementById('pollCreatorError');
+  const refreshChoices=()=>{
+    const choices=[...fields.querySelectorAll('.poll-choice-field')];
+    addButton.disabled=choices.length>=5;
+    choices.forEach((choice,index)=>{
+      choice.querySelector('.poll-choice-label').textContent='Choice '+(index+1);
+      const remove=choice.querySelector('.poll-remove-choice');
+      remove.hidden=choices.length<=2;
+      remove.setAttribute('aria-label','Remove choice '+(index+1));
+    });
+  };
+  const addChoice=()=>{
+    const index=fields.querySelectorAll('.poll-choice-field').length;
+    if (index>=5) return;
+    const choice=document.createElement('div');
+    choice.className='poll-choice-field';
+    choice.innerHTML='<label class="modal-label poll-choice-label"></label><div class="poll-choice-input"><input class="modal-input poll-choice-value" maxlength="100" placeholder="Choice '+(index+1)+'" required><button class="poll-remove-choice" type="button" aria-label="Remove choice">×</button></div>';
+    choice.querySelector('.poll-remove-choice').onclick=()=>{choice.remove();refreshChoices();};
+    fields.appendChild(choice);
+    refreshChoices();
+  };
+  addChoice();addChoice();
+  addButton.onclick=addChoice;
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    const question=document.getElementById('pollQuestion').value.trim();
+    const options=[...fields.querySelectorAll('.poll-choice-value')].map(input=>input.value.trim());
+    if (!question||options.some(option=>!option)) {error.textContent='Enter a question and fill in every choice.';return;}
+    const submit=form.querySelector('[type="submit"]');
+    submit.disabled=true;
+    const started=await startServerPoll(question,options);
+    if (started) els.modal.hidden=true;
+    else {submit.disabled=false;error.textContent='Could not start the vote. Try again.';}
+  };
+  document.getElementById('pollQuestion').focus();
+}
+function handleSharedServerEffects(server) {
+  applyProfileTheme();
+  const event=server?.nukeEvent;
+  if (!event?.id||event.id===lastNukeEventId||Date.now()-Number(event.at||0)>12000) return;
+  lastNukeEventId=event.id;
+  if (!els.nukeOverlay) return;
+  els.nukeOverlay.classList.remove('is-active');
+  void els.nukeOverlay.offsetWidth;
+  els.nukeOverlay.classList.add('is-active');
+  document.documentElement.classList.remove('nuke-shaking');
+  void document.documentElement.offsetWidth;
+  document.documentElement.classList.add('nuke-shaking');
+  playNukeSound();
+  clearTimeout(nukeAnimationTimer);
+  nukeAnimationTimer=window.setTimeout(()=>{
+    els.nukeOverlay.classList.remove('is-active');
+    document.documentElement.classList.remove('nuke-shaking');
+  },9000);
+}
+function renderServerPoll() {
+  const element=els.serverPoll;
+  const poll=state.server?.activePoll;
+  if (!element) return;
+  const currentChannel=state.server&&channels().find(channel=>channel.id===state.channel);
+  if (state.activeView!=='server'||state.dmFriend||currentChannel?.type==='announcement'||!poll||!Array.isArray(poll.options)||poll.options.length<2) {
+    element.hidden=true;
+    element.replaceChildren();
+    return;
+  }
+  element.hidden=false;
+  const votes=poll.votes&&typeof poll.votes==='object'?poll.votes:{};
+  const total=Object.values(votes).filter(value=>Number.isInteger(Number(value))&&Number(value)>=0&&Number(value)<poll.options.length).length;
+  const selected=Number(votes[state.user.key]);
+  const heading=document.createElement('header');
+  heading.className='server-poll-heading';
+  const title=document.createElement('strong');
+  title.textContent=poll.question||'Community vote';
+  const summary=document.createElement('span');
+  summary.textContent=(poll.createdByName?'Started by '+poll.createdByName+' · ':'')+total+' vote'+(total===1?'':'s')+' · Choose one';
+  heading.append(title,summary);
+  if (isServerOwner()||poll.createdByKey===state.user.key) {
+    const close=document.createElement('button');
+    close.type='button';close.className='server-poll-close';close.textContent='Close';
+    close.onclick=()=>closeServerPoll(poll);
+    heading.appendChild(close);
+  }
+  const options=document.createElement('div');
+  options.className='server-poll-options';
+  poll.options.forEach((label,index)=>{
+    const count=Object.values(votes).filter(value=>Number(value)===index).length;
+    const percent=total?Math.round(count/total*100):0;
+    const option=document.createElement('button');
+    option.type='button';option.className='server-poll-option'+(selected===index?' selected':'');
+    option.setAttribute('aria-pressed',String(selected===index));
+    const name=document.createElement('span');name.className='server-poll-option-name';name.textContent=label;
+    const result=document.createElement('span');result.className='server-poll-result';result.textContent=count+' · '+percent+'%';
+    const bar=document.createElement('span');bar.className='server-poll-bar';
+    const fill=document.createElement('span');fill.className='server-poll-bar-fill';fill.style.width=percent+'%';bar.appendChild(fill);
+    option.append(name,result,bar);
+    option.onclick=()=>castServerPollVote(poll,index);
+    options.appendChild(option);
+  });
+  element.replaceChildren(heading,options);
+}
+async function castServerPollVote(poll,index) {
+  const server=state.server;
+  if (!server||!Number.isInteger(index)||index<0||index>=poll.options.length) return;
+  try {
+    if (server.localOnly) {
+      if (server.activePoll?.id!==poll.id) return;
+      server.activePoll.votes=server.activePoll.votes||{};
+      server.activePoll.votes[state.user.key]=index;
+      saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      renderServerPoll();
+    } else {
+      const pollRef=db.ref('serverMeta/'+server.code+'/activePoll');
+      if ((await pollRef.get()).val()?.id!==poll.id) return;
+      await db.ref('serverMeta/'+server.code+'/activePoll/votes/'+state.user.key).set(index);
+    }
+  } catch (error) {showModerationNotice('Could not submit your vote.');}
+}
+async function closeServerPoll(poll) {
+  const server=state.server;
+  if (!server||(!isServerOwner()&&poll.createdByKey!==state.user.key)||server.activePoll?.id!==poll.id) return;
+  try {
+    if (server.localOnly) {
+      delete server.activePoll;
+      saveLocalServers(localServers().map(item=>item.code===server.code?server:item));
+      renderServerPoll();
+    } else await db.ref('serverMeta/'+server.code+'/activePoll').remove();
+  } catch (error) {showModerationNotice('Could not close that vote.');}
 }
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
 function renderMembers(data) {
@@ -2613,6 +3041,8 @@ async function leaveCurrentServer(server) {
     localStorage.setItem('vusServersJoined', JSON.stringify(joined));
     state.servers = state.servers.filter(item => item.code !== server.code);
     state.server = null;
+    applyProfileTheme();
+    renderServerPoll();
     state.channel = '';
     state.lastServerCode = '';
     els.modal.hidden = true;
@@ -2907,6 +3337,7 @@ els.popupScreenBtn.onclick = () => switchVideoSource('screen');
 els.popupStopShareBtn.onclick=stopScreenShare;
 els.popupLeaveBtn.onclick = leaveVoice;
 els.serverSettings.onclick = openServerSettings;
+els.createPollButton.onclick = openPollCreator;
 els.modalClose.onclick = () => { els.modal.hidden = true; applyProfileTheme(); };
 els.addFriend.onclick = openFriendModal;
 new MutationObserver(() => {
@@ -2985,12 +3416,14 @@ els.messageForm.addEventListener('submit',event=>{
 els.messageForm.addEventListener('submit',event=>{
   if (state.dmFriend) return;
   const text=els.messageInput.value.trim();
-  const moderationCommand=/^\/(?:timeout|ban)(?:\s|$)/i.test(text);
+  const moderationCommand=/^\/(?:timeout|untimeout|ban|unban)(?:\s|$)/i.test(text);
+  const serverCommand=/^\/(?:vote|nuke)(?:\s|$)/i.test(text);
   const timeout=activeTimeoutForCurrentUser();
-  if (!moderationCommand&&!timeout) return;
+  if (!moderationCommand&&!serverCommand&&!timeout) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   if (moderationCommand) runModerationCommand(text);
+  else if (serverCommand) runServerCommand(text);
   else showModerationNotice('You are timed out until '+new Date(timeout.expiresAt).toLocaleString()+'.');
 },true);
 els.audioButton.addEventListener('click', () => els.audioInput.click());

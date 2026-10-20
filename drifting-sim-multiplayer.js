@@ -81,12 +81,11 @@ let playerTwoStage = null;
 let playerTwoCollider = null;
 let playerTwoLoading = false;
 let playerTwoReady = false;
+let playerTwoFailed = false;
+let playerTwoSpawnAdjusted = false;
+let primaryOfflineOpponentClones = [];
+let playerTwoOfflineOpponentClones = [];
 let originalKeyboardGetKeyIsDown = null;
-let playerTwoVm = null;
-let playerTwoStage = null;
-let playerTwoCollider = null;
-let playerTwoLoading = false;
-let playerTwoReady = false;
 let cobraTrackRegistered = false;
 let currentSongIndex = -1;
 let nextRoomSync = 0;
@@ -170,6 +169,10 @@ function returnToNativeMenu() {
 }
 
 function startNativeGame() {
+  if (selectedPlayType === 'offline' && gameMode === 'chase' && !playerTwoReady) {
+    if (!playerTwoFailed) startOfflineChasePlayer2();
+    return false;
+  }
   if (!waitForGameRuntime()) return false;
   prepareSelectedCar();
   vm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'enter game' });
@@ -193,6 +196,13 @@ function resumeScratchAudio() {
   } catch {}
 }
 
+function focusPrimaryGame() {
+  try {
+    frame.focus();
+    frame.contentWindow.focus();
+  } catch {}
+}
+
 function startMode(mode, broadcast = true) {
   if (isMultiplayerConnected() && roomHostId && roomHostId !== signedInUser?.key) {
     modeHint.textContent = 'The room host chooses the game mode.';
@@ -200,6 +210,7 @@ function startMode(mode, broadcast = true) {
   }
   gameMode = mode === 'chase' ? 'chase' : 'race';
   clearOfflineChasePlayer2();
+  playerTwoSpawnAdjusted = false;
   const splitScreen = selectedPlayType === 'offline' && gameMode === 'chase';
   simShell.classList.toggle('offline-split', splitScreen);
   modeRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -207,7 +218,10 @@ function startMode(mode, broadcast = true) {
   observedModeRunId = modeRunId;
   modeStartPending = true;
   modeStartSent = startNativeGame();
-  modeHint.textContent = modeStartSent ? 'Starting race…' : 'Loading the game…';
+  focusPrimaryGame();
+  modeHint.textContent = modeStartSent
+    ? 'Starting race…'
+    : splitScreen ? 'Loading Player 2 before the chase starts…' : 'Loading the game…';
   modeStatus.textContent = gameMode === 'race' ? 'RACE · 2 LAPS' : 'CHASE · TAG THE RUNNER';
   if (broadcast && isMultiplayerConnected()) sendState(performance.now(), true);
 }
@@ -217,6 +231,9 @@ function updateModeScreen() {
   if (menuValue === null) return;
   const inMenu = menuValue === true || String(menuValue).toLowerCase() === 'true';
   if (modeStartPending && !inMenu) {
+    if (modeStartSent && selectedPlayType === 'offline' && gameMode === 'chase') {
+      removeFloorItOverlayClones(vm);
+    }
     if (modeStartSent) modeHint.textContent = gameMode === 'race' ? 'Race started' : 'Chase started';
     modeStartPending = false;
     modeStartSent = false;
@@ -310,18 +327,92 @@ function startOfflineChasePlayer2() {
   return true;
 }
 
-function initializePlayerTwoGame() {
+function updateOfflineChasePlayer2() {
+  const chaseActive = selectedPlayType === 'offline' && gameMode === 'chase';
+  if (!chaseActive) {
+    clearOfflineChasePlayer2();
+    return;
+  }
+
+  setPrimaryKeyboardWASD(false);
+  if (!playerTwoLoading && !playerTwoReady && !playerTwoFailed) startOfflineChasePlayer2();
+  if (playerTwoReady) separateOfflineChaseStart();
+}
+
+function separateOfflineChaseStart() {
+  if (playerTwoSpawnAdjusted) return;
+  const inGameValue = variable(stageTarget, 'IN GAME');
+  if (inGameValue !== true && String(inGameValue).toLowerCase() !== 'true') return;
+
+  const primaryState = stateForTarget(colliderTarget, stageTarget);
+  const playerTwoState = stateForTarget(playerTwoCollider, playerTwoStage);
+  if (!primaryState || !playerTwoState) return;
+  if (Math.hypot(primaryState.x - playerTwoState.x, primaryState.y - playerTwoState.y) > 48) {
+    playerTwoSpawnAdjusted = true;
+    return;
+  }
+
+  const startGap = 80;
+  const angle = primaryState.angle;
+  const positioned = setTargetVariable(playerTwoCollider, 'x', primaryState.x - Math.cos(angle) * startGap) &&
+    setTargetVariable(playerTwoCollider, 'y', primaryState.y - Math.sin(angle) * startGap);
+  if (!positioned) return;
+  setTargetVariable(playerTwoCollider, 'x vel', 0);
+  setTargetVariable(playerTwoCollider, 'y vel', 0);
+  setTargetVariable(playerTwoCollider, 'speed', 0);
+  setTargetVariable(playerTwoCollider, 'turn', angle);
+  playerTwoSpawnAdjusted = true;
+}
+
+function forwardOfflineChaseKey(event, type) {
+  const key = String(event.key || '').toLowerCase();
+  if (!playerTwoReady || !['w', 'a', 's', 'd'].includes(key)) return;
+  const document = playerTwoFrame.contentWindow?.document;
+  if (!document) return;
+  document.dispatchEvent(new KeyboardEvent(type, {
+    key: event.key,
+    code: event.code,
+    keyCode: event.keyCode,
+    which: event.which,
+    bubbles: true,
+    cancelable: true,
+  }));
+  event.preventDefault();
+}
+
+function handleOfflineChaseKeyDown(event) {
+  forwardOfflineChaseKey(event, 'keydown');
+}
+
+function handleOfflineChaseKeyUp(event) {
+  forwardOfflineChaseKey(event, 'keyup');
+}
+
+async function initializePlayerTwoGame(attempt = 0) {
+  if (!playerTwoLoading) return;
   try {
     playerTwoVm = playerTwoFrame.contentWindow.vm;
     playerTwoStage = playerTwoVm?.runtime?.getTargetForStage?.() || playerTwoVm?.runtime?.targets?.find((target) => target.isStage) || null;
     playerTwoCollider = playerTwoVm?.runtime?.targets?.find((target) => target.sprite?.name === 'player collider' && target.isOriginal) || null;
-    if (!playerTwoVm || !playerTwoStage || !playerTwoCollider) throw new Error('Player 2 game did not finish loading.');
-    registerCobraTrackFor(playerTwoVm, playerTwoStage, playerTwoCollider);
+    const missing = [
+      !playerTwoVm && 'Scratch runtime',
+      !playerTwoStage && 'stage target',
+      !playerTwoCollider && 'player collider',
+    ].filter(Boolean);
+    if (missing.length) {
+      if (attempt >= 600) throw new Error(`Timed out waiting for ${missing.join(', ')}.`);
+      modeHint.textContent = 'Loading Player 2 game runtime…';
+      requestAnimationFrame(() => initializePlayerTwoGame(attempt + 1));
+      return;
+    }
+    setScratchAudioMuted(true, playerTwoFrame);
+    await registerCobraTrackFor(playerTwoVm, playerTwoStage, playerTwoCollider);
     syncPlayerTwoSelection();
     playerTwoVm.runtime.startHats('event_whenbroadcastreceived', { BROADCAST_OPTION: 'enter game' });
     waitForPlayerTwoGame(0);
   } catch (error) {
     playerTwoLoading = false;
+    playerTwoFailed = true;
     modeHint.textContent = `Could not start Player 2: ${error.message}`;
   }
 }
@@ -336,17 +427,26 @@ function syncPlayerTwoSelection() {
 }
 
 function waitForPlayerTwoGame(attempt) {
-  const inGame = variable(playerTwoStage, 'IN GAME');
-  const inMenu = variable(playerTwoStage, 'IN MENU');
-  if (inGame === true && inMenu === false) {
+  const inGameValue = variable(playerTwoStage, 'IN GAME');
+  const inMenuValue = variable(playerTwoStage, 'IN MENU');
+  const inGame = inGameValue === true || String(inGameValue).toLowerCase() === 'true';
+  const outOfMenu = inMenuValue === false || String(inMenuValue).toLowerCase() === 'false';
+  if (inGame && outOfMenu) {
+    removeFloorItOverlayClones(playerTwoVm);
+    removePlayerTwoMenuClones();
     playerTwoReady = true;
     playerTwoLoading = false;
     playerTwoFrame.hidden = false;
     offlineChaseStatus.textContent = 'P2 WASD · second view ready';
+    if (modeStartPending && !modeStartSent) {
+      modeStartSent = startNativeGame();
+      modeHint.textContent = modeStartSent ? 'Starting chase…' : 'Loading the game…';
+    }
     return;
   }
-  if (attempt >= 180) {
+  if (attempt >= 600) {
     playerTwoLoading = false;
+    playerTwoFailed = true;
     modeHint.textContent = 'Player 2 did not enter the track.';
     return;
   }
@@ -354,14 +454,16 @@ function waitForPlayerTwoGame(attempt) {
 }
 
 function clearOfflineChasePlayer2() {
-  if (!playerTwoLoading && !playerTwoReady) return;
+  if (!playerTwoLoading && !playerTwoReady && !playerTwoFailed) return;
   playerTwoFrame.hidden = true;
   playerTwoFrame.src = 'about:blank';
+  removeOfflineChaseOpponentCars();
   playerTwoVm = null;
   playerTwoStage = null;
   playerTwoCollider = null;
   playerTwoLoading = false;
   playerTwoReady = false;
+  playerTwoFailed = false;
   simShell.classList.remove('offline-split');
   setPrimaryKeyboardWASD(true);
 }
@@ -428,36 +530,57 @@ function applyCar(letter, switchNativeCar = false) {
   renderPlayers();
 }
 
-function registerCobraTrack() {
-  if (cobraTrackRegistered || !window.driftingTrackCobra || !waitForGameRuntime()) return cobraTrackRegistered;
-
-  registerCobraTrackFor(vm, stageTarget, colliderTarget);
-  for (const select of [trackSelect, modeTrackSelect]) {
-    const option = select.querySelector('option[value="cobra-circuit"]');
-    if (option) {
-      option.disabled = false;
-      option.textContent = 'Cobra Circuit';
+async function registerCobraTrack(attempt = 0) {
+  if (cobraTrackRegistered || !window.driftingTrackCobra) return cobraTrackRegistered;
+  if (!waitForGameRuntime()) {
+    if (attempt < 600) {
+      requestAnimationFrame(() => registerCobraTrack(attempt + 1));
+    } else {
+      modeHint.textContent = 'Could not load Cobra Circuit: game runtime did not finish loading.';
     }
+    return false;
   }
-  cobraTrackRegistered = true;
-  return true;
+
+  try {
+    await registerCobraTrackFor(vm, stageTarget, colliderTarget);
+    for (const select of [trackSelect, modeTrackSelect]) {
+      const option = select.querySelector('option[value="cobra-circuit"]');
+      if (option) {
+        option.disabled = false;
+        option.textContent = 'Cobra Circuit';
+      }
+    }
+    cobraTrackRegistered = true;
+    return true;
+  } catch (error) {
+    modeHint.textContent = `Could not load Cobra Circuit: ${error.message}`;
+    return false;
+  }
 }
 
-function registerCobraTrackFor(gameVm, gameStage, gameCollider) {
+async function registerCobraTrackFor(gameVm, gameStage, gameCollider) {
   if (!window.driftingTrackCobra) throw new Error('Cobra Circuit data is missing.');
   const track = window.driftingTrackCobra;
   const renderer = gameVm.renderer || gameVm.runtime.renderer;
   const storage = gameVm.runtime.storage;
   const findInGame = (name) => gameVm.runtime.targets.find((target) => target.sprite?.name === name && target.isOriginal) || null;
+  const shiftTrackArt = (svg) => svg
+    .replaceAll('<path ', '<path transform="translate(-22 83)" ')
+    .replace('<g opacity=".9">', '<g opacity=".9" transform="translate(-22 83)">');
+  const roadSource = track.guardrailPath
+    ? track.road.replace('</svg>', `<path d="${track.guardrailPath}" fill="none" stroke="#263033" stroke-width="116" stroke-linecap="round" stroke-linejoin="round"/><path d="${track.guardrailPath}" fill="none" stroke="#c4c8b9" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/><path d="${track.guardrailPath}" fill="none" stroke="#697365" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/><path d="${track.guardrailPath}" fill="none" stroke="#f4e7a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`)
+    : track.road;
+  const road = shiftTrackArt(roadSource);
   const targets = [
     [gameStage, track.stage, 480, 360],
-    [findInGame('map bottom'), track.road, 480, 360],
-    [findInGame('map top'), track.scenery, 480, 360],
-    [findInGame('map collider'), track.collision, 480, 360],
-    [findInGame('mini map'), track.minimap, 391, 270],
+    [findInGame('map bottom'), road, 480, 360],
+    [findInGame('map top'), shiftTrackArt(track.scenery), 480, 360],
+    [findInGame('map collider'), shiftTrackArt(track.collision), 480, 360],
+    [findInGame('mini map'), shiftTrackArt(track.minimap), 391, 270],
   ];
 
   for (const [target, svg, rotationCenterX, rotationCenterY] of targets) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     if (!target) throw new Error('A required original map sprite is missing.');
     if (target.getCostumes().some((costume) => costume.name === track.id)) continue;
     const asset = storage.createAsset(
@@ -539,9 +662,7 @@ function isMultiplayerConnected() {
 }
 
 function shouldUseFirebaseTransport() {
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.app.github.dev')) return false;
-  return window.location.protocol === 'https:';
+  return new URLSearchParams(window.location.search).get('lan') !== '1';
 }
 
 function getMultiplayerUrl() {
@@ -585,6 +706,15 @@ function carCostumeIndex(letter, layer) {
   return 1 + Math.max(0, letterIndex) * 6 + layer;
 }
 
+function placeCarCloneAboveRoad(gameVm, clone) {
+  const runtime = gameVm?.runtime;
+  const road = runtime?.targets?.find((target) => target.sprite?.name === 'map bottom' && target.isOriginal);
+  const cloneLayer = clone?.getLayerOrder?.();
+  const roadLayer = road?.getLayerOrder?.();
+  if (!Number.isFinite(cloneLayer) || !Number.isFinite(roadLayer) || cloneLayer > roadLayer) return;
+  clone.goForwardLayers(roadLayer - cloneLayer + 1);
+}
+
 function createRemoteCarClones(player) {
   if (!waitForGameRuntime()) return false;
   const template = findTarget('player render car');
@@ -595,6 +725,7 @@ function createRemoteCarClones(player) {
     const clone = template.makeClone();
     if (!clone) break;
     runtime.addTarget(clone);
+    placeCarCloneAboveRoad(vm, clone);
     clone.visible = true;
     clone.setCostume(carCostumeIndex(player.state.carLetter, layer));
     clone.updateAllDrawableProperties();
@@ -610,23 +741,142 @@ function createRemoteCarClones(player) {
 function removeRemoteCarClones(player) {
   for (const clone of player.carClones || []) vm?.runtime?.disposeTarget(clone);
   player.carClones = [];
+  player.nameTag?.remove();
+  player.nameTag = null;
 }
 
 function removeAllRemoteCarClones() {
   for (const player of remotePlayers.values()) removeRemoteCarClones(player);
 }
 
+function removeFloorItOverlayClones(gameVm) {
+  const runtime = gameVm?.runtime;
+  if (!runtime) return;
+  for (const target of [...runtime.targets]) {
+    if (target.isOriginal || target.sprite?.name !== 'Overlay') continue;
+    const costumeName = target.getCostumes?.()[target.currentCostume]?.name;
+    if (costumeName === 'floor it' || costumeName === 'floor it2') runtime.disposeTarget(target);
+  }
+}
+
+function removePlayerTwoMenuClones() {
+  const runtime = playerTwoVm?.runtime;
+  if (!runtime) return;
+  for (const target of [...runtime.targets]) {
+    if (target.sprite?.name !== 'menu') continue;
+    if (target.isOriginal) {
+      target.visible = false;
+      target.updateAllDrawableProperties();
+    } else {
+      runtime.disposeTarget(target);
+    }
+  }
+}
+
+function createOfflineOpponentClones(gameVm, carLetter) {
+  const template = gameVm?.runtime?.targets?.find((target) => target.sprite?.name === 'player render car' && target.isOriginal);
+  if (!template) return [];
+  const clones = [];
+  for (let layer = 0; layer < 6; layer += 1) {
+    const clone = template.makeClone();
+    if (!clone) break;
+    gameVm.runtime.addTarget(clone);
+    placeCarCloneAboveRoad(gameVm, clone);
+    clone.visible = true;
+    clone.setCostume(carCostumeIndex(carLetter, layer));
+    clone.updateAllDrawableProperties();
+    clones.push(clone);
+  }
+  if (clones.length === 6) return clones;
+  for (const clone of clones) gameVm.runtime.disposeTarget(clone);
+  return [];
+}
+
+function updateOfflineOpponentCar(gameVm, gameStage, clones, state) {
+  if (!state || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) return clones;
+  if (clones.length !== 6) clones = createOfflineOpponentClones(gameVm, state.carLetter);
+  if (clones.length !== 6) return clones;
+
+  const cameraX = Number(variable(gameStage, 'CAM X')) || 0;
+  const cameraY = Number(variable(gameStage, 'CAM Y')) || 0;
+  const x = Number(state.x) - cameraX;
+  const y = Number(state.y) - cameraY;
+  const direction = Number.isFinite(Number(state.direction))
+    ? Number(state.direction)
+    : 90 - (Number(state.angle) || 0) * 180 / Math.PI;
+  clones.forEach((clone, layer) => {
+    const costume = carCostumeIndex(state.carLetter, layer);
+    if (clone.currentCostume !== costume) clone.setCostume(costume);
+    clone.x = x;
+    clone.y = y;
+    clone.direction = direction;
+    clone.visible = true;
+    clone.updateAllDrawableProperties();
+  });
+  return clones;
+}
+
+function stateForTarget(collider, gameStage) {
+  const x = Number(variable(collider, 'x'));
+  const y = Number(variable(collider, 'y'));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const vx = Number(variable(collider, 'x vel')) || 0;
+  const vy = Number(variable(collider, 'y vel')) || 0;
+  return {
+    x,
+    y,
+    angle: Number(variable(collider, 'turn')) || Math.atan2(vy, vx),
+    direction: Number(collider.direction),
+    carLetter: String(variable(gameStage, 'CAR LETTER') || 'a').toLowerCase(),
+  };
+}
+
+function updateOfflineChaseOpponentCars() {
+  if (selectedPlayType !== 'offline' || gameMode !== 'chase' || !playerTwoReady) return;
+  removePlayerTwoMenuClones();
+  const primaryState = stateForTarget(colliderTarget, stageTarget);
+  const playerTwoState = stateForTarget(playerTwoCollider, playerTwoStage);
+  primaryOfflineOpponentClones = updateOfflineOpponentCar(vm, stageTarget, primaryOfflineOpponentClones, playerTwoState);
+  playerTwoOfflineOpponentClones = updateOfflineOpponentCar(playerTwoVm, playerTwoStage, playerTwoOfflineOpponentClones, primaryState);
+}
+
+function removeOfflineChaseOpponentCars() {
+  for (const clone of primaryOfflineOpponentClones) vm?.runtime?.disposeTarget(clone);
+  for (const clone of playerTwoOfflineOpponentClones) playerTwoVm?.runtime?.disposeTarget(clone);
+  primaryOfflineOpponentClones = [];
+  playerTwoOfflineOpponentClones = [];
+}
+
 function updateRemoteCarClones() {
   if (!waitForGameRuntime()) return;
+  updateOfflineChaseOpponentCars();
+  const canvas = frame.contentWindow.document.querySelector('canvas');
+  if (!canvas) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  const frameRect = frame.getBoundingClientRect();
   const cameraX = Number(variable(stageTarget, 'CAM X')) || 0;
   const cameraY = Number(variable(stageTarget, 'CAM Y')) || 0;
   for (const player of remotePlayers.values()) {
     const state = player.state;
-    if (!state || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) continue;
+    if (!state || !Number.isFinite(Number(state.x)) || !Number.isFinite(Number(state.y))) {
+      if (player.nameTag) player.nameTag.hidden = true;
+      continue;
+    }
     if (!player.carClones?.length && !createRemoteCarClones(player)) continue;
     const x = Number(state.x) - cameraX;
-    const y = cameraY - Number(state.y);
-    const direction = 90 - (Number(state.angle) || 0) * 180 / Math.PI;
+    const y = Number(state.y) - cameraY;
+    if (!player.nameTag) {
+      player.nameTag = document.createElement('div');
+      player.nameTag.className = 'remote-name-tag';
+      simShell.append(player.nameTag);
+    }
+    player.nameTag.textContent = player.name || 'Driver';
+    player.nameTag.hidden = x < -240 || x > 240 || y < -180 || y > 180;
+    player.nameTag.style.left = `${frameRect.left + canvasRect.left + (x + 240) / 480 * canvasRect.width}px`;
+    player.nameTag.style.top = `${frameRect.top + canvasRect.top + (180 - y) / 360 * canvasRect.height}px`;
+    const direction = Number.isFinite(Number(state.direction))
+      ? Number(state.direction)
+      : 90 - (Number(state.angle) || 0) * 180 / Math.PI;
     player.carClones.forEach((clone, layer) => {
       const costume = carCostumeIndex(state.carLetter, layer);
       if (clone.currentCostume !== costume) clone.setCostume(costume);
@@ -657,6 +907,7 @@ function localState() {
     vx,
     vy,
     angle: Number(variable(colliderTarget, 'turn')) || Math.atan2(vy, vx),
+    direction: Number(colliderTarget.direction),
     speed: Number(variable(colliderTarget, 'speed')) || Math.hypot(vx, vy),
     map: String(variable(stageTarget, 'MAP') ?? ''),
     carLetter: String(variable(stageTarget, 'CAR LETTER') || 'a').toLowerCase(),
@@ -1022,9 +1273,9 @@ function playSong(index) {
   renderPlaylist();
 }
 
-function setScratchAudioMuted(muted) {
+function setScratchAudioMuted(muted, gameFrame = frame) {
   try {
-    const engine = frame.contentWindow.vm?.runtime?.audioEngine;
+    const engine = gameFrame.contentWindow.vm?.runtime?.audioEngine;
     if (engine?.inputNode?.gain) engine.inputNode.gain.value = muted ? 0 : 1;
   } catch (error) {
     // The game audio remains unchanged if the packaged runtime does not expose a master gain.
