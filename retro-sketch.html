@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111a17">
+  <title>Sektor Sketch Party</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./retro-sketch.css">
+</head>
+<body>
+  <main class="computer-shell">
+    <header class="computer-header">
+      <a class="brand" href="./VUS-Servers.html" aria-label="Back to Sektor"><span>S</span></a>
+      <div class="computer-title"><small>SEKTOR COMPUTER / MULTIPLAYER</small><h1>Sketch Party</h1></div>
+      <nav class="computer-apps" aria-label="Computer apps">
+        <button class="app-tab active" id="sketchTab" type="button" aria-selected="true">Sketch Party</button>
+        <button class="app-tab" id="sektorTab" type="button" aria-selected="false">Sektor</button>
+        <a class="app-tab sektor-home-link" href="./VUS-Servers.html">Back to Sektor</a>
+      </nav>
+    </header>
+
+    <section id="sketchScreen" class="screen" aria-label="Sektor Sketch Party">
+      <div class="screen-topline"><span>DRAW / GUESS / REPEAT</span><span class="online-dot">ROOMS ONLINE</span></div>
+      <p id="status" class="status" role="status" aria-live="polite">Enter a name to create a room or join a friend.</p>
+
+      <section id="entryPanel" class="entry-panel">
+        <div class="entry-card">
+          <div class="entry-icon" aria-hidden="true">✎</div>
+          <h2>Make something terrible.</h2>
+          <p>One player draws a word. Everyone else races to guess it.</p>
+          <label for="playerName">Your name</label>
+          <input id="playerName" maxlength="18" autocomplete="nickname" placeholder="PixelPal">
+          <button id="createRoom" class="primary-button" type="button">Create a room</button>
+          <div class="join-divider"><span>OR JOIN A ROOM</span></div>
+          <form id="joinForm" class="join-row"><input id="roomCodeInput" maxlength="6" autocomplete="off" placeholder="ROOM CODE" aria-label="Room code"><button id="joinRoom" type="submit">Join</button></form>
+        </div>
+        <aside class="entry-note"><strong>How to play</strong><span>Share the 6-letter room code. Take turns drawing while everyone else guesses. Correct guesses earn points.</span><small>Up to 8 players · No account required</small></aside>
+      </section>
+
+      <section id="lobbyPanel" class="lobby-panel" hidden>
+        <div class="lobby-heading"><div><span class="eyebrow">YOUR ROOM</span><h2 id="roomTitle">------</h2></div><div class="room-actions"><button id="copyInvite" type="button">Copy invite</button><button id="leaveRoom" class="quiet-button" type="button">Leave</button></div></div>
+        <p id="roomHint">Waiting for players to join…</p>
+        <section id="gameSettings" class="game-settings" aria-label="Game settings">
+          <label>Rounds <select id="roundCount"><option value="1">1 round</option><option value="2">2 rounds</option><option value="3">3 rounds</option><option value="4">4 rounds</option><option value="5">5 rounds</option><option value="6">6 rounds</option><option value="8">8 rounds</option><option value="10">10 rounds</option></select></label>
+          <label>Letters revealed <select id="hintCount"><option value="1">1 hint</option><option value="2">2 hints</option><option value="3">3 hints</option></select></label>
+          <label class="custom-words">Custom words <textarea id="customWords" rows="2" maxlength="1200" placeholder="Optional: type words separated by commas or new lines"></textarea><small>Room host only · leave blank for the built-in word list</small></label>
+          <button id="saveSettings" type="button" class="quiet-button">Save settings</button>
+        </section>
+        <div class="lobby-layout">
+          <div class="players-card"><strong>PLAYERS <span id="playerCount">0</span>/8</strong><div id="playerList" class="player-list"></div></div>
+          <div class="start-card"><div class="start-symbol" aria-hidden="true">▶</div><strong>Ready when you are</strong><span>Invite friends, then start a round.</span><button id="startGame" class="primary-button" type="button" hidden>Start drawing</button><small id="hostHint">The room host starts the game.</small></div>
+        </div>
+      </section>
+
+      <section id="gamePanel" class="game-panel" hidden>
+        <div class="game-toolbar">
+          <div><span class="eyebrow">ROOM <b id="gameRoomCode"></b></span><strong id="roundLabel">Waiting for the next round</strong></div>
+          <div class="round-info"><span id="wordPrompt">Waiting…</span><span id="timer">--:--</span><button id="nextRound" class="primary-button" type="button" hidden>Next drawing turn</button></div>
+          <button id="gameLeave" class="quiet-button" type="button">Leave</button>
+        </div>
+        <div class="game-layout">
+          <section class="drawing-card" aria-label="Drawing board">
+            <div class="canvas-tools"><div id="palette" class="palette" aria-label="Drawing colors"></div><label class="brush-label" for="brushSize">Brush<select id="brushSize"><option value="4">Fine</option><option value="9" selected>Medium</option><option value="16">Thick</option></select></label><span id="drawHint">Only the artist can draw</span></div>
+            <canvas id="drawingCanvas" aria-label="Shared drawing board"></canvas>
+          </section>
+          <aside class="game-sidebar">
+            <section class="score-card"><strong>HIGH SCORES</strong><div id="scoreList"></div></section>
+            <section class="guess-card"><strong>GUESSES</strong><div id="chatLog" class="chat-log" aria-live="polite"></div><form id="guessForm"><input id="guessInput" maxlength="80" autocomplete="off" placeholder="Type your guess…" aria-label="Your guess"><button type="submit" aria-label="Send guess">↗</button></form></section>
+          </aside>
+        </div>
+      </section>
+    </section>
+
+    <section id="sektorScreen" class="sektor-screen" hidden aria-label="Sektor on this computer">
+      <div class="screen-topline"><span>SEKTOR / COMPUTER APP</span><a href="./retro-sketch.html">Back to Sketch Party</a></div>
+      <iframe title="Sektor app on the computer screen" src="./VUS-Servers.html"></iframe>
+    </section>
+    <footer class="computer-footer"><span>SEKTOR / RETRO ARCADE</span><span>CREATE • CONNECT • PLAY</span></footer>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="./firebase-config.js"></script>
+  <script src="./retro-sketch.js"></script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111511">
+  <title>Slides · Sektor</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./sektor-slides.css">
+</head>
+<body>
+  <main class="slides-app">
+    <header class="topbar">
+      <a class="brand" href="./VUS-Servers.html" aria-label="Back to Sektor">S</a>
+      <div class="brand-copy"><strong>SEKTOR SLIDES</strong><small>SERVER WORLDS / PRESENTATION SPACE</small></div>
+      <label class="server-picker">SERVER<select id="serverSelect" aria-label="Select a Sektor server"><option value="">Loading servers…</option></select></label>
+      <div class="account-chip"><span id="avatar" class="avatar">?</span><span id="accountName">Not signed in</span><strong><span id="pointsBalance">0</span> pts</strong></div>
+    </header>
+    <section id="signedOut" class="signed-out" hidden>
+      <h1>Sign in to enter Slides</h1><p>Slides uses your current Sektor account and is attached to one of your servers.</p>
+      <a class="primary-button" href="./VUS-Servers.html">Go to Sektor</a>
+    </section>
+    <section id="noServer" class="empty-state" hidden>
+      <h1>No server selected</h1><p>Join or create a server in Sektor, then come back to build its Slides domain.</p>
+      <a class="primary-button" href="./VUS-Servers.html">Open Sektor</a>
+    </section>
+    <section id="workspace" hidden>
+      <nav class="tabs" aria-label="Slides pages">
+        <button type="button" class="tab active" data-tab="browse">Present</button>
+        <button type="button" class="tab" data-tab="games">Games</button>
+        <button type="button" class="tab" data-tab="shop">Domain shop</button>
+        <button type="button" class="tab" data-tab="quests">Quests</button>
+      </nav>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="browseView" class="view">
+        <div class="domain-heading">
+          <div><span class="eyebrow" id="serverName">SEKTOR SERVER</span><h1 id="domainName">Slides domain</h1><p id="domainDescription">A presentation space belonging to this server.</p></div>
+          <div class="domain-stats"><strong><span id="slideCount">0</span>/30 slides</strong><span id="domainRole">Member</span><button id="editPresentationButton" type="button" class="secondary-button">Edit slide</button></div>
+        </div>
+        <div class="browse-layout">
+          <aside class="slide-index"><div class="index-heading"><strong>SLIDES</strong><span id="indexCount">0</span></div><div id="slideList" class="slide-list"></div><button id="browseAddSlide" type="button" class="filmstrip-add">＋ Add slide</button></aside>
+          <article id="slideCanvas" class="slide-canvas" aria-live="polite"></article>
+        </div>
+      </section>
+      <section id="gamesView" class="view inline-view" hidden>
+        <div class="section-heading"><div><span class="eyebrow">PLAY TOGETHER</span><h2>Games</h2><p>Play a shared Color Clash card match or challenge someone to Tic-Tac-Toe.</p></div></div>
+        <div class="mini-games">
+          <article class="mini-game-card">
+            <span class="eyebrow">MULTIPLAYER CARD GAME</span><h3>Color Clash</h3>
+            <p>Match the color or number on the discard pile. Play every card in your hand to win.</p>
+            <div id="colorClashStatus" class="game-result" aria-live="polite">Join to start a match.</div>
+            <div id="colorClashTable" class="color-clash-table"></div>
+            <div id="colorClashHand" class="color-clash-hand" aria-label="Your cards"></div>
+            <div class="game-actions"><button id="colorClashJoin" class="primary-button" type="button">Start / join match</button><button id="colorClashDraw" class="secondary-button" type="button" hidden>Draw a card</button><button id="colorClashReset" class="secondary-button" type="button" hidden>New match</button></div>
+          </article>
+          <article class="mini-game-card">
+            <span class="eyebrow">MULTIPLAYER PARTY GAME</span><h3>Prompt Party</h3>
+            <p>Fill in an original silly prompt, then let the host choose the funniest answer.</p>
+            <div id="promptPartyStatus" class="game-result" aria-live="polite">Join a room to play.</div>
+            <blockquote id="promptPartyPrompt" class="prompt-party-prompt" hidden></blockquote>
+            <div id="promptPartyAnswers" class="prompt-party-answers"></div>
+            <form id="promptPartyAnswerForm" class="prompt-party-answer-form" hidden>
+              <label for="promptPartyAnswer">Your answer</label><textarea id="promptPartyAnswer" maxlength="160" rows="2" required></textarea><button class="primary-button" type="submit">Submit answer</button>
+            </form>
+            <div class="game-actions"><button id="promptPartyJoin" class="primary-button" type="button">Join room</button><button id="promptPartyStart" class="secondary-button" type="button" hidden>Start round</button><button id="promptPartyReset" class="secondary-button" type="button" hidden>New round</button></div>
+          </article>
+          <article class="mini-game-card tic-tac-toe-card">
+            <span class="eyebrow">2-PLAYER MATCH</span><h3>Tic-Tac-Toe</h3>
+            <p>Join the open seat. The first player is X; the second player is O.</p>
+            <div id="ticTacToeStatus" class="game-result" aria-live="polite">Join to start a match.</div>
+            <div id="ticTacToeBoard" class="tic-tac-toe-board" role="group" aria-label="Tic-Tac-Toe board"></div>
+            <div class="game-actions"><button id="ticTacToeJoin" class="primary-button" type="button">Join game</button><button id="ticTacToeReset" class="secondary-button" type="button" hidden>New match</button></div>
+          </article>
+        </div>
+      </section>
+      <section id="editorView" class="view" hidden>
+        <form id="domainSettings" class="domain-settings" hidden>
+          <label>Presentation name<input id="domainTitleInput" maxlength="60" required></label>
+          <label>About this presentation<input id="domainDescriptionInput" maxlength="180"></label>
+          <button class="secondary-button" type="submit">Save details</button>
+        </form>
+        <form id="slideForm" class="presentation-editor" novalidate>
+          <header class="editor-titlebar">
+            <div class="document-title"><span class="document-icon">▤</span><div><strong id="editorDomainTitle">Presentation</strong><small id="editorSaveState">All changes saved</small></div></div>
+            <div class="editor-title-actions"><button id="returnToPresent" type="button" class="secondary-button">Present</button><button id="editDomainDetails" type="button" class="editor-icon-button" title="Edit presentation details" aria-label="Edit presentation details">⚙</button><button id="newSlide" type="button" class="primary-button">＋ New slide</button><button type="submit" class="primary-button">Save now</button></div>
+          </header>
+          <nav class="editor-menus" aria-label="Presentation editing menus">
+            <div class="file-menu"><button id="fileMenuButton" type="button" aria-haspopup="menu" aria-expanded="false">File</button><div id="fileMenuPanel" class="file-menu-panel" role="menu" hidden><button type="button" role="menuitem" data-file-view="teleport">Teleport page</button><button type="button" role="menuitem" data-file-view="shop">Slides shop</button><button type="button" role="menuitem" data-file-view="quests">Quests</button></div></div><button type="button" data-editor-menu="Edit">Edit</button><button type="button" data-editor-menu="View">View</button><button type="button" data-editor-menu="Insert">Insert</button><button type="button" data-editor-menu="Slide">Slide</button><button type="button" data-editor-menu="Format">Format</button><button type="button" data-editor-menu="Tools">Tools</button>
+          </nav>
+          <div class="editor-toolbar" role="toolbar" aria-label="Slide formatting">
+            <button id="undoEdit" class="editor-icon-button" type="button" title="Undo">↶</button><button id="redoEdit" class="editor-icon-button" type="button" title="Redo">↷</button>
+            <span class="toolbar-divider"></span><button id="insertMenuButton" class="toolbar-button" type="button">＋ Insert</button><button id="addTextBox" class="toolbar-button" type="button">＋ Text box</button>
+            <span class="toolbar-divider"></span><label class="box-size-control">Box width <input id="textBoxWidth" type="range" min="10" max="100" value="70" aria-label="Text box width"><output id="textBoxWidthValue" for="textBoxWidth">70%</output></label><label class="box-size-control">Box height <input id="textBoxHeight" type="range" min="8" max="90" value="20" aria-label="Text box height"><output id="textBoxHeightValue" for="textBoxHeight">20%</output></label>
+            <select id="fontSize" aria-label="Text size"><option value="16">16</option><option value="20">20</option><option value="24" selected>24</option><option value="32">32</option><option value="40">40</option><option value="48">48</option><option value="64">64</option></select>
+            <button id="boldText" class="editor-icon-button" type="button" aria-label="Bold" title="Bold"><strong>B</strong></button><button id="italicText" class="editor-icon-button" type="button" aria-label="Italic" title="Italic"><em>I</em></button>
+            <select id="textAlign" aria-label="Text alignment"><option value="left">Align left</option><option value="center">Align center</option><option value="right">Align right</option></select>
+            <button id="moveSlideUp" class="editor-icon-button" type="button" title="Move slide up" aria-label="Move slide up">↑</button><button id="moveSlideDown" class="editor-icon-button" type="button" title="Move slide down" aria-label="Move slide down">↓</button>
+            <button id="deleteSlide" class="editor-icon-button delete-slide-button" type="button" title="Delete slide" aria-label="Delete slide">⌫</button>
+            <label class="background-control">Background <input id="slideBackgroundColor" type="color" value="#111612" aria-label="Slide background color"></label>
+          </div>
+          <section id="insertPanel" class="insert-panel" hidden>
+            <label>Insert<select id="mediaType"><option value="none">Text only</option><option value="image">Image</option><option value="music">Audio file</option><option value="video">Video file</option><option value="youtube">YouTube video</option><option value="teleport">Teleport button</option></select></label>
+            <label id="mediaUrlField">YouTube video URL<input id="mediaUrl" type="url" maxlength="500" placeholder="https://youtube.com/watch?v=…"></label>
+            <label id="mediaFileField" hidden>Choose a media file<input id="mediaFile" type="file" accept="image/*,audio/*,video/*"></label>
+            <small id="mediaHelp" class="media-help">YouTube links play as videos. To add audio, choose an audio file.</small>
+            <label id="mediaTargetField" hidden>Destination<select id="mediaTarget"></select></label>
+            <div id="teleportOptions" class="teleport-options" hidden><label>Button text<input id="teleportLabel" maxlength="28" value="Visit this slide"></label><label>Button color<input id="teleportColor" type="color" value="#85e3ac"></label></div>
+            <button id="removeSlideMedia" class="danger-button" type="button" hidden>Remove media from slide</button>
+            <label class="egg-option"><input id="voiceChat" type="checkbox"> Add voice chat connect (uses one item from your inventory)</label>
+          </section>
+          <div class="editor-workspace">
+            <aside class="editor-filmstrip"><header><strong>Slides</strong><span id="editorSlideCount">0</span></header><div id="editorSlideList" class="editor-slide-list"></div><button id="addSlideFromFilmstrip" type="button" class="filmstrip-add">＋ Add slide</button></aside>
+            <section class="editor-stage">
+              <div class="stage-ruler" aria-hidden="true"><span>SEKTOR PRESENTATION EDITOR</span><span id="stageSlideNumber">SLIDE 1</span></div>
+              <article class="slide-canvas editing-canvas">
+                <input id="slideTitle" class="canvas-title" maxlength="60" placeholder="Click to add title" aria-label="Slide title">
+                <textarea id="slideBody" class="canvas-body" maxlength="4000" placeholder="Click to add text" aria-label="Slide text"></textarea>
+                <div id="textBoxLayer" class="text-box-layer" aria-label="Additional slide text boxes"></div>
+                <div id="slideMediaPreview" class="slide-media-preview" hidden></div>
+              </article>
+              <label class="speaker-notes">Speaker notes<textarea id="slideNotes" maxlength="2000" rows="2" placeholder="Click to add speaker notes"></textarea></label>
+            </section>
+          </div>
+          <div class="editor-footer"><span id="slideStatus">Ready</span><span>Changes are shared with this server</span></div>
+        </form>
+      </section>
+      <section id="shopView" class="view inline-view" hidden>
+        <div class="section-heading"><div><span class="eyebrow">YOUR SLIDES / YOUR INVENTORY</span><h2>Domain shop</h2><p>Items you buy go into your personal inventory for this server.</p></div></div>
+        <div id="shopItems" class="shop-items"></div>
+        <form id="shopForm" class="shop-form" hidden>
+          <h3>Add a shop item</h3>
+          <div class="form-grid">
+            <label>Preset<select id="shopPreset"><option value="slide-pass">Slide creation pass</option><option value="voice-chat">Voice chat connect</option><option value="boost-quests">2× points on quests</option><option value="music-pass">Music pass</option><option value="image-pass">Image pass</option><option value="video-pass">Video pass</option></select></label>
+            <label>Price in points<input id="shopPrice" type="number" min="1" max="1000000" value="250" required></label>
+            <label id="shopDurationField" hidden>Duration<select id="shopDuration"><option value="hour">1 hour</option><option value="day">1 day</option><option value="week">1 week</option><option value="month">1 month</option></select></label>
+            <label>Item name<input id="shopName" maxlength="40" placeholder="Optional custom name"></label>
+          </div>
+          <div class="form-actions"><button class="primary-button" type="submit">Add to shop</button></div>
+        </form>
+        <button id="openShopForm" class="secondary-button" type="button" hidden>＋ Add shop item</button>
+        <section class="inventory"><h3>Your inventory</h3><div id="inventoryList" class="inventory-list"></div></section>
+        <section class="player-market">
+          <div class="section-heading"><div><span class="eyebrow">COMMUNITY MARKET</span><h2>Player shops</h2><p>Buy and sell music, images, videos, and other digital items with server points.</p></div><button id="openPlayerListingForm" class="secondary-button" type="button">＋ List an item</button></div>
+          <form id="playerListingForm" class="shop-form" hidden>
+            <h3>List an item for sale</h3>
+            <div class="form-grid">
+              <label>Item name<input id="playerListingName" maxlength="60" required></label>
+              <label>Type<select id="playerListingType"><option value="music">Music</option><option value="image">Image</option><option value="video">Video</option><option value="other">Other digital item</option></select></label>
+              <label>Media file<input id="playerListingFile" type="file" accept="image/*,audio/*,video/*"></label>
+              <label>Price in points<input id="playerListingPrice" type="number" min="1" max="1000000" value="50" required></label>
+              <label>Stock quantity<input id="playerListingStock" type="number" min="1" max="9999" value="1" required></label>
+              <label>Description<input id="playerListingDescription" maxlength="180"></label>
+            </div>
+            <p class="listing-stock-cost">Choose a file that matches the listing type. Media files are limited to 6 MB.</p>
+            <p class="listing-stock-cost">The first copy is free; each extra copy costs 10 points. Stock fee: <strong id="playerListingStockCost">0 points</strong>.</p>
+            <div id="playerListingPreview" class="player-listing-preview-area" aria-live="polite"></div>
+            <div class="form-actions"><button class="primary-button" type="submit">Publish listing</button><button id="cancelPlayerListing" class="secondary-button" type="button">Cancel</button></div>
+          </form>
+          <div id="playerListingGrid" class="shop-items"></div>
+        </section>
+      </section>
+      <section id="questsView" class="view inline-view" hidden>
+        <div class="section-heading"><div><span class="eyebrow">PLAY / EXPLORE / EARN</span><h2>Daily and weekly quests</h2><p>12 ready-to-play quests for points. Daily quests reset at midnight UTC; weekly quests reset Monday at midnight UTC.</p><p id="eggBotStatus" class="egg-bot-status">The daily egg bot hides one Easter egg on a random slide.</p></div></div>
+        <div id="questGrid" class="quest-grid"></div>
+        <form id="secretCodeForm" class="secret-code-form">
+          <label for="secretCodeInput"><strong>Secret reward</strong><span id="secretCodeStatus" class="secret-code-status">Type the secret code to claim 10,000 points once on this server.</span></label>
+          <div><input id="secretCodeInput" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="Enter secret code"><button id="secretCodeButton" class="secondary-button" type="submit">Redeem</button></div>
+        </form>
+        <section class="leaderboard"><div><span class="eyebrow">SERVER RANKINGS</span><h3>Points leaderboard</h3></div><ol id="leaderboardList"></ol></section>
+        <form id="questSettings" class="quest-settings" hidden>
+          <strong>OWNER QUEST REWARDS</strong>
+          <div class="form-grid"><label>Daily · visit a slide<input id="dailyReward" type="number" min="1" max="10000" value="25"></label><label>Daily · find an Easter egg<input id="eggReward" type="number" min="1" max="10000" value="50"></label><label>Weekly · visit 5 unique slides<input id="weeklyReward" type="number" min="1" max="50000" value="150"></label></div>
+          <button class="secondary-button" type="submit">Save quest rewards</button>
+        </form>
+      </section>
+      <section id="teleportView" class="view" hidden>
+        <div class="section-heading"><div><span class="eyebrow">SEKTOR SLIDES / DESTINATIONS</span><h2>Teleport page</h2><p>Choose a slide destination in this server’s presentation.</p></div></div>
+        <div id="teleportList" class="teleport-list"></div>
+      </section>
+    </section>
+    <footer><span>SEKTOR SLIDES</span><span>LIVE CURSORS APPEAR ON THE ACTIVE SLIDE ON ONLINE SERVERS · VOICE CONNECT IS AVAILABLE ON ENABLED SLIDES</span></footer>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+  <script src="./firebase-config.js"></script>
+  <script src="./sektor-slides.js"></script>
+</body>
+</html>

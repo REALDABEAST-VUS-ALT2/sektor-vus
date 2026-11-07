@@ -1807,15 +1807,6 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       if (pilot&&!dx&&!dy) localPosition={x:Number(transport.x),y:Number(transport.y)};
       let moveX=dx;
       let moveY=dy;
-      if (aimActive&&Math.hypot(aimOffset.x,aimOffset.y)>1) {
-        const angle=Math.atan2(aimOffset.y,aimOffset.x);
-        const forward=(keys.has('w')||keys.has('arrowup')?1:0)-
-          (keys.has('s')||keys.has('arrowdown')?1:0);
-        const strafe=(keys.has('d')||keys.has('arrowright')?1:0)-
-          (keys.has('a')||keys.has('arrowleft')?1:0);
-        moveX=Math.cos(angle)*forward-Math.sin(angle)*strafe;
-        moveY=Math.sin(angle)*forward+Math.cos(angle)*strafe;
-      }
       const length=Math.hypot(moveX,moveY)||1;
       const ease=1-Math.exp(-10*elapsed);
       const inputActive = Math.abs(moveX) > 0 || Math.abs(moveY) > 0 || grapplePull;
