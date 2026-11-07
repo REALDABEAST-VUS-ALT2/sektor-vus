@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#201a19">
+  <title>Cozy Dorm · Sektor</title>
+  <link rel="stylesheet" href="./cozy-dorm.css?v=20261107-monitor-screen">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./cozy-dorm.js?v=20261107-monitor-screen"></script>
+</head>
+<body>
+  <main class="dorm-shell">
+    <header class="dorm-topbar">
+      <a class="dorm-brand" href="./VUS-Servers.html"><span>SEKTOR · SOCIAL SPACE</span><strong>Cozy Dorm</strong></a>
+      <div class="dorm-top-actions">
+        <span id="connectionStatus" class="connection-status" role="status">Not in a room</span>
+        <button id="shareRoom" type="button" disabled>Copy invite</button>
+        <button id="enterXR" type="button" hidden>Enter VR</button>
+        <a href="./VUS-Servers.html">Back to Sektor</a>
+      </div>
+    </header>
+    <section class="dorm-world" aria-label="3D Cozy Dorm">
+      <canvas id="dormCanvas" aria-label="Cozy Dorm 3D world"></canvas>
+      <div class="world-hud">
+        <div class="room-label"><small>YOUR ROOM</small><strong id="roomCodeLabel">—</strong></div>
+        <div class="room-players"><small>IN THE DORM</small><span id="playerList">Join a room to meet people</span></div>
+      </div>
+      <div id="computerModeBar" class="computer-mode-bar" hidden>
+        <span>At the computer · walking and room controls are paused</span>
+        <button type="button" data-computer-app="sektor">Sektor</button>
+        <button type="button" data-computer-app="sketch">Retro Sketch</button>
+        <button id="leaveComputer" type="button">Go back to room</button>
+      </div>
+      <div class="movement-hint" id="movementHint">WASD to move · drag empty space to look · click the monitor to use the computer</div>
+      <div class="dorm-controls">
+        <label>Theme
+          <select id="dormTheme">
+            <option value="sunset">Cozy sunset</option>
+            <option value="forest">Forest</option>
+            <option value="midnight">Midnight</option>
+            <option value="lofi">Lo-fi</option>
+          </select>
+        </label>
+        <label>Decor
+          <select id="furnitureType" disabled>
+            <option value="bed">Bed</option>
+            <option value="desk">Desk</option>
+            <option value="chair">Chair</option>
+            <option value="plant">Plant</option>
+            <option value="lamp">Floor lamp</option>
+            <option value="shelf">Bookshelf</option>
+          </select>
+        </label>
+        <button id="placeFurniture" type="button" disabled>Add decor</button>
+        <button id="rotateFurniture" type="button" disabled>Rotate selected</button>
+        <button id="deleteFurniture" type="button" disabled>Delete selected</button>
+      </div>
+      <div class="touch-pad" aria-label="Touch movement controls">
+        <button type="button" data-move-code="KeyW" aria-label="Move forward">↑</button>
+        <button type="button" data-move-code="KeyA" aria-label="Move left">←</button>
+        <button type="button" data-move-code="KeyS" aria-label="Move backward">↓</button>
+        <button type="button" data-move-code="KeyD" aria-label="Move right">→</button>
+      </div>
+      <aside class="computer-hint" id="computerHint" hidden>
+        <strong>Dorm computer</strong>
+        <span id="computerAppHint">Pong plays automatically. Choose Sektor or Sketch to open it here.</span>
+        <div class="computer-app-buttons" role="group" aria-label="Dorm computer apps">
+          <button type="button" data-computer-app="arcade" aria-pressed="true">Pong</button>
+          <button type="button" data-computer-app="stream" aria-pressed="false">Radio</button>
+          <button type="button" data-computer-app="room" aria-pressed="false">Room</button>
+          <button type="button" data-computer-app="sektor" aria-pressed="false">Sektor</button>
+          <button type="button" data-computer-app="sketch" aria-pressed="false">Retro Sketch</button>
+        </div>
+        <div id="radioControls" class="radio-controls" hidden>
+          <button id="chooseRadioFiles" type="button">Choose music files</button>
+          <input id="radioFiles" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" multiple hidden>
+          <select id="radioTrack" aria-label="Radio track" disabled><option>No local tracks loaded</option></select>
+          <div class="radio-playback">
+            <button id="radioPrevious" type="button" aria-label="Previous track" disabled>‹</button>
+            <button id="radioPlay" type="button" disabled>Play</button>
+            <button id="radioNext" type="button" aria-label="Next track" disabled>›</button>
+            <label>Volume <input id="radioVolume" type="range" min="0" max="1" step=".01" value=".7"></label>
+          </div>
+          <span id="radioStatus" role="status">Only you can hear local radio playback.</span>
+        </div>
+      </aside>
+      <div id="computerAppWindow" class="computer-app-surface" aria-hidden="true" hidden>
+        <iframe id="computerAppFrame" title="Dorm computer app" allow="camera; microphone; clipboard-read; clipboard-write; fullscreen" referrerpolicy="same-origin"></iframe>
+      </div>
+      <section id="roomLobby" class="room-lobby">
+        <form id="roomForm" class="room-card">
+          <span class="lobby-eyebrow">A LITTLE SPACE TO HANG OUT</span>
+          <h1>Make yourself at home.</h1>
+          <p>Walk around a cozy 3D dorm, invite up to seven friends, and decorate together.</p>
+          <label>Your nickname<input id="playerName" maxlength="24" autocomplete="nickname" required></label>
+          <label>Avatar color<input id="playerColor" type="color" value="#ff8b79"></label>
+          <label>Room code<input id="roomCode" maxlength="32" autocomplete="off" placeholder="Create a room or enter a code"></label>
+          <div class="room-actions"><button class="primary" type="submit" id="joinRoom">Create / join dorm</button><button type="button" id="createRoom">Create private dorm</button></div>
+          <small id="lobbyStatus" role="status">Creating a room makes a shareable code. The room owner can move and remove furniture.</small>
+        </form>
+      </section>
+    </section>
+    <footer class="dorm-footer"><span>WASD move · click once to look around · Esc releases mouse · click the computer to use it</span><span>Room layouts stay available while this room server is running.</span></footer>
+  </main>
+</body>
+</html>

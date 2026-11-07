@@ -1,2 +1,8 @@
 .sektor-lan-data.json
 .sektor-lan-data.json.tmp
+.gardenfall-saves.json
+.gardenfall-saves.json.tmp
+/node_modules/
+/.firebase/
+/firebase-debug.log
+/firebase-debug.*.log

@@ -1,0 +1,75 @@
+:root{color-scheme:dark;--cream:#f4efe6;--wood:#3d2314;--sunset:#ffb77d;--pink:#ff6b8b;--green:#4a7c59;--panel:rgba(32,26,25,.86);--line:rgba(255,230,201,.2)}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#171516;color:var(--cream);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+button,input,select{font:inherit}
+button,a{color:inherit}
+.dorm-shell{display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:100dvh}
+.dorm-topbar{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px clamp(14px,3vw,34px);border-bottom:1px solid var(--line);background:#201a19}
+.dorm-brand{display:grid;color:var(--cream);text-decoration:none}
+.dorm-brand span,.lobby-eyebrow,.room-label small,.room-players small{color:#d8aa8a;font-size:9px;font-weight:800;letter-spacing:.15em}
+.dorm-brand strong{font-family:Georgia,serif;font-size:22px;font-weight:600}
+.dorm-top-actions{display:flex;align-items:center;gap:8px}
+.dorm-top-actions button,.dorm-top-actions a,.dorm-controls button,.dorm-controls select{min-height:36px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#302321;color:var(--cream);font-size:11px;text-decoration:none}
+.dorm-top-actions button:not(:disabled),.dorm-controls button:not(:disabled){cursor:pointer}
+.dorm-top-actions button:hover,.dorm-top-actions a:hover,.dorm-controls button:not(:disabled):hover{border-color:var(--sunset);background:#463029}
+.dorm-top-actions button:disabled,.dorm-controls button:disabled,.dorm-controls select:disabled{opacity:.5}
+.connection-status{color:#e7c9a9;font-size:10px}
+.dorm-world{position:relative;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 50% 25%,#8c5c53 0,#443538 36%,#211e26 76%)}
+#dormCanvas{display:block;width:100%;height:100%;outline:0;touch-action:none;cursor:grab}
+#dormCanvas:active{cursor:grabbing}
+.dorm-world:has(#computerModeBar:not([hidden])) #dormCanvas{cursor:default}
+.world-hud{position:absolute;top:15px;left:15px;right:15px;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+.computer-mode-bar{position:absolute;z-index:5;top:15px;left:50%;display:flex;align-items:center;gap:7px;max-width:calc(100% - 24px);transform:translateX(-50%);padding:8px 10px;border:1px solid rgba(255,183,125,.38);border-radius:9px;background:var(--panel);box-shadow:0 6px 24px #08070866}
+.computer-mode-bar[hidden]{display:none}
+.computer-mode-bar span{color:#f3dcc9;font-size:10px;white-space:nowrap}
+.computer-mode-bar button{padding:7px 9px;border:1px solid rgba(255,183,125,.38);border-radius:7px;background:#302321;color:var(--cream);font-size:10px;white-space:nowrap;cursor:pointer}
+.computer-mode-bar button[aria-pressed=true],.computer-mode-bar button:last-child{border-color:var(--sunset);background:#463029;color:var(--sunset)}
+.room-label,.room-players{display:grid;gap:2px;max-width:min(48vw,420px);padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);backdrop-filter:blur(8px)}
+.room-label strong{font-size:13px;letter-spacing:.12em}
+.room-players span{overflow:hidden;color:#f0d9c5;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.movement-hint{position:absolute;bottom:76px;left:50%;max-width:calc(100% - 24px);transform:translateX(-50%);padding:7px 11px;border:1px solid var(--line);border-radius:99px;background:var(--panel);color:#e9d8c6;font-size:10px;text-align:center;pointer-events:none}
+.dorm-controls{position:absolute;bottom:14px;left:50%;display:flex;align-items:end;justify-content:center;gap:7px;max-width:calc(100% - 22px);transform:translateX(-50%);padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);backdrop-filter:blur(8px)}
+.touch-pad{position:absolute;bottom:14px;left:14px;display:none;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(2,42px);gap:4px;touch-action:none}
+.touch-pad button{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--cream);font-size:18px;touch-action:none}
+.touch-pad button:first-child{grid-column:2}
+.touch-pad button:nth-child(2){grid-column:1;grid-row:2}
+.touch-pad button:nth-child(3){grid-column:2;grid-row:2}
+.touch-pad button:nth-child(4){grid-column:3;grid-row:2}
+.dorm-controls label{display:grid;gap:3px;color:#d8aa8a;font-size:9px;font-weight:700}
+.dorm-controls select{min-width:110px}
+.computer-hint{position:absolute;right:16px;bottom:78px;display:grid;gap:6px;max-width:230px;padding:10px 12px;border:1px solid rgba(255,183,125,.3);border-radius:9px;background:var(--panel)}
+.computer-hint{z-index:4}
+.computer-hint[hidden]{display:none}
+.computer-hint strong{color:var(--sunset);font-size:11px}
+.computer-hint span{color:#e9d8c6;font-size:10px}
+.computer-app-buttons{display:flex;flex-wrap:wrap;gap:5px}
+.computer-app-buttons button{padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#302321;color:var(--cream);font-size:10px;cursor:pointer}
+.computer-app-buttons button[aria-pressed=true]{border-color:var(--sunset);background:#463029;color:var(--sunset)}
+.computer-app-surface{position:absolute;z-index:4;display:grid;overflow:hidden;border:5px solid #25232a;border-radius:4px;background:#171516;box-shadow:0 0 0 2px #111014,0 0 20px #0009}
+.computer-app-surface[hidden]{display:none}
+.computer-app-surface iframe{display:block;width:100%;height:100%;border:0;background:#171516}
+.radio-controls{display:grid;gap:6px;padding-top:6px;border-top:1px solid var(--line)}
+.radio-controls[hidden]{display:none}
+.radio-controls button,.radio-controls select{min-width:0;padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:#302321;color:var(--cream);font-size:10px}
+.radio-controls button:not(:disabled){cursor:pointer}
+.radio-controls select{width:100%}
+.radio-playback{display:flex;align-items:center;gap:5px}
+.radio-playback label{display:flex;align-items:center;gap:4px;margin-left:auto;color:#d8aa8a;font-size:9px}
+.radio-playback input{width:70px}
+.radio-controls>span{color:#e9d8c6;font-size:9px}
+.room-lobby{position:absolute;inset:0;display:grid;place-items:center;padding:18px;background:rgba(17,15,18,.38);backdrop-filter:blur(3px)}
+.room-lobby[hidden]{display:none}
+.room-card{display:grid;gap:12px;width:min(100%,390px);padding:clamp(20px,4vw,32px);border:1px solid rgba(255,230,201,.25);border-radius:17px;background:rgba(35,27,27,.95);box-shadow:0 24px 80px #08070888}
+.room-card h1{margin:0;font:500 clamp(26px,5vw,36px)/1.1 Georgia,serif}
+.room-card p{margin:0;color:#d4c2b5;font-size:12px;line-height:1.55}
+.room-card>label{display:grid;gap:5px;color:#e3c6b0;font-size:10px;font-weight:700}
+.room-card input{width:100%;min-height:39px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#181516;color:var(--cream)}
+.room-card input[type=color]{height:38px;padding:3px}
+.room-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.room-actions button{min-height:42px;padding:9px;border:1px solid #795444;border-radius:8px;background:#392a27;color:var(--cream);font-size:11px;font-weight:750;cursor:pointer}
+.room-actions .primary{border-color:#f6c39d;background:var(--sunset);color:#2b1d18}
+.room-actions button:hover{filter:brightness(1.09)}
+.room-card>small{min-height:28px;color:#c9b2a1;font-size:10px}
+.dorm-footer{display:flex;justify-content:space-between;gap:10px;padding:8px 16px;border-top:1px solid var(--line);background:#201a19;color:#b5a49a;font-size:9px}
+@media(max-width:700px){.dorm-topbar{align-items:flex-start}.dorm-top-actions{flex-wrap:wrap;justify-content:flex-end}.connection-status{width:100%;text-align:right}.dorm-controls{left:auto;right:10px;bottom:12px;flex-wrap:wrap;max-width:calc(100% - 155px);transform:none}.dorm-controls label{flex:1}.dorm-controls select{width:100%}.touch-pad{display:grid}.movement-hint{bottom:120px}.dorm-footer span:last-child{display:none}}
+@media(max-width:420px){.dorm-brand strong{font-size:19px}.dorm-top-actions button,.dorm-top-actions a{padding:7px 9px;font-size:10px}.room-actions{grid-template-columns:1fr}.dorm-controls button{flex:1}}

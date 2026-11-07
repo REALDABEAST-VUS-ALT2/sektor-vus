@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "sektor-b5021"
-  }
+    "default": "sektor-b5021",
+    "sektor": "sektor-61253"
+  },
+  "targets": {},
+  "etags": {}
 }

@@ -97,6 +97,8 @@ async function acceptFriendRequest(request) {
 async function openFriendsArea() {
   const navigationVersion=state.navigationVersion=(state.navigationVersion||0)+1;
   state.activeView='friends';
+  stopNotificationRefresh();
+  document.getElementById('notificationPanel').hidden=true;
   if (state.server) state.lastServerCode=state.server.code;
   await clearSubscriptions();
   closePrivateDm();
@@ -127,6 +129,8 @@ async function openFriendsArea() {
 async function openPrivateDm(friend) {
   const navigationVersion=state.navigationVersion=(state.navigationVersion||0)+1;
   state.activeView = 'friends';
+  stopNotificationRefresh();
+  document.getElementById('notificationPanel').hidden=true;
   if (state.server) state.lastServerCode=state.server.code;
   await clearSubscriptions();
   closePrivateDm();
@@ -532,6 +536,7 @@ function updateEditModeUi() {
   if (els.publish) els.publish.disabled = !canManageAnnouncements;
 }
 let pendingImage = '';
+let announcementTagImageData = '';
 let pendingAudio = '';
 let pendingAudioName = '';
 let pendingFile = null;
@@ -644,6 +649,143 @@ const unlockMentionAudio = () => {
 document.addEventListener('pointerdown', unlockMentionAudio);
 document.addEventListener('keydown', unlockMentionAudio);
 function closeYoutubePopup() { els.youtubePopup.hidden = true; }
+const audiomackSource = document.createElement('section');
+audiomackSource.className = 'sektor-audiomack-source';
+audiomackSource.setAttribute('aria-label', 'Search on Audiomack');
+audiomackSource.innerHTML = '<form class="sektor-audiomack-search" action="https://audiomack.com/search" method="get" target="_blank" rel="noopener noreferrer"><label for="audiomackSearch">Search Audiomack</label><div class="sektor-audiomack-search-row"><input id="audiomackSearch" name="q" type="search" maxlength="120" autocomplete="off" placeholder="Song or artist" required><button type="submit">Search</button></div></form><p>Search opens in a new tab so Sektor stays open. Paste a track link below to play it here.</p><form class="sektor-audiomack-embed-form"><label for="audiomackTrackUrl">Play a track in Sektor</label><div class="sektor-audiomack-search-row"><input id="audiomackTrackUrl" type="url" inputmode="url" autocomplete="off" placeholder="Paste an Audiomack track link" required><button type="submit">Play</button></div></form><p class="sektor-audiomack-status" role="status" aria-live="polite"></p><iframe class="sektor-audiomack-embed" title="Audiomack music player" allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" hidden></iframe>';
+const audiusSource = document.createElement('section');
+audiusSource.className = 'sektor-audius-source';
+audiusSource.hidden = true;
+audiusSource.setAttribute('aria-label', 'Search and play music on Audius');
+audiusSource.innerHTML = '<form class="sektor-audius-search"><label for="audiusSearch">Search Audius</label><div class="sektor-audius-search-row"><input id="audiusSearch" type="search" maxlength="120" autocomplete="off" placeholder="Song or artist"><button type="submit">Search</button></div></form><p class="sektor-audius-status" role="status" aria-live="polite">Search and play streamable Audius tracks with Sektor’s controls.</p><div class="sektor-audius-results" aria-label="Audius tracks"></div>';
+const providerSwitch = document.createElement('div');
+providerSwitch.className = 'sektor-music-providers';
+providerSwitch.setAttribute('role', 'group');
+providerSwitch.setAttribute('aria-label', 'Choose music service');
+providerSwitch.innerHTML = '<button type="button" data-provider="audiomack" aria-pressed="true">Audiomack</button><button type="button" data-provider="audius" aria-pressed="false">Audius</button>';
+const musicLayout = els.youtubePopup.querySelector('.sektor-music-layout');
+musicLayout.before(providerSwitch, audiomackSource, audiusSource);
+els.youtubePopup.classList.add('sektor-audio-popup');
+const audiomackEmbed = audiomackSource.querySelector('.sektor-audiomack-embed');
+const audiomackStatus = audiomackSource.querySelector('.sektor-audiomack-status');
+const audiusSearchInput = audiusSource.querySelector('#audiusSearch');
+const audiusStatus = audiusSource.querySelector('.sektor-audius-status');
+const audiusResults = audiusSource.querySelector('.sektor-audius-results');
+
+providerSwitch.addEventListener('click', event => {
+  const button = event.target.closest('button[data-provider]');
+  if (!button) return;
+  const audiusSelected = button.dataset.provider === 'audius';
+  audiomackSource.hidden = audiusSelected;
+  audiusSource.hidden = !audiusSelected;
+  providerSwitch.querySelectorAll('button').forEach(option => {
+    option.setAttribute('aria-pressed', String(option === button));
+  });
+  if (audiusSelected) {
+    audiomackEmbed.removeAttribute('src');
+    audiomackEmbed.hidden = true;
+  }
+});
+
+function addAudiusResult(track) {
+  if (!track.id || !track.title || !track.user?.name || !track.is_streamable) return;
+  const row = document.createElement('article');
+  row.className = 'sektor-audius-result';
+  const play = document.createElement('button');
+  play.type = 'button';
+  play.className = 'sektor-audius-result-play';
+  const title = document.createElement('strong');
+  title.textContent = track.title;
+  const artist = document.createElement('span');
+  artist.textContent = track.user.name;
+  play.append(title, artist);
+  row.appendChild(play);
+  play.addEventListener('click', () => {
+    audiomackEmbed.removeAttribute('src');
+    audiomackEmbed.hidden = true;
+    let index = sektorMusicTracks.findIndex(item => item.audiusId === String(track.id));
+    if (index < 0) {
+      index = sektorMusicTracks.length;
+      sektorMusicTracks.push({
+        name: track.title + ' · ' + track.user.name,
+        url: 'https://api.audius.co/v1/tracks/' + encodeURIComponent(track.id) + '/stream?app_name=sektor_vus',
+        source: 'Audius',
+        audiusId: String(track.id)
+      });
+      renderMusicLibrary();
+    }
+    setMusicTrack(index, true);
+    audiusStatus.textContent = 'Playing with Sektor’s controls.';
+  });
+  audiusResults.appendChild(row);
+}
+
+const audiusSourceSearch = audiusSource.querySelector('.sektor-audius-search');
+audiusSourceSearch.addEventListener('submit', async event => {
+  event.preventDefault();
+  const query = audiusSearchInput.value.trim();
+  if (query.length < 2) {
+    audiusStatus.textContent = 'Enter at least two characters to search.';
+    audiusSearchInput.focus();
+    return;
+  }
+  const searchButton = audiusSourceSearch.querySelector('button');
+  searchButton.disabled = true;
+  audiusStatus.textContent = 'Searching Audius…';
+  audiusResults.replaceChildren();
+  try {
+    const params = new URLSearchParams({query, app_name:'sektor_vus', limit:'20'});
+    const response = await fetch('https://api.audius.co/v1/tracks/search?' + params);
+    if (!response.ok) throw new Error('Audius search is unavailable right now.');
+    const payload = await response.json();
+    if (!Array.isArray(payload.data)) throw new Error(payload.message || 'Audius could not complete this search.');
+    payload.data.forEach(addAudiusResult);
+    const count = audiusResults.childElementCount;
+    audiusStatus.textContent = count
+      ? count + ' streamable tracks found. Select one to play it here.'
+      : 'No streamable tracks found. Try another song or artist.';
+  } catch (error) {
+    audiusStatus.textContent = error.message || 'Could not search Audius. Check your connection and try again.';
+  } finally {
+    searchButton.disabled = false;
+  }
+});
+
+audiomackSource.querySelector('.sektor-audiomack-embed-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const input = audiomackSource.querySelector('#audiomackTrackUrl');
+  let trackUrl;
+  try {
+    trackUrl = new URL(input.value.trim());
+  } catch {
+    audiomackStatus.textContent = 'Paste a valid Audiomack track link.';
+    input.focus();
+    return;
+  }
+  if (!['audiomack.com', 'www.audiomack.com'].includes(trackUrl.hostname.toLowerCase())) {
+    audiomackStatus.textContent = 'Use a link from audiomack.com.';
+    input.focus();
+    return;
+  }
+  const parts = trackUrl.pathname.split('/').filter(Boolean);
+  let embedPath = '';
+  if (parts.length === 3 && ['song', 'playlist'].includes(parts[1])) {
+    embedPath = '/embed/' + parts.join('/');
+  } else if (parts.length === 4 && parts[0] === 'embed' && parts[1] === 'song') {
+    embedPath = '/embed/' + parts[2] + '/song/' + parts[3];
+  } else if (parts.length === 4 && parts[0] === 'embed' && ['song', 'playlist'].includes(parts[2])) {
+    embedPath = '/' + parts.join('/');
+  }
+  if (!embedPath) {
+    audiomackStatus.textContent = 'Paste a single-track or playlist URL from Audiomack.';
+    input.focus();
+    return;
+  }
+  sektorMusicAudio.pause();
+  audiomackEmbed.src = new URL(embedPath, 'https://audiomack.com').href;
+  audiomackEmbed.hidden = false;
+  audiomackStatus.textContent = 'Playing in Sektor with Audiomack.';
+});
 function formatMusicTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   return Math.floor(seconds / 60) + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
@@ -695,7 +837,7 @@ function setMusicTrack(index, autoplay) {
   sektorMusicAudio.src = track.url;
   sektorMusicAudio.load();
   sektorMusicName.textContent = track.name;
-  sektorMusicStatus.textContent = (index + 1) + ' of ' + sektorMusicTracks.length + ' · Local file';
+  sektorMusicStatus.textContent = (index + 1) + ' of ' + sektorMusicTracks.length + ' · ' + (track.source || 'Local file');
   sektorMusicElapsed.textContent = '0:00';
   sektorMusicDuration.textContent = '0:00';
   sektorMusicSeek.value = '0';
@@ -737,7 +879,7 @@ function removeMusicTrack(index) {
     sektorMusicAudio.pause();
     sektorMusicAudio.removeAttribute('src');
     sektorMusicAudio.load();
-    URL.revokeObjectURL(removed.url);
+    if (removed.url && removed.url.startsWith('blob:')) URL.revokeObjectURL(removed.url);
     if (sektorMusicTracks.length) {
       sektorMusicIndex = Math.min(index, sektorMusicTracks.length - 1);
       setMusicTrack(sektorMusicIndex, false);
@@ -751,7 +893,7 @@ function removeMusicTrack(index) {
       sektorMusicSeek.value = '0';
     }
   } else {
-    URL.revokeObjectURL(removed.url);
+    if (removed.url && removed.url.startsWith('blob:')) URL.revokeObjectURL(removed.url);
     if (index < sektorMusicIndex) sektorMusicIndex -= 1;
   }
   renderMusicLibrary();
@@ -761,7 +903,9 @@ function clearMusicLibrary() {
   sektorMusicAudio.pause();
   sektorMusicAudio.removeAttribute('src');
   sektorMusicAudio.load();
-  sektorMusicTracks.forEach(track => URL.revokeObjectURL(track.url));
+  sektorMusicTracks.forEach(track => {
+    if (track.url && track.url.startsWith('blob:')) URL.revokeObjectURL(track.url);
+  });
   sektorMusicTracks = [];
   sektorMusicIndex = -1;
   sektorMusicName.textContent = 'Nothing playing';
@@ -821,15 +965,15 @@ async function auth() {
       if ((await db.ref('usernameIndex/' + usernameKey).get()).exists()) throw new Error('That username is already taken.');
       const id = String(Math.floor(100000 + Math.random() * 899999));
       const userRef = db.ref('users').push();
-      await db.ref().update({ ['users/' + userRef.key]: { username:identifier, id, password, friends:{}, createdAt:firebase.database.ServerValue.TIMESTAMP }, ['usernameIndex/' + usernameKey]:userRef.key, ['idIndex/' + id]:userRef.key });
-      state.user = { key:userRef.key, username:identifier, id };
+      await db.ref().update({ ['users/' + userRef.key]: { username:identifier, id, password, friends:{}, serverTags:{}, createdAt:firebase.database.ServerValue.TIMESTAMP }, ['usernameIndex/' + usernameKey]:userRef.key, ['idIndex/' + id]:userRef.key });
+      state.user = { key:userRef.key, username:identifier, id, serverTags:{} };
     } else {
       const key = await accountKey(identifier);
       if (!key) throw new Error('No account found.');
       const snap = await db.ref('users/' + key).get();
       const user = snap.val();
       if (!user || user.password !== password) throw new Error('Incorrect password.');
-      state.user = { key, username:user.username, id:user.id, avatar:user.avatar || '' };
+      state.user = { key, username:user.username, id:user.id, avatar:user.avatar || '', serverTags:user.serverTags || {} };
     }
     localStorage.setItem('vusServersSession', JSON.stringify(state.user));
     const returnTo = new URLSearchParams(location.search).get('returnTo');
@@ -1127,6 +1271,13 @@ function openProfileModal() {
   state.user.avatar=state.user.avatar||'';
   els.modalTitle.textContent='Your profile';
   els.modalBody.innerHTML='<img id="profilePreview" class="profile-preview" src="'+esc(state.user.avatar)+'" alt=""><label class="modal-label" for="profileFile">Profile picture</label><input id="profileFile" class="profile-file" type="file" accept="image/*"><label class="modal-label" for="profileTheme">Color theme</label><select id="profileTheme" class="modal-input"><option value="nexus">Nexus Night</option><option value="ocean">Ocean</option><option value="daylight">Daylight</option><option value="ember">Ember</option><option value="forest">Forest</option><option value="lavender">Lavender</option><option value="rose">Rose</option><option value="synthwave">Synthwave</option><option value="phen228">Phen-228 Signal Horror</option><option value="paper">Paper</option></select><label class="modal-label" for="messageTextEffect">Message text effect</label><select id="messageTextEffect" class="modal-input"><option value="solid">Single color</option><option value="gradient">Two-color gradient</option><option value="rgb">Smooth RGB cycle</option></select><div class="message-style-colors"><label class="modal-label">Text color A<input id="messageColorA" class="modal-color" type="color"></label><label class="modal-label">Text color B<input id="messageColorB" class="modal-color" type="color"></label></div><label class="modal-label" for="messageFont">Message font</label><select id="messageFont" class="modal-input"><option value="system">System sans</option><option value="rounded">Rounded sans</option><option value="serif">Serif</option><option value="mono">Monospace</option></select><label class="modal-label" for="messageBubbleStyle">Bubble style</label><select id="messageBubbleStyle" class="modal-input"><option value="none">No bubble</option><option value="soft">Soft fill</option><option value="gradient">Gradient fill</option><option value="outline">Outline</option><option value="glow">Glow</option></select><div class="message-style-colors"><label class="modal-label">Bubble fill A<input id="bubbleColorA" class="modal-color" type="color"></label><label class="modal-label">Bubble fill B<input id="bubbleColorB" class="modal-color" type="color"></label><label class="modal-label">Bubble edge<input id="bubbleBorder" class="modal-color" type="color"></label></div><label class="modal-label" for="messageBubbleOpacity">Bubble strength <input id="messageBubbleOpacity" type="range" min="0" max="70" step="1"></label><label class="modal-label" for="messageBubbleShape">Bubble corners</label><select id="messageBubbleShape" class="modal-input"><option value="square">Square</option><option value="rounded">Rounded</option><option value="pill">Pill</option></select><div class="message-style-preview" aria-live="polite"><small>MESSAGE PREVIEW</small><span id="messageStylePreview">Your message, your style.</span></div><div id="modalError" class="error"></div><button id="saveProfile" class="primary-btn" type="button">Save profile</button>';
+  const logoutButton = document.createElement('button');
+  logoutButton.id = 'logoutFromProfile';
+  logoutButton.type = 'button';
+  logoutButton.className = 'modal-danger';
+  logoutButton.textContent = 'Log out';
+  logoutButton.addEventListener('click', logoutSektorAccount);
+  els.modalBody.appendChild(logoutButton);
   const preview=document.getElementById('profilePreview');
   const themeSelect=document.getElementById('profileTheme');
   const themePicker=document.createElement('div');
@@ -1227,6 +1378,30 @@ function openProfileModal() {
   };
   els.modal.hidden=false;
 }
+async function logoutSektorAccount() {
+  const logoutButton = document.getElementById('logoutFromProfile');
+  if (logoutButton) logoutButton.disabled = true;
+  window.clearInterval(friendRequestsRefreshTimer);
+  friendRequestsRefreshTimer = 0;
+  try {
+    if (state.presenceRef) {
+      try { await state.presenceRef.onDisconnect().cancel(); } catch (error) {}
+      try { await state.presenceRef.remove(); } catch (error) { console.warn('[Sektor] Could not clear server presence during logout.', error); }
+    }
+    if (state.onlinePresenceRef) {
+      try { await state.onlinePresenceRef.onDisconnect().cancel(); } catch (error) {}
+      try { await state.onlinePresenceRef.remove(); } catch (error) { console.warn('[Sektor] Could not clear online presence during logout.', error); }
+    }
+    if (state.onlinePresenceListRef && state.onlinePresenceHandler) {
+      state.onlinePresenceListRef.off('value', state.onlinePresenceHandler);
+    }
+    await clearSubscriptions();
+  } catch (error) {
+    console.warn('[Sektor] Session cleanup was incomplete during logout.', error);
+  }
+  localStorage.removeItem('vusServersSession');
+  window.location.reload();
+}
 function openFriendModal() { els.modalTitle.textContent = 'Add a friend'; els.modalBody.innerHTML = '<label class="modal-label" for="friendSearch">Search by username</label><div class="friend-search-row"><input id="friendSearch" class="modal-input" maxlength="24" placeholder="username"><button id="friendSearchBtn" class="modal-secondary">Search</button></div><div id="friendResults" class="friend-results"></div><div id="modalError" class="error"></div>'; els.modal.hidden = false; const input = document.getElementById('friendSearch'); const search = async () => { const query = input.value.trim().toLowerCase(); const results = document.getElementById('friendResults'); const error = document.getElementById('modalError'); results.innerHTML = ''; error.textContent = ''; if (!query) { error.textContent = 'Enter a username.'; return; } const localMatches = Object.values(state.serverMembers || {}).filter(member => member.name.toLowerCase().includes(query) && member.key !== state.user.key); if (localMatches.length) renderFriendResults(localMatches.map(member => ({key:member.key,username:member.name})), results, error); else { try { const snap = await db.ref('usernameIndex/' + query).get(); if (!snap.exists()) throw new Error('No user found with that username.'); const key = snap.val(); const userSnap = await db.ref('users/' + key).get(); const user = userSnap.val(); if (!user) throw new Error('No user found with that username.'); renderFriendResults([{key,username:user.username}], results, error); } catch (searchError) { error.textContent = searchError.message || 'Could not search right now.'; } } }; document.getElementById('friendSearchBtn').onclick = search; input.onkeydown = event => { if (event.key === 'Enter') search(); }; input.focus(); }
 function renderFriendResults(users, container, error) { users.forEach(user => { const row = document.createElement('div'); row.className = 'friend-result'; row.innerHTML = '<span>@' + esc(user.username) + '</span><button class="modal-secondary">Add</button>'; row.querySelector('button').onclick = async () => { try { await db.ref('users/' + user.key + '/friendRequestsIncoming/' + state.user.key).set({fromUsername:state.user.username,sentAt:firebase.database.ServerValue.TIMESTAMP}); row.querySelector('button').textContent = 'Sent'; row.querySelector('button').disabled = true; } catch (requestError) { error.textContent = 'Could not send the friend request.'; } }; container.appendChild(row); }); }
 function openFriendModal() {
@@ -1314,7 +1489,228 @@ async function hydrateServerInvite(card, code) {
   if (server) card.replaceWith(serverInviteMarkup(server));
   else card.textContent = 'Server invite unavailable.';
 }
-function channels() { return Object.entries((state.server && state.server.channels) || {}).filter(([, channel]) => channel && typeof channel === 'object').map(([id, channel]) => ({id,...channel, type:channel.type === 'games' || channel.game === true ? 'text' : channel.type, topic:String(channel.topic || '').replace(/^\[games\]\s*/, '')})); }
+function channels() { return Object.entries((state.server && state.server.channels) || {}).filter(([, channel]) => channel && typeof channel === 'object').map(([id, channel]) => ({id,...channel, type:isGamesChannel(channel)?'games':channel.type, topic:String(channel.topic || '').replace(/^\[games\]\s*/, '')})); }
+function canPostInChannel(channel, attachments = {}) {
+  if (!state.server || !state.user || !channel || channel.type === 'announcement' || channel.type === 'notifications') return false;
+  if (channel.type === 'ranked' && !isServerOwner() && !state.server.ranks?.[state.user.key]) return false;
+  if (channel.type === 'media') {
+    return !String(attachments.text || '').trim() && !!(attachments.image || attachments.audio || attachments.fileType?.startsWith('image/') || isSupportedVideo(attachments.fileType, attachments.fileName));
+  }
+  return true;
+}
+function isSupportedVideo(type, name = '') {
+  return /^video\/(mp4|webm|ogg)$/i.test(type || '') || /\.(mp4|webm|ogv)$/i.test(name || '');
+}
+let notificationRefreshTimer = 0;
+let notificationRefreshToken = 0;
+let notificationRefreshContext = '';
+const notificationFeedCache = new Map();
+function notificationFeedsFor(server = state.server) {
+  const feeds = server && server.notificationFeeds;
+  const entries = Array.isArray(feeds) ? feeds : Object.entries(feeds || {}).map(([id,feed]) => ({...feed,id:feed?.id || id}));
+  return entries.filter(feed => feed && typeof feed.url === 'string')
+    .map(feed => ({...feed,url:normalizeNotificationFeedUrl(feed.url)}))
+    .filter(feed => feed.url);
+}
+function normalizeNotificationFeedUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    const host = url.hostname.toLowerCase();
+    if (!['http:','https:'].includes(url.protocol) || url.username || url.password) return null;
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return null;
+    if (/^(127\.|10\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) return null;
+    return url.href;
+  } catch (error) {
+    return null;
+  }
+}
+function decodeFeedPayload(contents) {
+  const value = String(contents || '');
+  if (!value.startsWith('data:')) return value;
+  const comma = value.indexOf(',');
+  if (comma < 0) return '';
+  const metadata = value.slice(0,comma);
+  const payload = value.slice(comma + 1);
+  if (/;base64/i.test(metadata)) {
+    const binary = atob(payload);
+    return new TextDecoder().decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
+  }
+  return decodeURIComponent(payload);
+}
+function plainFeedText(value) {
+  return new DOMParser().parseFromString(String(value || ''),'text/html').body.textContent.trim().replace(/\s+/g,' ').slice(0,320);
+}
+async function fetchNotificationFeed(feed, force = false) {
+  const cached = notificationFeedCache.get(feed.url);
+  if (!force && cached && Date.now() - cached.fetchedAt < 300_000) return cached;
+  const proxyUrl = new URL('https://api.allorigins.win/get');
+  proxyUrl.searchParams.set('url',feed.url);
+  proxyUrl.searchParams.set('disableCache','true');
+  const response = await fetch(proxyUrl.href);
+  if (!response.ok) throw new Error('Feed proxy returned ' + response.status + '.');
+  const payload = await response.json();
+  const xmlText = decodeFeedPayload(payload.contents);
+  if (!xmlText) throw new Error('Feed returned no content.');
+  const xml = new DOMParser().parseFromString(xmlText,'application/xml');
+  if (xml.querySelector('parsererror')) throw new Error('Feed XML could not be parsed.');
+  const entries = [...xml.getElementsByTagName('item'),...xml.getElementsByTagName('entry')].slice(0,12);
+  const items = entries.map(entry => {
+    const title = entry.getElementsByTagName('title')[0]?.textContent?.trim() || 'Untitled update';
+    const linkNode = entry.getElementsByTagName('link')[0];
+    const linkValue = linkNode?.getAttribute('href') || linkNode?.textContent?.trim() || '';
+    let link = '';
+    try {
+      const target = new URL(linkValue,feed.url);
+      if (['http:','https:'].includes(target.protocol)) link = target.href;
+    } catch (error) {}
+    const descriptionNode = entry.getElementsByTagName('description')[0] || entry.getElementsByTagName('summary')[0] || entry.getElementsByTagName('content:encoded')[0] || entry.getElementsByTagName('content')[0];
+    const dateNode = entry.getElementsByTagName('pubDate')[0] || entry.getElementsByTagName('updated')[0] || entry.getElementsByTagName('published')[0];
+    return {title:title.slice(0,240),link,description:plainFeedText(descriptionNode?.textContent),date:dateNode?.textContent?.trim() || ''};
+  }).filter(item => item.title);
+  const result = {fetchedAt:Date.now(),items};
+  notificationFeedCache.set(feed.url,result);
+  return result;
+}
+function renderNotificationFeedSources() {
+  const container = document.getElementById('notificationFeedSources');
+  if (!container || !state.server) return;
+  container.replaceChildren();
+  if (!isServerOwner()) return;
+  notificationFeedsFor(state.server).forEach(feed => {
+    const row = document.createElement('div');
+    row.className = 'notification-feed-source';
+    const name = document.createElement('span');
+    name.textContent = feed.name || new URL(feed.url).hostname;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => removeNotificationFeed(feed));
+    row.append(name, remove);
+    container.appendChild(row);
+  });
+}
+function renderNotificationFeedItems(feedResults) {
+  const container = document.getElementById('notificationFeedItems');
+  container.replaceChildren();
+  const entries = feedResults.flatMap(({feed,items}) => items.map(item => ({...item,feedName:feed.name || new URL(feed.url).hostname})))
+    .sort((left,right) => (Date.parse(right.date) || 0) - (Date.parse(left.date) || 0));
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'notification-feed-empty';
+    empty.textContent = 'No updates found in these feeds yet.';
+    container.appendChild(empty);
+    return;
+  }
+  entries.forEach(item => {
+    const card = document.createElement('article');
+    card.className = 'notification-feed-item';
+    const source = document.createElement('small');
+    source.textContent = item.feedName + (item.date ? ' · ' + (Date.parse(item.date) ? new Date(item.date).toLocaleString() : item.date) : '');
+    const title = item.link ? document.createElement('a') : document.createElement('strong');
+    title.textContent = item.title;
+    if (item.link) {
+      title.href = item.link;
+      title.target = '_blank';
+      title.rel = 'noopener noreferrer';
+    }
+    const description = document.createElement('p');
+    description.textContent = item.description;
+    card.append(source,title);
+    if (item.description) card.appendChild(description);
+    container.appendChild(card);
+  });
+}
+async function refreshNotificationChannel(force = false) {
+  const server = state.server;
+  const channel = channels().find(item => item.id === state.channel);
+  const status = document.getElementById('notificationStatus');
+  const refreshButton = document.getElementById('notificationRefresh');
+  if (!server || channel?.type !== 'notifications' || !status) return;
+  const token = ++notificationRefreshToken;
+  const feeds = notificationFeedsFor(server);
+  renderNotificationFeedSources();
+  if (!feeds.length) {
+    status.textContent = isServerOwner() ? 'Add an RSS or Atom feed to start receiving updates.' : 'This channel has no feeds yet.';
+    renderNotificationFeedItems([]);
+    return;
+  }
+  if (refreshButton) refreshButton.disabled = true;
+  status.textContent = 'Checking ' + feeds.length + (feeds.length === 1 ? ' feed…' : ' feeds…');
+  const outcomes = await Promise.all(feeds.map(async feed => {
+    try { return {feed,...await fetchNotificationFeed(feed,force)}; }
+    catch (error) { return {feed,error}; }
+  }));
+  if (token !== notificationRefreshToken || !state.server || state.server.code !== server.code || state.channel !== channel.id) return;
+  const successful = outcomes.filter(result => !result.error);
+  const failed = outcomes.filter(result => result.error);
+  renderNotificationFeedItems(successful);
+  status.textContent = successful.length + ' feed' + (successful.length === 1 ? '' : 's') + ' checked' + (failed.length ? ' · ' + failed.length + ' unavailable' : '') + ' · refreshed just now';
+  if (refreshButton) refreshButton.disabled = false;
+}
+function startNotificationRefresh() {
+  const context = state.server ? state.server.code + ':' + state.channel : '';
+  if (notificationRefreshTimer && notificationRefreshContext === context) return;
+  stopNotificationRefresh();
+  notificationRefreshContext = context;
+  refreshNotificationChannel();
+  notificationRefreshTimer = window.setInterval(() => refreshNotificationChannel(),300_000);
+}
+function stopNotificationRefresh() {
+  window.clearInterval(notificationRefreshTimer);
+  notificationRefreshTimer = 0;
+  notificationRefreshContext = '';
+  notificationRefreshToken += 1;
+}
+async function addNotificationFeed(event) {
+  event.preventDefault();
+  if (!state.server || !isServerOwner()) return;
+  const input = document.getElementById('notificationFeedUrl');
+  const nameInput = document.getElementById('notificationFeedName');
+  const status = document.getElementById('notificationStatus');
+  const url = normalizeNotificationFeedUrl(input.value);
+  if (!url) {
+    status.textContent = 'Enter a valid public HTTP or HTTPS feed URL.';
+    input.focus();
+    return;
+  }
+  if (notificationFeedsFor(state.server).some(feed => feed.url === url)) {
+    status.textContent = 'That feed is already connected.';
+    return;
+  }
+  const feed = {id:'feed-' + Date.now().toString(36),url,name:nameInput.value.trim().slice(0,48)};
+  try {
+    if (state.server.localOnly) {
+      state.server.notificationFeeds = [...notificationFeedsFor(state.server),feed];
+      saveLocalServers(localServers().map(item => item.code === state.server.code ? state.server : item));
+    } else {
+      await db.ref('serverMeta/' + state.server.code + '/notificationFeeds/' + feed.id).set(feed);
+      state.server.notificationFeeds = {...(state.server.notificationFeeds || {}),[feed.id]:feed};
+    }
+    input.value = '';
+    nameInput.value = '';
+    renderNotificationFeedSources();
+    await refreshNotificationChannel(true);
+  } catch (error) {
+    status.textContent = 'Could not add that feed. Check the URL and try again.';
+  }
+}
+async function removeNotificationFeed(feed) {
+  if (!state.server || !isServerOwner()) return;
+  try {
+    if (state.server.localOnly) {
+      state.server.notificationFeeds = notificationFeedsFor(state.server).filter(item => item.id !== feed.id);
+      saveLocalServers(localServers().map(item => item.code === state.server.code ? state.server : item));
+    } else {
+      await db.ref('serverMeta/' + state.server.code + '/notificationFeeds/' + safe(feed.id)).remove();
+      delete state.server.notificationFeeds[feed.id];
+    }
+    renderNotificationFeedSources();
+    await refreshNotificationChannel(true);
+  } catch (error) {
+    const status = document.getElementById('notificationStatus');
+    if (status) status.textContent = 'Could not remove that feed.';
+  }
+}
 function serverAnnouncements(server = state.server) {
   if (!server) return [];
   const saved = server.announcements;
@@ -1332,6 +1728,61 @@ function serverAnnouncements(server = state.server) {
 function latestAnnouncement(server = state.server) {
   const entries = serverAnnouncements(server);
   return entries[entries.length - 1] || null;
+}
+function normalizeServerTag(value) {
+  const tag = typeof value === 'string' ? {name:value} : value;
+  if (!tag || typeof tag !== 'object') return null;
+  const name = String(tag.name || '').trim().replace(/\s+/g, ' ').slice(0, 24);
+  if (!name) return null;
+  const validColor = color => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+  const styles = ['soft','gradient','outline','glow'];
+  const shapes = ['square','rounded','pill'];
+  const usernameStyles = ['solid','gradient','rgb'];
+  const imageShapes = ['circle','rounded','square'];
+  const image = typeof tag.image === 'string' && tag.image.length <= 20_000 && /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(tag.image) ? tag.image : '';
+  return {
+    name,
+    emoji:Array.from(String(tag.emoji || '')).slice(0, 8).join(''),
+    style:styles.includes(tag.style) ? tag.style : 'soft',
+    shape:shapes.includes(tag.shape) ? tag.shape : 'rounded',
+    image,
+    imageShape:imageShapes.includes(tag.imageShape) ? tag.imageShape : 'rounded',
+    usernameStyle:usernameStyles.includes(tag.usernameStyle) ? tag.usernameStyle : 'solid',
+    textColor:validColor(tag.textColor) ? tag.textColor : '#a8e9c5',
+    backgroundColor:validColor(tag.backgroundColor) ? tag.backgroundColor : '#173b2a',
+    borderColor:validColor(tag.borderColor) ? tag.borderColor : '#65e6ad',
+    usernameColorA:validColor(tag.usernameColorA) ? tag.usernameColorA : '#a8e9c5',
+    usernameColorB:validColor(tag.usernameColorB) ? tag.usernameColorB : '#65e6ad'
+  };
+}
+async function claimServerTag(announcement, button) {
+  const server = state.server;
+  const tagConfig = normalizeServerTag(announcement && announcement.tag);
+  if (!server || !state.user || !tagConfig || !button) return;
+  button.disabled = true;
+  const serverKey = safe(server.code);
+  const tag = {...tagConfig,serverCode:String(server.code),serverName:String(server.name || 'Server'),claimedAt:Date.now()};
+  try {
+    await db.ref('users/' + state.user.key + '/serverTags/' + serverKey).set(tag);
+    state.user.serverTags = {...(state.user.serverTags || {}),[serverKey]:tag};
+    localStorage.setItem('vusServersSession', JSON.stringify(state.user));
+    [...els.messages.querySelectorAll('.message')].forEach(item => {
+      const message = messageCache[item.dataset.messageId];
+      if (!message || String(message.key) !== String(state.user.key)) return;
+      message.serverTags = {...(message.serverTags || {}),[serverKey]:tag};
+      renderMessage(message);
+    });
+    document.querySelectorAll('.server-tag-claim-button').forEach(claimButton => {
+      const alreadyClaimed = JSON.stringify(normalizeServerTag(state.user.serverTags[serverKey])) === claimButton.dataset.tagConfig;
+      claimButton.disabled = alreadyClaimed;
+      claimButton.textContent = alreadyClaimed ? 'Claimed' : 'Replace tag';
+      claimButton.setAttribute('aria-pressed', String(alreadyClaimed));
+    });
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = 'Try again';
+    console.error('[Sektor] Could not claim the server tag.', error);
+  }
 }
 function hiddenMessagesStorageKey(server = state.server, channelId = state.channel) {
   return server && state.user
@@ -1418,7 +1869,7 @@ function syncUnreadChannelWatchers(textChannels) {
     ref.on('child_added', handler);
   });
 }
-function isGamesChannel() { return false; }
+function isGamesChannel(channel) { return !!channel && (channel.type === 'games' || channel.game === true || /^\[games\]\s*/i.test(String(channel.topic || ''))); }
 function rankForMember(memberKey, memberName) { if (!state.server) return null; if (state.server.ownerKey === memberKey) return {name:'Owner', color:'#e8b768', permissions:{manageChannels:true,manageAnnouncements:true,manageMessages:true,manageRanks:true,manageServer:true}}; const rank = state.server.ranks && state.server.ranks[memberKey]; if (!rank) return null; return typeof rank === 'string' ? {name:rank, color:'#9aa5b4', permissions:{}} : rank; }
 function renderServer() {
   if (state.activeView==='friends') {renderServerPoll();return;}
@@ -1440,7 +1891,8 @@ function renderServer() {
     button.type = 'button';
     button.className = 'channel-button' + (current && state.channel === channel.id ? ' active' : '');
     button.dataset.channelId = channel.id;
-    button.innerHTML = '<span>#</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread messages" hidden></span>';
+    const channelIcon = channel.type === 'ranked' ? '♜' : channel.type === 'media' ? '▧' : channel.type === 'notifications' ? '🔔' : '#';
+    button.innerHTML = '<span>' + channelIcon + '</span><span>' + esc(channel.name) + '</span><span class="channel-unread" aria-label="Unread messages" hidden></span>';
     button.setAttribute('aria-pressed', String(current && state.channel === channel.id));
     if (canManageChannels && !channel.default) addChannelDeleteButton(button, channel);
     els.textChannels.appendChild(button);
@@ -1473,13 +1925,16 @@ function renderServer() {
   syncUnreadChannelWatchers(text);
   if (!current) {els.createPollButton.hidden=true;renderServerPoll();return;}
   const announcementChannel = current.type === 'announcement';
+  const notificationChannel = current.type === 'notifications';
+  if (notificationChannel) els.serverPoll.hidden = true;
   els.createPollButton.hidden=!isServerOwner()||announcementChannel;
   renderServerPoll();
-  const announcements = serverAnnouncements(state.server);
+  const announcements = serverAnnouncements(state.server).reverse();
   const latest = latestAnnouncement(state.server);
+  const activeServerTag = normalizeServerTag((state.user.serverTags || {})[safe(state.server.code)]);
   els.channelName.textContent = current.name;
   els.channelTopic.textContent = current.topic || '';
-  els.channelPermission.textContent = announcementChannel ? 'STAFF ONLY' : '';
+  els.channelPermission.textContent = announcementChannel ? 'STAFF ONLY' : current.type === 'ranked' ? 'RANK REQUIRED' : current.type === 'media' ? 'MEDIA ONLY' : notificationChannel ? 'OWNER FEEDS' : '';
   els.announcement.hidden = !(announcementChannel && announcements.length);
   els.announcementText.replaceChildren(...announcements.map(announcement => {
     const entry = document.createElement('article');
@@ -1501,15 +1956,39 @@ function renderServer() {
     const text = document.createElement('div');
     text.textContent = announcement.text;
     entry.append(heading, text);
+    const announcementTag = normalizeServerTag(announcement.tag);
+    if (announcementTag) {
+      const tagClaim = document.createElement('div');
+      tagClaim.className = 'server-tag-claim';
+      const tagLabel = document.createElement('span');
+      tagLabel.textContent = 'Server tag: ' + (announcementTag.emoji ? announcementTag.emoji + ' ' : '') + announcementTag.name;
+      const claimButton = document.createElement('button');
+      claimButton.type = 'button';
+      claimButton.className = 'server-tag-claim-button';
+      claimButton.dataset.tagConfig = JSON.stringify(announcementTag);
+      const alreadyClaimed = activeServerTag && JSON.stringify(activeServerTag) === JSON.stringify(announcementTag);
+      claimButton.textContent = alreadyClaimed ? 'Claimed' : activeServerTag ? 'Replace tag' : 'Claim tag';
+      claimButton.disabled = !!alreadyClaimed;
+      claimButton.setAttribute('aria-pressed', String(!!alreadyClaimed));
+      claimButton.onclick = () => claimServerTag(announcement, claimButton);
+      tagClaim.append(tagLabel, claimButton);
+      entry.appendChild(tagClaim);
+    }
     return entry;
   }));
   els.ownerComposer.hidden = !(announcementChannel && hasServerPermission('manageAnnouncements'));
+  const ownerTagControls = document.getElementById('ownerTagControls');
+  if (ownerTagControls) ownerTagControls.hidden = !isServerOwner();
+  const notificationPanel = document.getElementById('notificationPanel');
+  const notificationFeedManager = document.getElementById('notificationFeedManager');
+  if (notificationPanel) notificationPanel.hidden = current.type !== 'notifications';
+  if (notificationFeedManager) notificationFeedManager.hidden = !isServerOwner();
   els.messageInput.placeholder = announcementChannel ? 'Only staff can post here' : 'Message #' + current.name;
   markChannelRead(current.id, announcementChannel && latest ? latest.ts : Date.now());
   if (!latest && current.id === 'announcements') setChannelUnread('announcements', false);
   else if (latest && !announcementChannel && Number(latest.ts) > (Number(channelReadAt.announcements) || 0)) setChannelUnread('announcements', true);
   selectMessages(current.id);
-  els.messageForm.hidden = announcementChannel;
+  els.messageForm.hidden = announcementChannel || notificationChannel;
   refreshMessageTimeoutState();
 }
 function addChannelDeleteButton(channelButton, channel) { if (!isOwnerEditing()) return; const renameButton = document.createElement('button'); renameButton.className = 'channel-action channel-rename'; renameButton.type = 'button'; renameButton.title = 'Rename ' + channel.name; renameButton.textContent = '✎'; renameButton.onclick = event => { event.stopPropagation(); openRenameChannelModal(channel); }; channelButton.appendChild(renameButton); if (['general','announcements','lounge'].includes(channel.id)) return; const removeButton = document.createElement('button'); removeButton.className = 'channel-action channel-delete'; removeButton.type = 'button'; removeButton.title = 'Delete ' + channel.name; removeButton.textContent = '×'; removeButton.onclick = event => { event.stopPropagation(); openDeleteChannelModal(channel); }; channelButton.appendChild(removeButton); }
@@ -1655,9 +2134,11 @@ function blobtownUpdateBalances(data, username, delta) {
 }
 function renderGamesPanel(active, standalone = false) {
   const games = [
-    {id:'would-you-rather',icon:'🤔',name:'Would You Rather',desc:'Pick a side and see what the party chooses.'},
-    {id:'trivia-blitz',icon:'🧠',name:'Trivia Blitz',desc:'Challenge the room with quick-fire questions.'},
-    {id:'rock-paper-scissors',icon:'✊',name:'Rock Paper Scissors',desc:'Start a quick best-of-three match.'},
+    {id:'would-you-rather',icon:'🤔',name:'Would You Rather',desc:'Vote on a silly dilemma and compare the results.'},
+    {id:'trivia-blitz',icon:'🧠',name:'Trivia Blitz',desc:'Answer questions and race for the high score.'},
+    {id:'rock-paper-scissors',icon:'✊',name:'Rock Paper Scissors',desc:'Play a best-of-three match against another member.'},
+    {id:'color-clash',icon:'🃏',name:'Color Clash',desc:'Match colors or numbers and play your cards to win.'},
+    {id:'prompt-party',icon:'💬',name:'Prompt Party',desc:'Fill in an original prompt; the host picks the funniest answer.'},
   ];
   const activeGame = games.find(game => game.id === (active && active.gameId));
   const blobtownMarkup = activeGame && activeGame.id === 'blobtown-2d' ? `
@@ -1777,11 +2258,12 @@ function renderGamesPanel(active, standalone = false) {
 
   els.gamesPanel.innerHTML = standalone
     ? '<div class="games-heading"><strong>Nexus</strong><span>' + (useLanBackend ? 'Shared multiplayer world' : 'Local world · not multiplayer') + '</span></div>' + blobtownMarkup
-    : '<div class="games-heading"><strong>Party games</strong><span>Play together with this server</span></div>' + games.map(game => '<article class="game-card"><div class="game-icon">' + game.icon + '</div><div class="game-card-copy"><strong>' + game.name + '</strong><small>' + game.desc + '</small></div><button type="button" data-game="' + game.id + '">' + (active && active.gameId === game.id ? 'Join game' : 'Start game') + '</button></article>').join('') + (active ? '<div class="game-lobby"><strong>' + esc(games.find(game => game.id === active.gameId)?.name || 'Game') + '</strong><span>' + Object.keys(active.players || {}).length + ' player(s) in the lobby</span></div>' : '') + blobtownMarkup;
+    : '<div class="games-heading"><strong>Party games</strong><span>Playable rounds · shared with this server</span></div>' + games.map(game => '<article class="game-card"><div class="game-icon">' + game.icon + '</div><div class="game-card-copy"><strong>' + game.name + '</strong><small>' + game.desc + '</small></div><button type="button" data-game="' + game.id + '"' + (state.server?.localOnly?' disabled title="Multiplayer games need an online server."':'') + '>' + (active?.gameId===game.id&&active.status==='waiting'?'Join game':active?.gameId===game.id&&active.status==='finished'?'New match':active?.gameId===game.id?'Open game':'Start game') + '</button></article>').join('') + (state.server?.localOnly?'<p class="games-status">Playable multiplayer rounds are available on online servers.</p>':'') + '<div data-game-round></div>' + blobtownMarkup;
 
   els.gamesPanel.querySelectorAll('[data-game]').forEach(button => {
     button.onclick = () => startPartyGame(button.dataset.game);
   });
+  if(!standalone&&!state.server?.localOnly)renderPartyGame(active);
 
   const blobtownRoot = els.gamesPanel.querySelector('[data-blobtown-root]');
   if (!blobtownRoot) return;
@@ -1965,10 +2447,264 @@ function renderGamesPanel(active, standalone = false) {
   }
 
 };
+const partyGameNames={'would-you-rather':'Would You Rather','trivia-blitz':'Trivia Blitz','rock-paper-scissors':'Rock Paper Scissors','color-clash':'Color Clash','prompt-party':'Prompt Party'};
+const partyGameColors={red:'#f06464',blue:'#5a91ed',green:'#56bc7b',yellow:'#f1cd54'};
+const wouldYouRatherQuestions=[
+  ['Explore a new planet','Explore the deepest ocean'],
+  ['Always have perfect weather','Always find a great parking spot'],
+  ['Talk to animals','Speak every human language'],
+  ['Have a tiny dragon friend','Have a friendly robot helper'],
+  ['Only eat crunchy food','Only eat soft food']
+];
+const triviaQuestions=[
+  {question:'Which planet is known as the Red Planet?',choices:['Venus','Mars','Jupiter','Mercury'],answer:1},
+  {question:'How many sides does a hexagon have?',choices:['Five','Six','Seven','Eight'],answer:1},
+  {question:'What is the largest ocean on Earth?',choices:['Atlantic','Indian','Arctic','Pacific'],answer:3},
+  {question:'Which animal is the tallest?',choices:['Elephant','Giraffe','Ostrich','Camel'],answer:1},
+  {question:'What is the name of our galaxy?',choices:['Andromeda','Whirlpool','Milky Way','Sombrero'],answer:2},
+  {question:'Which instrument has keys, pedals, and strings?',choices:['Piano','Flute','Drum','Trumpet'],answer:0}
+];
+const promptPartyQuestions=[
+  'The server meeting was going well until someone brought up ___.',
+  'The secret ingredient in the ultimate snack is ___.',
+  'I knew the adventure was in trouble when the map started showing ___.',
+  'The newest server rule: absolutely no ___ after midnight.',
+  'The award for most unexpected invention goes to ___.',
+  'The dragon agreed to leave town in exchange for ___.',
+  'The group chat went quiet after someone posted ___.',
+  'A tiny robot arrived with one important message: ___.'
+];
+function partyGameId() { return globalThis.crypto?.randomUUID?.()||Math.random().toString(36).slice(2)+Date.now().toString(36); }
+function createColorClashDeck() {
+  const deck=[];
+  Object.keys(partyGameColors).forEach(color=>{for(let value=0;value<=9;value++){deck.push({id:partyGameId(),color,value});if(value>0)deck.push({id:partyGameId(),color,value});}});
+  for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}
+  return deck;
+}
+function partyPlayerRecord() { return {key:state.user.key,name:String(state.user.username||'Player').slice(0,32)}; }
+function makePartyGame(gameId) {
+  const player=partyPlayerRecord(),key=safe(player.key);
+  const game={gameId,matchId:partyGameId(),hostKey:player.key,startedBy:player.key,status:'waiting',players:{[key]:player},startedAt:Date.now()};
+  if(gameId==='color-clash'){
+    const deck=createColorClashDeck(),hand=deck.splice(0,7);
+    game.players[key]={...player,hand};game.playerOrder=[player.key];game.deck=deck;game.discard=[deck.pop()];game.turn=player.key;
+  } else if(gameId==='prompt-party') {
+    game.submissions={};game.scores={};game.round=0;
+  } else if(gameId==='rock-paper-scissors') {
+    game.choices={};game.scores={[key]:0};game.round=1;
+  } else if(gameId==='would-you-rather') {
+    game.questionIndex=Math.floor(Math.random()*wouldYouRatherQuestions.length);game.votes={};
+  } else if(gameId==='trivia-blitz') {
+    game.questionIndex=0;game.answers={};game.scores={[key]:0};
+  }
+  return game;
+}
+function partyGameQuestion(game) {
+  if(game.gameId==='would-you-rather')return wouldYouRatherQuestions[Number(game.questionIndex||0)%wouldYouRatherQuestions.length];
+  if(game.gameId==='trivia-blitz')return triviaQuestions[Number(game.questionIndex||0)%triviaQuestions.length];
+  return null;
+}
+function partyGameError(message) {
+  const status=els.gamesPanel.querySelector('[data-game-error]');
+  if(status)status.textContent=message;
+  else showError(message);
+}
+function renderPartyGame(game) {
+  const root=els.gamesPanel.querySelector('[data-game-round]');
+  if(!root)return;
+  if(!game){root.innerHTML='<p class="games-status">Choose a game to start a new round-based match. Other server members can join from this channel.</p>';return;}
+  const gameName=partyGameNames[game.gameId]||'Party game';
+  const players=game.players||{},playerKey=safe(state.user.key),player=players[playerKey],isHost=game.hostKey===state.user.key;
+  const count=Object.keys(players).length;
+  const participants=Object.values(players).map(item=>esc(item.name||'Player')).join(' · ');
+  let content='';
+  if(game.gameId==='color-clash'){
+    const top=game.discard?.at(-1),hand=player?.hand||[],myTurn=!!player&&game.status==='playing'&&game.turn===state.user.key;
+    const handMarkup=hand.map(card=>'<button type="button" class="party-card" style="--card-color:'+partyGameColors[card.color]+'" data-game-action="play-card" data-card-id="'+esc(card.id)+'"'+(!myTurn||!top||(card.color!==top.color&&card.value!==top.value)?' disabled':'')+'>'+esc(String(card.value))+'</button>').join('');
+    content='<div class="party-game-table"><strong>Discard pile</strong><span class="party-card party-discard" style="--card-color:'+partyGameColors[top?.color]+'">'+(top?esc(String(top.value)):'—')+'</span><span>'+Object.values(players).map(item=>esc(item.name)+': '+(item.hand?.length||0)+' cards').join(' · ')+'</span></div><h4>Your hand</h4><div class="party-card-hand">'+(handMarkup||'<span>Join the waiting match to get a hand.</span>')+'</div><div class="party-game-actions">'+(myTurn?'<button type="button" data-game-action="draw">Draw a card and pass</button>':'')+(game.status==='finished'&&isHost?'<button type="button" data-game-action="new">New match</button>':'')+'</div>';
+  } else if(game.gameId==='would-you-rather'){
+    const question=partyGameQuestion(game)||[];
+    const votes=game.votes||{},voted=!!votes[playerKey];
+    content='<h4>'+(game.status==='waiting'?'Waiting for the host to start':esc(question[0]||'Would you rather…?'))+'</h4>'+(game.status==='waiting'&&isHost?'<button type="button" data-game-action="start-round"'+(count<2?' disabled':'')+'>Start voting</button>':'')+'<div class="party-game-actions">'+question.map((choice,index)=>'<button type="button" data-game-action="vote" data-choice="'+index+'"'+(!player||game.status!=='playing'||voted?' disabled':'')+'>'+esc(choice)+'</button>').join('')+'</div>';
+    if(game.status==='roundComplete'||game.status==='finished'){const totals=[0,0];Object.values(votes).forEach(vote=>{if(Number.isInteger(vote.choice))totals[vote.choice]++;});content+='<p class="party-game-result">Results: '+esc(question[0])+' — '+totals[0]+' · '+esc(question[1])+' — '+totals[1]+'</p>'+(isHost&&game.status==='roundComplete'?'<button type="button" data-game-action="next">Next question</button>':'');}
+  } else if(game.gameId==='trivia-blitz'){
+    const question=partyGameQuestion(game),answers=game.answers||{},answered=!!answers[playerKey];
+    content='<h4>'+(game.status==='waiting'?'Waiting for the host to start':esc(question?.question||'Trivia'))+'</h4>'+(game.status==='waiting'&&isHost?'<button type="button" data-game-action="start-round"'+(count<2?' disabled':'')+'>Start trivia</button>':'')+'<div class="party-game-actions">'+(question?.choices||[]).map((choice,index)=>'<button type="button" data-game-action="answer" data-choice="'+index+'"'+(!player||game.status!=='playing'||answered?' disabled':'')+'>'+esc(choice)+'</button>').join('')+'</div>';
+    content+='<p class="party-game-result">Score: '+Object.values(players).map(item=>esc(item.name)+': '+Number(game.scores?.[safe(item.key)]||0)).join(' · ')+'</p>';
+    if(game.status==='roundComplete'||game.status==='finished')content+='<p class="party-game-result">Correct answer: '+esc(question?.choices?.[question.answer]||'')+'</p>'+(isHost&&game.status==='roundComplete'?'<button type="button" data-game-action="next">Next question</button>':'');
+  } else if(game.gameId==='rock-paper-scissors'){
+    const choices=game.choices||{},picked=!!choices[playerKey];
+    content='<p>First to two round wins. '+Object.values(players).map(item=>esc(item.name)+': '+Number(game.scores?.[safe(item.key)]||0)).join(' · ')+'</p><div class="party-game-actions">'+['rock','paper','scissors'].map(choice=>'<button type="button" data-game-action="rps-pick" data-choice="'+choice+'"'+(!player||game.status!=='playing'||picked?' disabled':'')+'>'+choice[0].toUpperCase()+choice.slice(1)+'</button>').join('')+'</div>';
+    if(game.status==='roundComplete'||game.status==='finished'){const winner=game.roundWinner?players[safe(game.roundWinner)]?.name:'Tie';content+='<p class="party-game-result">Round '+Number(game.round||1)+': '+(game.roundWinner?esc(winner||'A player')+' wins with '+esc(choices[safe(game.roundWinner)]||'')+'.':'It is a tie.')+'</p>'+(isHost&&game.status==='roundComplete'?'<button type="button" data-game-action="next">Next round</button>':'');}
+    if(game.status==='finished')content+='<p class="party-game-result">'+esc(players[safe(game.winner)]?.name||'A player')+' won the match!</p>';
+  } else if(game.gameId==='prompt-party'){
+    const submissions=game.submissions||{};
+    if(game.status==='waiting')content='<p>'+(isHost?'Start when at least two players are in the room.':'Waiting for the host to start a round.')+'</p>'+(isHost?'<button type="button" data-game-action="prompt-start"'+(count<2?' disabled':'')+'>Start round</button>':'');
+    else if(game.status==='answering')content='<blockquote class="party-game-prompt">'+esc(game.prompt||'')+'</blockquote>'+(player&&!submissions[playerKey]?'<form data-prompt-submit class="party-game-form"><label>Write your answer<input name="answer" maxlength="160" required></label><button type="submit">Submit answer</button></form>':'<p>Submitted '+Object.keys(submissions).length+'/'+count+' answers.</p>');
+    else if(game.status==='judging')content='<blockquote class="party-game-prompt">'+esc(game.prompt||'')+'</blockquote>'+(isHost?Object.entries(submissions).map(([key,answer],index)=>'<button type="button" class="party-answer" data-game-action="prompt-choose" data-player-key="'+esc(key)+'">Answer '+(index+1)+': '+esc(answer.text)+'</button>').join(''):'<p>All answers are in. The host is choosing a winner.</p>');
+    else content='<blockquote class="party-game-prompt">'+esc(game.prompt||'')+'</blockquote><p class="party-game-result">'+esc(players[safe(game.winner)]?.name||'A player')+' won: “'+esc(submissions[safe(game.winner)]?.text||'')+'”</p>'+(isHost?'<button type="button" data-game-action="prompt-next">Start next round</button>':'');
+    if(game.scores)content+='<p class="party-game-result">Wins: '+Object.values(players).map(item=>esc(item.name)+': '+Number(game.scores?.[safe(item.key)]||0)).join(' · ')+'</p>';
+  }
+  const playerLimit=game.gameId==='color-clash'||game.gameId==='rock-paper-scissors'?2:game.gameId==='prompt-party'?6:8;
+  let message=game.status==='waiting'?'Waiting for players · '+count+'/'+playerLimit:game.status==='playing'?'Round in progress':game.status==='answering'?'Waiting for everyone to submit':game.status==='judging'?'The host is judging answers':game.status==='roundComplete'?'Round complete':(players[safe(game.winner)]?.name||'A player')+' won!';
+  if(game.gameId==='color-clash'&&game.status==='playing')message=game.turn===state.user.key?'Your turn — play a matching color or number.':(players[safe(game.turn)]?.name||'Opponent')+' is playing.';
+  if(game.gameId==='trivia-blitz'&&game.status==='finished')message=game.winner?(players[safe(game.winner)]?.name||'A player')+' won Trivia Blitz!':'Trivia Blitz finished in a tie.';
+  root.innerHTML='<section class="party-round-panel"><div class="party-round-heading"><strong>'+esc(gameName)+'</strong><span>'+message+'</span></div><p class="party-player-list">Players: '+(participants||'None')+'</p><div data-game-error class="games-status" role="status" aria-live="polite"></div>'+content+'</section>';
+  root.querySelectorAll('[data-game-action]').forEach(button=>button.onclick=()=>handlePartyGameAction(button.dataset.gameAction,button.dataset));
+  const answerForm=root.querySelector('[data-prompt-submit]');
+  if(answerForm)answerForm.onsubmit=event=>{event.preventDefault();handlePartyGameAction('prompt-submit',{text:new FormData(answerForm).get('answer')});};
+}
+function partyGameRef() {
+  if(state.gameRef)return state.gameRef;
+  if(!state.server||!state.channel)throw new Error('Choose a server Games channel first.');
+  return db.ref('serverGames/'+state.server.code+'/'+safe(state.channel)+'/active');
+}
+async function updatePartyGame(mutator) {
+  if(!state.server||state.server.localOnly)throw new Error('Playable multiplayer games need an online server.');
+  let failure=null;
+  const result=await partyGameRef().transaction(current=>{
+    try {return mutator(current);}
+    catch(error){failure=error;return undefined;}
+  });
+  if(!result.committed)throw failure||new Error('The game changed before your move could be saved. Try again.');
+  renderPartyGame(result.snapshot.val());
+}
+async function startPartyGame(gameId) {
+  try {
+    await updatePartyGame(current=>{
+      if(!partyGameNames[gameId])throw new Error('That game is unavailable.');
+      if(!current||current.status==='finished')return makePartyGame(gameId);
+      if(current.gameId!==gameId)throw new Error('Finish the current match before starting another game.');
+      if(!current.status) {
+        current.status='waiting';
+        current.hostKey=current.hostKey||current.startedBy;
+        const normalized={};
+        Object.entries(current.players||{}).forEach(([key,item])=>{const playerKey=item.key||key;normalized[safe(playerKey)]={...item,key:playerKey};});
+        current.players=normalized;
+      }
+      if(current.players?.[safe(state.user.key)])return current;
+      if(current.status!=='waiting')throw new Error('This round has already started.');
+      const maxPlayers=gameId==='color-clash'||gameId==='rock-paper-scissors'?2:gameId==='prompt-party'?6:8;
+      if(Object.keys(current.players||{}).length>=maxPlayers)throw new Error('This game is full.');
+      const player=partyPlayerRecord(),key=safe(player.key);
+      current.players=current.players||{};current.players[key]=player;
+      if(gameId==='color-clash'){
+        const hand=current.deck.splice(0,7);current.players[key]={...player,hand};current.playerOrder=[...(current.playerOrder||[]),player.key];
+        current.status='playing';current.turn=current.playerOrder[0];
+      } else if(gameId==='rock-paper-scissors') {
+        current.status='playing';
+      }
+      if(gameId==='rock-paper-scissors')current.scores[key]=Number(current.scores[key]||0);
+      if(gameId==='trivia-blitz')current.scores[key]=Number(current.scores[key]||0);
+      return current;
+    });
+  } catch(error){partyGameError('Could not join that game: '+error.message);}
+}
+async function handlePartyGameAction(action,data) {
+  try {
+    await updatePartyGame(current=>{
+      if(!current)throw new Error('This match is no longer active.');
+      if(action==='new') {
+        if(current.gameId!=='color-clash'||current.status!=='finished'||current.hostKey!==state.user.key)throw new Error('Only the host can start a new Color Clash match after this one ends.');
+        return makePartyGame(current.gameId);
+      }
+      if(current.status==='finished')throw new Error('This match is no longer active.');
+      const key=safe(state.user.key),player=current.players?.[key],isHost=current.hostKey===state.user.key;
+      if(!player)throw new Error('Join the match before playing.');
+      if(action==='draw'){
+        if(current.gameId!=='color-clash'||current.status!=='playing'||current.turn!==state.user.key)throw new Error('It is not your turn.');
+        if(!current.deck?.length){const top=current.discard.pop();current.deck=current.discard.splice(0);for(let i=current.deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[current.deck[i],current.deck[j]]=[current.deck[j],current.deck[i]];}current.discard=[top];}
+        if(!current.deck.length)throw new Error('No cards remain to draw.');
+        player.hand.push(current.deck.pop());current.turn=current.playerOrder.find(item=>item!==state.user.key)||state.user.key;return current;
+      }
+      if(action==='play-card'){
+        if(current.gameId!=='color-clash'||current.status!=='playing'||current.turn!==state.user.key)throw new Error('It is not your turn.');
+        const index=player.hand.findIndex(card=>card.id===data.cardId),top=current.discard?.at(-1);
+        if(index<0||!top)throw new Error('That card is no longer available.');
+        const [card]=player.hand.splice(index,1);
+        if(card.color!==top.color&&card.value!==top.value)throw new Error('Play a card matching the color or number.');
+        current.discard.push(card);
+        if(!player.hand.length){current.status='finished';current.winner=state.user.key;}
+        else current.turn=current.playerOrder.find(item=>item!==state.user.key)||state.user.key;
+        return current;
+      }
+      if(action==='start-round'){
+        if(!isHost||current.status!=='waiting'||Object.keys(current.players||{}).length<2||!['would-you-rather','trivia-blitz'].includes(current.gameId))throw new Error('The host can start the round when at least two players have joined.');
+        current.status='playing';
+        if(current.gameId==='would-you-rather')current.votes={};
+        if(current.gameId==='trivia-blitz')current.answers={};
+        return current;
+      }
+      if(action==='vote'||action==='answer'){
+        const isTrivia=current.gameId==='trivia-blitz',mapName=isTrivia?'answers':'votes';
+        if((!isTrivia&&current.gameId!=='would-you-rather')||current.status!=='playing')throw new Error('This round is not accepting votes.');
+        current[mapName]=current[mapName]||{};
+        if(current[mapName][key])throw new Error('You already answered this round.');
+        const choice=Number(data.choice),question=partyGameQuestion(current);
+        if(!Number.isInteger(choice)||choice<0||choice>=(isTrivia?question.choices.length:2))throw new Error('Choose one of the available answers.');
+        current[mapName][key]={choice};
+        if(isTrivia&&choice===question.answer){current.scores=current.scores||{};current.scores[key]=Number(current.scores[key]||0)+1;}
+        if(Object.keys(current[mapName]).length>=Object.keys(current.players||{}).length)current.status='roundComplete';
+        return current;
+      }
+      if(action==='next'){
+        if(!isHost||current.status!=='roundComplete')throw new Error('Only the host can advance after everyone finishes.');
+        if(current.gameId==='would-you-rather'){current.questionIndex=(Number(current.questionIndex)+1)%wouldYouRatherQuestions.length;current.votes={};current.status='playing';}
+        else if(current.gameId==='trivia-blitz'){
+          if(Number(current.questionIndex)>=4){
+            current.status='finished';
+            const scores=Object.entries(current.scores||{}),highScore=Math.max(0,...scores.map(([,score])=>Number(score)||0)),winners=scores.filter(([,score])=>(Number(score)||0)===highScore);
+            current.winner=winners.length===1?winners[0][0]:'';
+          } else {current.questionIndex++;current.answers={};current.status='playing';}
+        }
+        else if(current.gameId==='rock-paper-scissors'){current.choices={};current.round=Number(current.round||1)+1;current.status='playing';}
+        else throw new Error('This game has no next-question action.');
+        return current;
+      }
+      if(action==='rps-pick'){
+        if(current.gameId!=='rock-paper-scissors'||current.status!=='playing')throw new Error('This round is not accepting choices.');
+        if(!['rock','paper','scissors'].includes(data.choice)||current.choices?.[key])throw new Error('Your choice was already submitted.');
+        current.choices=current.choices||{};current.choices[key]=data.choice;
+        if(Object.keys(current.choices).length>=2){
+          const entries=Object.entries(current.choices),[first,second]=entries;
+          if(first[1]!==second[1]){
+            const beats={rock:'scissors',paper:'rock',scissors:'paper'};
+            current.roundWinner=beats[first[1]]===second[1]?first[0]:second[0];
+            current.scores[current.roundWinner]=Number(current.scores[current.roundWinner]||0)+1;
+          } else current.roundWinner='';
+          current.status=Math.max(...Object.values(current.scores))>=2?'finished':'roundComplete';
+          if(current.status==='finished')current.winner=Object.keys(current.scores).find(playerId=>current.scores[playerId]>=2);
+        }
+        return current;
+      }
+      if(action==='prompt-start'){
+        if(current.gameId!=='prompt-party'||!isHost||current.status!=='waiting'||Object.keys(current.players||{}).length<2)throw new Error('The host can start when at least two players have joined.');
+        const options=promptPartyQuestions.filter(prompt=>prompt!==current.prompt);
+        current.prompt=options[Math.floor(Math.random()*options.length)];current.submissions={};current.status='answering';current.round=Number(current.round||0)+1;return current;
+      }
+      if(action==='prompt-submit'){
+        const text=String(data.text||'').trim().slice(0,160);
+        if(current.gameId!=='prompt-party'||current.status!=='answering'||!text||current.submissions?.[key])throw new Error('Enter one answer for this round.');
+        current.submissions=current.submissions||{};current.submissions[key]={key:state.user.key,text};
+        if(Object.keys(current.submissions).length>=Object.keys(current.players||{}).length)current.status='judging';return current;
+      }
+      if(action==='prompt-choose'){
+        if(current.gameId!=='prompt-party'||!isHost||current.status!=='judging'||!current.submissions?.[data.playerKey])throw new Error('Only the host can choose a submitted answer.');
+        current.winner=data.playerKey;current.scores=current.scores||{};current.scores[data.playerKey]=Number(current.scores[data.playerKey]||0)+1;current.status='roundComplete';return current;
+      }
+      if(action==='prompt-next'){
+        if(current.gameId!=='prompt-party'||!isHost||current.status!=='roundComplete')throw new Error('Only the host can start the next round.');
+        current.status='waiting';current.submissions={};current.prompt='';current.winner='';return current;
+      }
+      throw new Error('That move is not available.');
+    });
+  } catch(error){partyGameError('Could not make that move: '+error.message);}
+}
 function watchGamesChannel(channelId) { if (state.gameRef && state.gameHandler) state.gameRef.off('value', state.gameHandler); state.gameRef = db.ref('serverGames/' + state.server.code + '/' + safe(channelId) + '/active'); state.gameHandler = snap => renderGamesPanel(snap.val()); state.gameRef.on('value', state.gameHandler); }
-async function startPartyGame(gameId) { if (!state.server || !state.channel) return; const ref = db.ref('serverGames/' + state.server.code + '/' + safe(state.channel) + '/active'); const current = (await ref.get()).val(); const updates = current && current.gameId === gameId ? {['players/' + state.user.key]: {name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}} : {gameId,startedBy:state.user.key,startedAt:firebase.database.ServerValue.TIMESTAMP,players:{[state.user.key]:{name:state.user.username,joinedAt:firebase.database.ServerValue.TIMESTAMP}}}; await ref.update(updates); }
 function selectMessages(channelId) {
   if (!channelId || !state.server) {
+    stopNotificationRefresh();
+    document.getElementById('notificationPanel').hidden = true;
     els.messages.hidden = false;
     els.messageForm.hidden = true;
     els.gamesPanel.hidden = true;
@@ -1980,12 +2716,26 @@ function selectMessages(channelId) {
   state.gameRef = state.gameHandler = null;
   const channel = channels().find(item => item && item.id === channelId);
   if (channel && channel.type === 'games') {
+    stopNotificationRefresh();
+    document.getElementById('notificationPanel').hidden = true;
     els.messages.hidden = true;
     els.messageForm.hidden = true;
     els.gamesPanel.hidden = false;
     watchGamesChannel(channelId);
     return;
   }
+  if (channel?.type === 'notifications') {
+    els.gamesPanel.hidden = true;
+    els.messages.hidden = true;
+    els.messageForm.hidden = true;
+    document.getElementById('notificationPanel').hidden = false;
+    document.getElementById('notificationFeedManager').hidden = !isServerOwner();
+    renderNotificationFeedSources();
+    startNotificationRefresh();
+    return;
+  }
+  stopNotificationRefresh();
+  document.getElementById('notificationPanel').hidden = true;
   els.gamesPanel.hidden = true;
   els.messages.hidden = false;
   els.messageForm.hidden = false;
@@ -2066,17 +2816,35 @@ function renderMessage(message) {
   messageCache[message.id] = message;
   const image = message.image ? '<img class="message-image" src="' + esc(message.image) + '" alt="Image shared by ' + esc(message.name) + '">' : '';
   const fileData = typeof message.fileData === 'string' && /^data:[^,]+;base64,/.test(message.fileData) ? message.fileData : '';
-  const file = fileData ? '<a class="message-file" href="' + esc(fileData) + '" download="' + esc(message.fileName || 'attachment') + '">Download ' + esc(message.fileName || 'attachment') + '</a>' : '';
+  const playableVideo = fileData && isSupportedVideo(message.fileType, message.fileName);
+  const video = playableVideo ? '<video class="message-video" controls playsinline preload="metadata" src="' + esc(fileData) + '" aria-label="Video shared by ' + esc(message.name) + '"></video>' : '';
+  const file = fileData && !playableVideo ? '<a class="message-file" href="' + esc(fileData) + '" download="' + esc(message.fileName || 'attachment') + '">Download ' + esc(message.fileName || 'attachment') + '</a>' : '';
   const reply = message.replyTo ? '<div class="reply-preview">Replying to ' + esc(message.replyTo.name) + ': ' + esc(message.replyTo.text) + '</div>' : '';
   const reactions = Object.entries(message.reactions || {}).map(([emoji, users]) => '<button class="reaction' + (users && users[state.user.key] ? ' active' : '') + '" data-emoji="' + esc(emoji) + '">' + esc(emoji) + ' ' + Object.keys(users || {}).length + '</button>').join('');
   const rank = rankForMember(message.key, message.name);
   const rankColor=rank&&typeof rank.color==='string'&&/^#[0-9a-f]{6}$/i.test(rank.color)?rank.color:'#9aa5b4';
   const rankBadge = rank ? '<span class="rank-badge" style="--rank-color:' + rankColor + '">' + esc(rank.name) + '</span>' : '';
   const ownMessage = String(message.key) === String(state.user.key);
+  const messageTags = ownMessage
+    ? {...(message.serverTags || {}),...(state.user.serverTags || {})}
+    : message.serverTags && typeof message.serverTags === 'object' ? message.serverTags : {};
+  const currentServerTag = state.server ? normalizeServerTag(messageTags[safe(state.server.code)]) : null;
+  const serverTagBadges = Object.values(messageTags).map(storedTag => {
+    const tag = normalizeServerTag(storedTag);
+    if (!tag) return '';
+    const serverName = storedTag && typeof storedTag.serverName === 'string' ? storedTag.serverName : 'server';
+    const image = tag.image ? '<img class="server-tag-icon server-tag-icon-' + tag.imageShape + '" src="' + tag.image + '" alt="">' : '';
+    return '<span class="server-tag-badge server-tag-style-' + tag.style + ' server-tag-shape-' + tag.shape + '" style="--server-tag-text:' + tag.textColor + ';--server-tag-bg:' + tag.backgroundColor + ';--server-tag-border:' + tag.borderColor + '" title="From ' + esc(serverName) + '">' + image + (tag.emoji ? esc(tag.emoji) + ' ' : '') + esc(tag.name) + '</span>';
+  }).join('');
   const canModerateMessages=hasServerPermission('manageMessages');
-  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button>' : '') + (ownMessage||canModerateMessages ? '<button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
+  item.innerHTML = avatarMarkup({name:message.name,avatar:message.avatar}, 'message-avatar') + '<div class="message-content"><div class="message-head"><span class="message-name">' + esc(message.name) + '</span>' + rankBadge + serverTagBadges + '<span class="message-time">' + new Date(message.ts || Date.now()).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + (message.edited ? ' · edited' : '') + '</span></div>' + reply + '<div class="message-text">' + esc(message.text) + '</div>' + image + video + file + '<div class="reaction-list">' + reactions + '</div><div class="message-actions"><button data-action="react">☺ React</button><button data-action="reply">↩ Reply</button>' + (ownMessage ? '<button data-action="edit">Edit</button>' : '') + (ownMessage||canModerateMessages ? '<button data-action="delete">Delete</button>' : '<button data-action="hide">Hide</button>') + '</div></div>';
   const nameElement=item.querySelector('.message-name');
   if (rank&&nameElement) {nameElement.classList.add('message-name-role');nameElement.style.setProperty('--rank-color',rankColor);}
+  if (currentServerTag && nameElement) {
+    nameElement.dataset.serverNameStyle = currentServerTag.usernameStyle;
+    nameElement.style.setProperty('--server-username-a', currentServerTag.usernameColorA);
+    nameElement.style.setProperty('--server-username-b', currentServerTag.usernameColorB);
+  }
   const style=normalizeMessageStyle(message.messageStyle);
   const messageContent=item.querySelector('.message-content');
   const messageText=item.querySelector('.message-text');
@@ -2636,6 +3404,107 @@ async function closeServerPoll(poll) {
   } catch (error) {showModerationNotice('Could not close that vote.');}
 }
 function resizeImage(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = reject; reader.onload = () => { const image = new Image(); image.onload = () => { const scale = Math.min(1, 1000 / Math.max(image.width, image.height)); const canvas = document.createElement('canvas'); canvas.width = Math.round(image.width * scale); canvas.height = Math.round(image.height * scale); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = reject; image.src = reader.result; }; reader.readAsDataURL(file); }); }
+function resizeServerTagImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) return reject(new Error('Choose an image file.'));
+    if (file.size > 5 * 1024 * 1024) return reject(new Error('Choose an image under 5 MB.'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that image.'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('Could not decode that image.'));
+      image.onload = () => {
+        const size = 64;
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext('2d');
+        if (!context) return reject(new Error('Image editing is not supported in this browser.'));
+        context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+        resolve(canvas.toDataURL('image/webp', 0.72));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+const announcementTagImageInput = document.getElementById('announcementTagImage');
+const announcementTagImagePreview = document.getElementById('announcementTagImagePreview');
+const announcementTagImageStatus = document.getElementById('announcementTagImageStatus');
+const announcementTagImageClear = document.getElementById('announcementTagImageClear');
+announcementTagImageInput.addEventListener('change', async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  announcementTagImageStatus.textContent = 'Preparing image…';
+  try {
+    announcementTagImageData = await resizeServerTagImage(file);
+    announcementTagImagePreview.src = announcementTagImageData;
+    announcementTagImagePreview.hidden = false;
+    announcementTagImagePreview.dataset.shape = document.getElementById('announcementTagImageShape').value;
+    announcementTagImageClear.hidden = false;
+    announcementTagImageStatus.textContent = 'Cropped to a small tag image.';
+    updateOwnerTagPreview();
+  } catch (error) {
+    announcementTagImageData = '';
+    announcementTagImageStatus.textContent = error.message || 'Could not prepare that image.';
+  } finally {
+    announcementTagImageInput.value = '';
+  }
+});
+document.getElementById('announcementTagImageShape').addEventListener('change', event => {
+  announcementTagImagePreview.dataset.shape = event.target.value;
+  updateOwnerTagPreview();
+});
+announcementTagImageClear.addEventListener('click', () => {
+  announcementTagImageData = '';
+  announcementTagImagePreview.hidden = true;
+  announcementTagImagePreview.removeAttribute('src');
+  announcementTagImageClear.hidden = true;
+  announcementTagImageStatus.textContent = 'Image removed.';
+  updateOwnerTagPreview();
+});
+function updateOwnerTagPreview() {
+  const badge = document.getElementById('ownerTagBadgePreview');
+  const username = document.getElementById('ownerTagUsernamePreview');
+  const tag = normalizeServerTag({
+    name:document.getElementById('announcementTag').value || 'Tag',
+    emoji:document.getElementById('announcementTagEmoji').value,
+    style:document.getElementById('announcementTagStyle').value,
+    shape:document.getElementById('announcementTagShape').value,
+    image:announcementTagImageData,
+    imageShape:document.getElementById('announcementTagImageShape').value,
+    textColor:document.getElementById('announcementTagTextColor').value,
+    backgroundColor:document.getElementById('announcementTagBackground').value,
+    borderColor:document.getElementById('announcementTagBorder').value,
+    usernameStyle:document.getElementById('announcementTagUsernameStyle').value,
+    usernameColorA:document.getElementById('announcementTagUsernameColorA').value,
+    usernameColorB:document.getElementById('announcementTagUsernameColorB').value
+  });
+  badge.className = 'server-tag-badge server-tag-style-' + tag.style + ' server-tag-shape-' + tag.shape;
+  badge.style.setProperty('--server-tag-text', tag.textColor);
+  badge.style.setProperty('--server-tag-bg', tag.backgroundColor);
+  badge.style.setProperty('--server-tag-border', tag.borderColor);
+  badge.replaceChildren();
+  if (tag.image) {
+    const image = document.createElement('img');
+    image.className = 'server-tag-icon server-tag-icon-' + tag.imageShape;
+    image.src = tag.image;
+    image.alt = '';
+    badge.appendChild(image);
+  }
+  badge.append(document.createTextNode((tag.emoji ? tag.emoji + ' ' : '') + tag.name));
+  username.dataset.serverNameStyle = tag.usernameStyle;
+  username.style.setProperty('--server-username-a', tag.usernameColorA);
+  username.style.setProperty('--server-username-b', tag.usernameColorB);
+}
+document.querySelectorAll('#ownerTagSettings input,#ownerTagSettings select,#announcementTag').forEach(control => {
+  control.addEventListener('input', updateOwnerTagPreview);
+  control.addEventListener('change', updateOwnerTagPreview);
+});
+updateOwnerTagPreview();
 function renderMembers(data) {
   if (data !== state.serverMembers) state.serverPresence=data||{};
   const membersByKey=new Map();
@@ -2942,8 +3811,31 @@ async function leaveVoice() {
 async function publishAnnouncement() {
   if (!state.server || !hasServerPermission('manageAnnouncements')) return;
   const text = els.announcementInput.value.trim();
-  if (!text) return;
+  const composeError = document.getElementById('announcementComposeError');
+  composeError.textContent = '';
+  if (!text) {
+    composeError.textContent = 'Write an announcement first.';
+    els.announcementInput.focus();
+    return;
+  }
+  const tagName = String(document.getElementById('announcementTag').value || '').trim().replace(/\s+/g, ' ').slice(0, 24);
   const announcement = {text:text.slice(0,240),by:state.user.username,ts:Date.now()};
+  if (isServerOwner() && tagName) {
+    announcement.tag = normalizeServerTag({
+      name:tagName,
+      emoji:document.getElementById('announcementTagEmoji').value,
+      style:document.getElementById('announcementTagStyle').value,
+      shape:document.getElementById('announcementTagShape').value,
+      textColor:document.getElementById('announcementTagTextColor').value,
+      backgroundColor:document.getElementById('announcementTagBackground').value,
+      borderColor:document.getElementById('announcementTagBorder').value,
+      image:announcementTagImageData,
+      imageShape:document.getElementById('announcementTagImageShape').value,
+      usernameStyle:document.getElementById('announcementTagUsernameStyle').value,
+      usernameColorA:document.getElementById('announcementTagUsernameColorA').value,
+      usernameColorB:document.getElementById('announcementTagUsernameColorB').value
+    });
+  }
   try {
     if (state.server.localOnly) {
       const existing = Array.isArray(state.server.announcements) ? state.server.announcements : [];
@@ -2953,13 +3845,31 @@ async function publishAnnouncement() {
       await db.ref('serverMeta/' + state.server.code + '/announcements').push({...announcement,ts:firebase.database.ServerValue.TIMESTAMP});
     }
     els.announcementInput.value = '';
+    document.getElementById('announcementTag').value = '';
+    document.getElementById('announcementTagEmoji').value = '';
+    announcementTagImageData = '';
+    document.getElementById('announcementTagImage').value = '';
+    document.getElementById('announcementTagImagePreview').hidden = true;
+    document.getElementById('announcementTagImagePreview').removeAttribute('src');
+    document.getElementById('announcementTagImageClear').hidden = true;
+    document.getElementById('announcementComposeModal').hidden = true;
     renderServer();
     if (state.channel && channels().find(channel => channel.id === state.channel)?.type === 'announcement') {
-      els.announcement.scrollTop = els.announcement.scrollHeight;
+      els.announcement.scrollTop = 0;
     }
   } catch (error) {
-    showError('Could not publish the announcement.');
+    composeError.textContent = 'Could not publish the announcement. Try again.';
   }
+}
+function openAnnouncementComposer() {
+  if (!state.server || !hasServerPermission('manageAnnouncements')) return;
+  document.getElementById('announcementComposeError').textContent = '';
+  document.getElementById('ownerTagControls').hidden = !isServerOwner();
+  document.getElementById('announcementComposeModal').hidden = false;
+  els.announcementInput.focus();
+}
+function closeAnnouncementComposer() {
+  document.getElementById('announcementComposeModal').hidden = true;
 }
 async function deleteAnnouncement(announcement, button) {
   const server = state.server;
@@ -3277,7 +4187,12 @@ sektorMusicVolume.oninput = () => { sektorMusicAudio.volume = Number(sektorMusic
 sektorMusicAudio.volume = Number(sektorMusicVolume.value);
 sektorMusicSpeed.onchange = () => { sektorMusicAudio.playbackRate = Number(sektorMusicSpeed.value); };
 els.youtubePopupClose.onclick = closeYoutubePopup;
-document.addEventListener('click', event => { if (!els.youtubePopup.hidden && !els.youtubePopup.contains(event.target) && !els.youtubeOpenBtn.contains(event.target)) closeYoutubePopup(); });
+document.addEventListener('click', event => {
+  const eventPath = event.composedPath();
+  if (!els.youtubePopup.hidden && !eventPath.includes(els.youtubePopup) && !eventPath.includes(els.youtubeOpenBtn)) {
+    closeYoutubePopup();
+  }
+});
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !els.youtubePopup.hidden) closeYoutubePopup(); });
 const youtubePopupCard = els.youtubePopup.querySelector('.youtube-popup-card');
 const youtubePopupHeader = els.youtubePopup.querySelector('.youtube-popup-header');
@@ -3308,9 +4223,14 @@ els.messageForm.onsubmit=async event=>{
   event.preventDefault();
   const text=els.messageInput.value.trim();
   const channel=channels().find(item=>item.id===state.channel);
-  if ((!text&&!pendingImage)||!state.server||channel.type==='announcement') return;
+  if (!state.server || !channel) return;
+  if (!canPostInChannel(channel,{text,image:pendingImage,audio:pendingAudio,fileType:pendingFile?.type,fileName:pendingFile?.name})) {
+    showError(channel.type === 'ranked' ? 'An owner-assigned server rank is required to post here.' : channel.type === 'media' ? 'This channel only accepts images, audio, and video.' : 'Posting is disabled in this channel.');
+    return;
+  }
+  if (!text && !pendingImage) return;
   try {
-    const payload={id:'local-'+Date.now(),name:state.user.username,avatar:state.user.avatar||'',key:state.user.key,text,
+    const payload={id:'local-'+Date.now(),name:state.user.username,avatar:state.user.avatar||'',key:state.user.key,serverTags:{...(state.user.serverTags||{})},text,
       image:pendingImage||'',replyTo,messageStyle:currentMessageStyle(),ts:firebase.database.ServerValue.TIMESTAMP};
     if (state.server.localOnly) {
       const key='vusMessages_'+state.server.code+'_'+safe(state.channel);
@@ -3323,6 +4243,24 @@ els.messageForm.onsubmit=async event=>{
   } catch(error) { showError('Could not send that message.'); }
 };
 els.messageInput.oninput=mentionMatches;els.imageButton.onclick=()=>els.imageInput.click();els.imageInput.onchange=async event=>{const file=event.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showError('Choose an image file.');return;}try{pendingImage=await resizeImage(file);els.imageButton.textContent='✓';}catch(error){showError('Could not prepare that image.');}};els.publish.onclick=publishAnnouncement;els.addChannel.onclick=openAddChannelModal;els.rank.onclick=openRankModal;
+document.getElementById('announcementComposeOpen').addEventListener('click', openAnnouncementComposer);
+document.getElementById('announcementComposeClose').addEventListener('click', closeAnnouncementComposer);
+document.getElementById('announcementComposeCancel').addEventListener('click', closeAnnouncementComposer);
+document.getElementById('notificationFeedForm').addEventListener('submit', addNotificationFeed);
+document.getElementById('notificationRefresh').addEventListener('click', () => refreshNotificationChannel(true));
+document.getElementById('announcementComposeModal').addEventListener('click', event => {
+  if (event.target.id === 'announcementComposeModal') closeAnnouncementComposer();
+});
+const publishAnnouncementOnEnter = event => {
+  if (event.key !== 'Enter' || event.isComposing || event.shiftKey) return;
+  event.preventDefault();
+  publishAnnouncement();
+};
+els.announcementInput.addEventListener('keydown', publishAnnouncementOnEnter);
+document.getElementById('announcementTag').addEventListener('keydown', publishAnnouncementOnEnter);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.getElementById('announcementComposeModal').hidden) closeAnnouncementComposer();
+});
 els.muteVoice.onclick = () => { if (!state.localStream) return; const track = state.localStream.getAudioTracks()[0]; if (!track) return; track.enabled = !track.enabled; els.muteVoice.textContent = track.enabled ? 'Mute' : 'Unmute'; els.popupMuteBtn.textContent = track.enabled ? 'Mute' : 'Unmute'; };
 window.addEventListener('pagehide',()=>{
   if (!useLanBackend||!state.server||!state.voiceChannel||!state.voicePeerId) return;
@@ -3377,6 +4315,19 @@ new MutationObserver(() => {
     option.value = 'video';
     option.textContent = 'Video Calls and Streaming · HD camera or screen';
     channelType.insertBefore(option, channelType.querySelector('option[value="announcement"]'));
+  }
+  if (channelType) {
+    [
+      ['ranked','Ranked chat · server rank required'],
+      ['media','Images, audio, and video only'],
+      ['notifications','Website updates · RSS/Atom feeds']
+    ].forEach(([value,label]) => {
+      if (channelType.querySelector('option[value="' + value + '"]')) return;
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      channelType.insertBefore(option, channelType.querySelector('option[value="announcement"]'));
+    });
   }
 }).observe(els.modalBody, {childList:true});
 els.friendsBtn.onclick = openFriendsArea;
@@ -3439,6 +4390,7 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
   if (file.size > maxMessageAttachmentBytes) { showError('Files must be 10 MB or smaller.'); fileInput.value = ''; return; }
+  if (file.type.startsWith('video/') && !isSupportedVideo(file.type, file.name)) { showError('Choose an MP4, WebM, or OGG video.'); fileInput.value = ''; return; }
   const reader = new FileReader();
   reader.onload = () => {
     if (typeof reader.result !== 'string') { showError('Could not prepare that file.'); return; }
@@ -3453,7 +4405,11 @@ els.messageForm.addEventListener('submit', async event => {
   event.preventDefault();
   event.stopImmediatePropagation();
   const text = els.messageInput.value.trim(); const channel = channels().find(item => item.id === state.channel);
-  if (!state.server || !channel || channel.type === 'announcement') return;
+  if (!state.server || !channel) return;
+  if (!canPostInChannel(channel,{text,image:pendingImage,audio:pendingAudio,fileType:pendingFile?.type,fileName:pendingFile?.name})) {
+    showError(channel.type === 'ranked' ? 'An owner-assigned server rank is required to post here.' : channel.type === 'media' ? 'This channel only accepts images, audio, and video.' : 'Posting is disabled in this channel.');
+    return;
+  }
   if (pendingAudio && channel.audio === false) { showError('Audio attachments are disabled in this channel.'); return; }
   const payload = {id:'local-' + Date.now(),name:state.user.username,avatar:state.user.avatar || '',key:state.user.key,text,
     image:pendingImage || '',audioData:pendingAudio || '',audioName:pendingAudioName || '',
@@ -3496,12 +4452,6 @@ els.addChannel.onclick = openAddChannelModal;
     state.voiceChannel = null;
     return originalLeaveVoice();
   };
-
-  const removeGamesOption = () => {
-    const option = document.querySelector('#newChannelType option[value="games"]');
-    if (option) option.remove();
-  };
-  new MutationObserver(removeGamesOption).observe(els.modalBody, {childList:true, subtree:true});
 
   const originalRenderFriendsArea = renderFriendsArea;
   renderFriendsArea = function () {

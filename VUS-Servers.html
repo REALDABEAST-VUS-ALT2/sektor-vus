@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sektor · Nexus</title>
-  <link rel="stylesheet" href="./style.css?v=20261020-2">
+  <link rel="stylesheet" href="./style.css?v=20261107-sidebar-scroll">
 </head>
 <body>
       <div class="phen228-screen-static" aria-hidden="true"></div>
@@ -33,36 +33,85 @@
       <a id="nexusPageLink" class="server-button blobtown-server-btn" href="./nexus.html" title="Open Nexus" aria-label="Open Nexus">🌐</a>
       <a id="dropzonePageLink" class="server-button dropzone-server-btn" href="./dropzone.html" title="Open nexus:dropzone" aria-label="Open nexus:dropzone">⬇</a>
       <a id="rallyPageLink" class="server-button rally-server-btn" href="./drifting-sim-multiplayer.html" title="Open Drifting Sim 6 Multiplayer" aria-label="Open Drifting Sim 6 Multiplayer">🏁</a>
+      <a id="cozyDormLink" class="server-button" href="./cozy-dorm.html" title="Open Cozy Dorm" aria-label="Open Cozy Dorm">🛋️</a>
+      <a id="gardenfallLink" class="server-button" href="./garden-siege.html" title="Open Gardenfall" aria-label="Open Gardenfall">🌱</a>
+      <a id="sketchPartyLink" class="server-button" href="./retro-sketch.html" title="Open Sektor Sketch Party" aria-label="Open Sektor Sketch Party">✎</a>
+      <a id="slidesPageLink" class="server-button" href="./sektor-slides.html" title="Open Sektor Slides" aria-label="Open Sektor Slides">▤</a>
       <button id="newServerBtn" class="rail-add" title="Create server">+</button>
       <button id="joinServerBtn" class="rail-join" title="Join server">↗</button>
       <button id="logoutBtn" class="rail-user" type="button" title="Open profile" aria-label="Open profile"></button>
     </aside>
     <aside class="channel-sidebar">
       <header class="server-header"><div><strong id="serverName">Select a server</strong><small id="serverCode"></small></div><div class="server-header-actions"><button id="editModeBtn" type="button" title="Enable channel edit mode" aria-label="Enable channel edit mode" aria-pressed="false" hidden>✎</button><button id="serverSettingsBtn" type="button" title="Server settings" aria-label="Server settings">⚙</button></div></header>
-      <div id="friendRequestsPanel" class="friend-requests-panel" hidden><div class="friend-requests-heading"><div class="friend-panel-label">Friend requests</div><button id="refreshFriendRequestsBtn" type="button" class="friend-requests-refresh">Refresh</button></div><div id="friendRequestsStatus" class="friend-requests-status" role="status" aria-live="polite"></div><div id="friendRequestsList"></div></div>
-      <div id="textChannelsLabel" class="channel-label">Text channels</div>
-      <div id="textChannels"></div>
-      <div id="voiceChannelsLabel" class="channel-label">Voice channels</div>
-      <div id="voiceChannels"></div>
-      <div id="voiceMembers" class="voice-members" aria-live="polite"></div>
-      <div id="voiceControls" class="voice-controls" hidden><button id="muteVoiceBtn">Mute</button><button id="leaveVoiceBtn">Leave</button></div>
-      <div id="friendsDirectory" class="friends-directory" hidden></div>
-      <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><button id="createPollButton" type="button">▤ Create poll</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
+      <div class="channel-sidebar-content">
+        <div id="friendRequestsPanel" class="friend-requests-panel" hidden><div class="friend-requests-heading"><div class="friend-panel-label">Friend requests</div><button id="refreshFriendRequestsBtn" type="button" class="friend-requests-refresh">Refresh</button></div><div id="friendRequestsStatus" class="friend-requests-status" role="status" aria-live="polite"></div><div id="friendRequestsList"></div></div>
+        <div id="textChannelsLabel" class="channel-label">Text channels</div>
+        <div id="textChannels"></div>
+        <div id="voiceChannelsLabel" class="channel-label">Voice channels</div>
+        <div id="voiceChannels"></div>
+        <div id="voiceMembers" class="voice-members" aria-live="polite"></div>
+        <div id="voiceControls" class="voice-controls" hidden><button id="muteVoiceBtn">Mute</button><button id="leaveVoiceBtn">Leave</button></div>
+        <div id="friendsDirectory" class="friends-directory" hidden></div>
+        <div id="ownerTools" class="owner-tools" hidden><button id="addChannelBtn" type="button">＋ Add channel</button><button id="rankBtn" type="button">✦ Manage ranks</button><button id="createPollButton" type="button">▤ Create poll</button><small class="owner-tools-hint">Edit mode lets you rename or remove channels.</small></div>
+      </div>
     </aside>
     <section class="chat-column">
       <section class="youtube-player" aria-label="YouTube audio player"><button id="youtubeOpenBtn" class="youtube-open-btn" type="button"><span class="youtube-player-icon">♪</span><span><strong>Sektor audio</strong><small id="youtubeTopStatus">Open player</small></span></button></section>
       <header class="chat-header"><button id="friendsBackBtn" class="friends-back-btn" type="button" aria-label="Back to Friends and DMs" title="Back to Friends and DMs" hidden>←</button><div><span id="channelHash">#</span><strong id="channelName">general</strong><span id="channelTopic"></span></div><span id="channelPermission"></span></header>
       <section id="friendHome" class="friend-home" hidden></section>
       <div id="announcement" class="announcement" hidden><small>OWNER ANNOUNCEMENT</small><div id="announcementText"></div></div>
-      <div id="ownerComposer" class="owner-composer" hidden><input id="announcementInput" maxlength="240" placeholder="Write an announcement"><button id="publishAnnouncement">Publish</button></div>
+      <section id="notificationPanel" class="notification-panel" aria-label="Website updates" hidden>
+        <header><div><strong>Website updates</strong><small id="notificationStatus" role="status" aria-live="polite">Feeds refresh while this channel is open.</small></div><button id="notificationRefresh" type="button">Refresh</button></header>
+        <div id="notificationFeedItems" class="notification-feed-items"></div>
+        <section id="notificationFeedManager" class="notification-feed-manager" hidden>
+          <form id="notificationFeedForm"><label for="notificationFeedUrl">RSS or Atom feed URL</label><div><input id="notificationFeedUrl" type="url" maxlength="500" placeholder="https://example.com/feed.xml" required><input id="notificationFeedName" maxlength="48" placeholder="Site name (optional)"><button type="submit">Add feed</button></div></form>
+          <div id="notificationFeedSources" class="notification-feed-sources"></div>
+        </section>
+      </section>
       <section id="serverPoll" class="server-poll" aria-label="Server vote" hidden></section>
       <div id="videoStage" class="video-stage" hidden></div>
       <div id="gamesPanel" hidden></div>
       <div id="messages" class="messages"><div class="empty-state">Select a channel to start talking.</div></div>
       <form id="messageForm" class="message-form"><div id="mentionSuggestions" class="mention-suggestions" hidden></div><textarea id="messageInput" rows="1" maxlength="500" placeholder="Message #general" autocomplete="off"></textarea><input id="imageInput" type="file" accept="image/*" hidden><input id="audioInput" type="file" accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" hidden><button id="imageButton" type="button" title="Attach image">＋</button><button id="audioButton" type="button" title="Attach MP3, WAV, or OGG">♪</button><button type="submit">Send</button></form>
+      <div id="ownerComposer" class="owner-composer" hidden><button id="announcementComposeOpen" type="button">＋ New announcement</button></div>
     </section>
     <aside class="members-sidebar"><header>MEMBERS <span id="memberCount">0</span></header><button id="addFriendBtn" class="add-friend-btn">＋ Add friend</button><div id="membersList"></div></aside>
   </main>
+  <div id="announcementComposeModal" class="announcement-compose-modal" hidden>
+    <section class="announcement-compose-card" role="dialog" aria-modal="true" aria-labelledby="announcementComposeTitle">
+      <header><h2 id="announcementComposeTitle">New announcement</h2><button id="announcementComposeClose" type="button" aria-label="Close announcement composer">×</button></header>
+      <label class="announcement-compose-label" for="announcementInput">Announcement</label>
+      <textarea id="announcementInput" maxlength="240" rows="4" placeholder="Write an announcement"></textarea>
+      <div id="ownerTagControls" class="owner-tag-controls" hidden>
+        <div class="owner-tag-primary">
+          <input id="announcementTag" maxlength="24" aria-label="Claimable tag text" placeholder="Claimable tag">
+          <label class="owner-tag-image-button" for="announcementTagImage">Add image</label>
+          <input id="announcementTagImage" class="owner-tag-image-input" type="file" accept="image/*" aria-label="Choose tag image">
+          <button id="announcementTagImageClear" class="owner-tag-image-clear" type="button" hidden>Remove image</button>
+          <img id="announcementTagImagePreview" class="owner-tag-image-preview" alt="Tag image preview" hidden>
+          <span id="announcementTagImageStatus" class="owner-tag-image-status" role="status"></span>
+        </div>
+        <div id="ownerTagPreview" class="owner-tag-preview" aria-label="Live tag preview"><span id="ownerTagUsernamePreview" class="owner-tag-username-preview">Username</span><span id="ownerTagBadgePreview" class="server-tag-badge">Tag</span></div>
+        <details id="ownerTagSettings" class="owner-tag-settings">
+          <summary>Customize tag and username</summary>
+          <div class="owner-tag-settings-grid">
+            <label>Emoji<input id="announcementTagEmoji" maxlength="8" placeholder="Optional emoji" aria-label="Tag emoji"></label>
+            <label>Tag fill<select id="announcementTagStyle"><option value="soft">Soft fill</option><option value="gradient">Gradient</option><option value="outline">Outline</option><option value="glow">Glow</option></select></label>
+            <label>Tag shape<select id="announcementTagShape"><option value="rounded">Rounded</option><option value="pill">Pill</option><option value="square">Square</option></select></label>
+            <label>Image border<select id="announcementTagImageShape"><option value="rounded">Rounded square</option><option value="circle">Circle</option><option value="square">Square</option></select></label>
+            <label>Tag text<input id="announcementTagTextColor" type="color" value="#a8e9c5" aria-label="Tag text color"></label>
+            <label>Tag background<input id="announcementTagBackground" type="color" value="#173b2a" aria-label="Tag background color"></label>
+            <label>Tag border<input id="announcementTagBorder" type="color" value="#65e6ad" aria-label="Tag border color"></label>
+            <label>Username style<select id="announcementTagUsernameStyle"><option value="solid">Solid</option><option value="gradient">Two-color gradient</option><option value="rgb">RGB cycle</option></select></label>
+            <label>Username color A<input id="announcementTagUsernameColorA" type="color" value="#a8e9c5" aria-label="Username first color"></label>
+            <label>Username color B<input id="announcementTagUsernameColorB" type="color" value="#65e6ad" aria-label="Username second color"></label>
+          </div>
+        </details>
+      </div>
+      <div id="announcementComposeError" class="error" role="status"></div>
+      <footer><button id="announcementComposeCancel" type="button">Cancel</button><button id="publishAnnouncement" type="button">Publish</button></footer>
+    </section>
+  </div>
   <div id="nukeOverlay" class="nuke-overlay" aria-hidden="true"><span class="nuke-bomb"><i class="nuke-bomb-body"></i><i class="nuke-bomb-nose"></i><i class="nuke-bomb-fin nuke-bomb-fin-left"></i><i class="nuke-bomb-fin nuke-bomb-fin-right"></i></span><span class="nuke-blast"></span><span class="nuke-core"></span><span class="nuke-wave"></span><span class="nuke-flash"></span></div>
   <div id="remoteAudio" hidden></div>
   <div id="mediaControlPopup" class="media-control-popup" hidden><div class="media-control-card"><div class="media-control-title">Call controls</div><div class="media-control-actions"><button id="popupMuteBtn" type="button">Mute</button><button id="popupCameraBtn" type="button">Turn camera off</button><button id="popupScreenBtn" type="button">Share screen</button><button id="popupStopShareBtn" class="media-stop-share-btn" type="button" hidden>Stop sharing</button><button id="popupLeaveBtn" type="button" class="media-leave-btn">Leave call</button></div></div></div>
@@ -83,6 +132,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
   <script src="./lan-adapter.js?v=20261008-10"></script>
-  <script src="./app.js?v=20261019-14"></script>
+  <script src="./app.js?v=20261020-40"></script>
+  <script src="./offline-fallback.js?v=20261020-1"></script>
 </body>
 </html>
