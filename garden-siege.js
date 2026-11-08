@@ -26,8 +26,8 @@ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const heldWeapon=new THREE.Group();camera.add(heldWeapon);heldWeapon.visible=false;
 
 const state={
-  socket:null,roomId:'',playerId:'',roomMode:'',day:1,phase:'day',phaseRemaining:0,gardenHealth:100,
-  players:new Map(),plants:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),
+  socket:null,roomId:'',playerId:'',roomMode:'',day:1,phase:'day',phaseRemaining:0,phaseDeadline:0,weatherDeadline:0,gardenHealth:100,
+  players:new Map(),plants:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),
   selectedTile:null,selectedSeed:'',selectedShop:'seeds',seedCategory:'all',keys:new Set(),x:0,z:4.7,lastMove:0,
   yaw:0,pitch:-.28,velocity:new THREE.Vector2(),targetX:0,targetZ:4.7,weather:'clear',ponds:[],jumpHeight:0,jumpVelocity:0,
   weatherRemaining:0,weatherKnown:false,clientId:'',trowelFrom:null,nearbyStation:'',ziplineTarget:'',ziplineRide:null,pendingPlantKey:'',
@@ -363,6 +363,7 @@ function makeFlower(type,mutation=''){
     const mesh=new THREE.Mesh(new THREE.CylinderGeometry(radius*.75,radius,height,9),material(color));
     mesh.position.y=height/2;mesh.castShadow=true;group.add(mesh);return mesh;
   };
+  const stem=createStem;
   const bud=(x,y,z,size,color,glow=false)=>{
     const mesh=new THREE.Mesh(new THREE.SphereGeometry(size,12,9),material(color,.32,glow?color:0));
     mesh.position.set(x,y,z);group.add(mesh);return mesh;
@@ -653,6 +654,34 @@ function updateWorld(){
     }
   }else selectionHighlight.visible=false;
 }
+function syncProjectiles(projectiles){
+  for(const projectile of projectiles){
+    if(!projectile?.id||state.projectileMeshes.has(projectile.id))continue;
+    const from=projectile.from,to=projectile.to;
+    if(!from||!to||![from.x,from.y,from.z,to.x,to.y,to.z].every(Number.isFinite))continue;
+    const color=projectile.kind==='rocket'?0xff8a36:projectile.kind==='plant'?0x9cff70:0xffe6a1;
+    const group=new THREE.Group();
+    const trail=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,1,7),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.9,depthWrite:false}));
+    const core=new THREE.Mesh(new THREE.SphereGeometry(.11,10,8),new THREE.MeshBasicMaterial({color,toneMapped:false}));
+    group.add(trail,core);scene.add(group);
+    state.projectileMeshes.set(projectile.id,{group,trail,core,from:new THREE.Vector3(from.x,from.y,from.z),to:new THREE.Vector3(to.x,to.y,to.z),startedAt:performance.now(),duration:Math.max(180,Number(projectile.duration)||320),lifetime:850});
+  }
+}
+function animateProjectiles(){
+  const now=performance.now();
+  for(const [id,projectile]of state.projectileMeshes){
+    const elapsed=now-projectile.startedAt;
+    if(elapsed>=projectile.lifetime){disposeGroup(projectile.group);state.projectileMeshes.delete(id);continue;}
+    const progress=Math.min(1,elapsed/projectile.duration),head=projectile.from.clone().lerp(projectile.to,progress);
+    const direction=head.clone().sub(projectile.from),length=Math.max(.02,direction.length());
+    projectile.trail.position.copy(projectile.from).add(head).multiplyScalar(.5);
+    projectile.trail.scale.y=length;
+    projectile.trail.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
+    projectile.trail.material.opacity=.9*(1-elapsed/projectile.lifetime);
+    projectile.core.position.copy(head);
+    projectile.core.visible=progress<1;
+  }
+}
 function animateMutationEffects(delta){
   for(const mesh of state.plantMeshes.values()){
     const effects=mesh.userData.mutationEffects;
@@ -676,30 +705,47 @@ function send(action,data={}){
   if(!state.socket||state.socket.readyState!==WebSocket.OPEN){status.textContent='Join a garden before using its shops and tools.';return;}
   state.socket.send(JSON.stringify({type:'garden:action',action,...data}));
 }
+function readSektorAccount(){
+  try{
+    const account=JSON.parse(localStorage.getItem('vusServersSession')||'null');
+    return account&&/^[\w-]{8,64}$/.test(String(account.key||''))&&typeof account.username==='string'
+      ?{key:String(account.key),username:account.username.trim().slice(0,20)}:null;
+  }catch(error){return null;}
+}
+function updateAccountGate(){
+  const account=readSektorAccount();
+  $('accountStatus').textContent=account?`Connected to Sektor as ${account.username}. Your garden saves to this account.`:'Connect a Sektor account to play and save your garden.';
+  $('accountLink').hidden=!!account;
+  $('publicButton').disabled=!account;$('createPrivateButton').disabled=!account;
+  if(account&&!$('playerName').value)$('playerName').value=account.username;
+  return account;
+}
 function connect(mode,roomId=''){
+  const account=updateAccountGate();
+  if(!account){joinStatus.textContent='Log in to Sektor before joining Garden Siege.';return;}
   const name=$('playerName').value.trim().replace(/[\u0000-\u001f\u007f]/g,'').slice(0,20);
   if(!name){joinStatus.textContent='Enter your name before joining.';$('playerName').focus();return;}
-  localStorage.setItem('gardenfallName',name);
+  localStorage.setItem(`gardenfallName:${account.key}`,name);
   state.joinedPosition=false;state.selectedTile=null;state.trowelFrom=null;state.seedSignature=null;
-  if(!state.clientId){
-    state.clientId=localStorage.getItem('gardenfallClientId')||crypto.randomUUID();
-    localStorage.setItem('gardenfallClientId',state.clientId);
-  }
+  state.clientId=account.key;
   if(state.socket)state.socket.close();
   const scheme=location.protocol==='https:'?'wss:':'ws:';
   const socket=new WebSocket(scheme+'//'+location.host);state.socket=socket;
   status.textContent='Connecting…';joinStatus.textContent='Connecting to the garden server…';
-  socket.addEventListener('open',()=>socket.send(JSON.stringify({type:'garden:join',mode,roomId,name,clientId:state.clientId})));
+  socket.addEventListener('open',()=>socket.send(JSON.stringify({type:'garden:join',mode,roomId,name,clientId:state.clientId,accountKey:account.key,accountUsername:account.username})));
   socket.addEventListener('message',event=>{
     if(state.socket!==socket)return;
     let message;try{message=JSON.parse(event.data);}catch(error){console.warn('Could not read garden update.',error);return;}
     if(message.type==='garden:error'){state.pendingPlantKey='';if(message.message){joinStatus.textContent=message.message;status.textContent=message.message;clearTimeout(statusTimeout);statusTimeout=setTimeout(()=>{if(state.socket===socket)status.textContent=state.roomId?'Garden connected':'Not in a garden';},4000);}return;}
     if(message.type!=='garden:sync')return;
     state.roomId=message.roomId;state.roomMode=message.mode;state.playerId=message.playerId||state.playerId;
-    state.day=message.day;state.phase=message.phase;state.phaseRemaining=message.phaseRemaining;state.gardenHealth=message.gardenHealth;
+    state.day=message.day;state.phase=message.phase;
+    state.phaseRemaining=Number.isFinite(Number(message.phaseRemaining))?Math.max(0,Number(message.phaseRemaining)):0;
+    state.phaseDeadline=performance.now()+state.phaseRemaining;state.gardenHealth=message.gardenHealth;
     state.players=new Map((message.players||[]).map(player=>[player.id,player]));
     state.plants=new Map((message.plants||[]).map(plant=>[gardenPlotKey(plant),plant]));
     state.zombies=new Map((message.zombies||[]).map(zombie=>[zombie.id,zombie]));
+    syncProjectiles(message.projectiles||[]);
     state.sprinklers=new Set(message.sprinklers||[]);
     state.ponds=message.ponds||[];
     if(state.pendingPlantKey){
@@ -711,7 +757,8 @@ function connect(mode,roomId=''){
     }
     const previousWeather=state.weather;
     state.weather=message.weather||'clear';
-    state.weatherRemaining=message.weatherRemaining||0;
+    state.weatherRemaining=Number.isFinite(Number(message.weatherRemaining))?Math.max(0,Number(message.weatherRemaining)):0;
+    state.weatherDeadline=performance.now()+state.weatherRemaining;
     updateWeather(state.weather,state.weatherKnown?state.weather!==previousWeather:state.weather!=='clear');
     state.weatherKnown=true;
     const local=state.players.get(state.playerId);
@@ -748,7 +795,7 @@ function updateHud(player){
   $('farmBadge').textContent=`🌾 Farm ${(player?.farmIndex??0)+1}/8`;
 }
 function formatTime(ms){
-  const seconds=Math.max(0,Math.ceil(ms/1000));return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+  const value=Number(ms),seconds=Math.max(0,Math.ceil((Number.isFinite(value)?value:0)/1000));return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 }
 function weatherName(weather){
   return ({solarFlare:'Solar Flare',aurora:'Aurora',fireworks:'Fireworks',rainbow:'Rainbow',snowstorm:'Snowstorm',rain:'Rain',clear:'Clear'})[weather]||weather;
@@ -1279,7 +1326,7 @@ function animate(){
       camera.lookAt(state.x+Math.sin(state.yaw)*cosPitch,1.65+Math.sin(state.pitch),state.z-Math.cos(state.yaw)*cosPitch);
     }
   }
-  animateMutationEffects(delta);animateHeldWeapon(delta);
+  animateMutationEffects(delta);animateHeldWeapon(delta);animateProjectiles();
   renderer.render(scene,camera);
   requestAnimationFrame(animate);
 }
@@ -1295,7 +1342,11 @@ function uiTick(){
   setTimeout(uiTick,250);
 }
 function init(){
-  try{$('playerName').value=localStorage.getItem('gardenfallName')||'';}catch(error){console.warn('Could not load saved garden name.',error);}
+  try{
+    const account=readSektorAccount();
+    $('playerName').value=account?localStorage.getItem(`gardenfallName:${account.key}`)||account.username:'';
+  }catch(error){console.warn('Could not load the Sektor account session.',error);}
+  updateAccountGate();
   renderShop();resize();drawFarmMap();requestAnimationFrame(animate);uiTick();
 }
 window.addEventListener('pagehide',()=>{
