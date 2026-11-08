@@ -82,9 +82,11 @@
             <h1>Build a garden.<br>Hold off the horde.</h1>
             <p>Claim your own farm on the shared eight-farm map. Grow crops for coins, raise auto-firing plants, and defend the garden when night falls.</p>
             <label>Your name<input id="playerName" maxlength="20" autocomplete="nickname" placeholder="Garden Guardian"></label>
+            <small id="accountStatus" role="status">Connect a Sektor account to play and save your garden.</small>
+            <a id="accountLink" href="./VUS-Servers.html?returnTo=garden">Log in or create a Sektor account</a>
             <div class="join-actions">
-              <button id="publicButton" class="primary" type="button">Join public garden</button>
-              <button id="createPrivateButton" type="button">Create private garden</button>
+              <button id="publicButton" class="primary" type="button" disabled>Join public garden</button>
+              <button id="createPrivateButton" type="button" disabled>Create private garden</button>
             </div>
             <form id="privateForm">
               <label>5-digit private code<input id="privateCode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="12345" autocomplete="off"></label>

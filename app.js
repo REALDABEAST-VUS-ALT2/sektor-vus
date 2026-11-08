@@ -981,6 +981,10 @@ async function auth() {
       location.replace(returnTo === 'drift-sim' ? './drifting-sim-multiplayer.html' : './rally.html');
       return;
     }
+    if (returnTo === 'garden') {
+      location.replace('./garden-siege.html');
+      return;
+    }
     showApp();
   } catch (error) { els.authError.textContent = error.message || 'Could not sign in.'; } finally { els.authStatus.textContent = ''; }
 }

@@ -115,6 +115,7 @@ function gardenSnapshot(room) {
     players:Array.from(room.players.values(),gardenPlayerView),
     plants:Array.from(room.plants.values()),
     zombies:Array.from(room.zombies.values()),
+    projectiles:room.projectiles.filter(projectile=>projectile.expiresAt>now),
     sprinklers:Array.from(room.sprinklers),
     soil:Array.from(room.soil),
     ponds:room.ponds,
@@ -126,6 +127,7 @@ function gardenSendError(socket,message) {
 }
 
 function gardenBroadcast(room) {
+  gardenSaveRequested=true;
   const snapshot=gardenSnapshot(room);
   for(const player of room.players.values())sendJson(player.socket,snapshot);
 }
@@ -133,7 +135,7 @@ function gardenBroadcast(room) {
 function createGardenRoom(id,mode) {
   const now=Date.now();
   return {
-    id,mode,players:new Map(),savedPlayers:new Map(),farmAssignments:new Map(),plants:new Map(),zombies:new Map(),
+    id,mode,players:new Map(),savedPlayers:new Map(),farmAssignments:new Map(),plants:new Map(),zombies:new Map(),projectiles:[],
     sprinklers:new Set(),soil:new Set(),ponds:[{x:-8,z:4},{x:8,z:4}],
     createdAt:now,cycleStart:now,day:1,gardenHealth:100,lastSpawn:now,nextZombie:1,
     weather:'clear',nextWeatherAt:now+gardenWeatherDurations.clear,lastBroadcast:0,lastActivity:now,lastTick:now,
@@ -147,12 +149,11 @@ function removeGardenPlayer(socket) {
   const room=gardenRooms.get(session.roomId);
   if(!room)return;
   const player=room.players.get(session.playerId);
-  if(player?.clientId&&room.mode==='private')room.savedPlayers.set(player.clientId,gardenPersistentPlayer(player));
+  if(player?.clientId)room.savedPlayers.set(player.clientId,gardenPersistentPlayer(player));
   room.players.delete(session.playerId);
   room.lastActivity=Date.now();
   gardenSaveRequested=true;
-  if(room.players.size===0&&room.mode==='public')gardenRooms.delete(room.id);
-  else gardenBroadcast(room);
+  if(room.players.size>0)gardenBroadcast(room);
 }
 
 function gardenPersistentPlayer(player) {
@@ -164,7 +165,7 @@ function gardenPersistedRoom(room) {
   const players=Object.fromEntries(room.savedPlayers);
   for(const player of room.players.values())players[player.clientId]=gardenPersistentPlayer(player);
   return {
-    id:room.id,cycleStart:room.cycleStart,day:room.day,gardenHealth:room.gardenHealth,
+    id:room.id,mode:room.mode,cycleStart:room.cycleStart,day:room.day,gardenHealth:room.gardenHealth,
     nextZombie:room.nextZombie,weather:room.weather,nextWeatherAt:room.nextWeatherAt,
     plants:Array.from(room.plants.values()),sprinklers:Array.from(room.sprinklers),
     soil:Array.from(room.soil),players,
@@ -172,8 +173,9 @@ function gardenPersistedRoom(room) {
 }
 
 function restoreGardenRoom(record) {
-  if(!record||typeof record!=='object'||!/^\d{5}$/.test(String(record.id||'')))return null;
-  const room=createGardenRoom(String(record.id),'private');
+  const id=String(record?.id||''),mode=record?.mode==='public'?'public':'private';
+  if(!record||typeof record!=='object'||!(/^\d{5}$/.test(id)||mode==='public'&&/^garden-public-\d+$/.test(id)))return null;
+  const room=createGardenRoom(id,mode);
   room.cycleStart=Number(record.cycleStart)||room.cycleStart;
   room.day=Math.max(1,Math.floor(Number(record.day)||1));
   room.gardenHealth=Math.max(0,Math.min(100,Number(record.gardenHealth)||100));
@@ -222,7 +224,11 @@ async function loadGardenSaves() {
   if(!Array.isArray(parsed))throw new Error('Saved Gardenfall data must be a garden list.');
   for(const record of parsed){
     const room=restoreGardenRoom(record);
-    if(room)gardenRooms.set(room.id,room);
+    if(room){
+      gardenRooms.set(room.id,room);
+      const publicId=room.id.match(/^garden-public-(\d+)$/);
+      if(publicId)nextPublicGarden=Math.max(nextPublicGarden,Number(publicId[1])+1);
+    }
   }
 }
 
@@ -230,9 +236,7 @@ async function saveGardenSaves() {
   if(gardenSaveBusy||!gardenSaveRequested)return;
   gardenSaveBusy=true;gardenSaveRequested=false;
   try {
-    const data=JSON.stringify(Array.from(gardenRooms.values())
-      .filter(room=>room.mode==='private')
-      .map(gardenPersistedRoom));
+    const data=JSON.stringify(Array.from(gardenRooms.values(),gardenPersistedRoom));
     const temporaryPath=gardenSavePath+'.tmp';
     await fs.promises.writeFile(temporaryPath,data);
     await fs.promises.rename(temporaryPath,gardenSavePath);
@@ -273,10 +277,12 @@ function gardenDamageZombie(room,zombie,damage,player) {
 
 function handleGardenJoin(socket,message) {
   removeGardenPlayer(socket);
+  const accountKey=String(message.accountKey||'');
+  const accountUsername=String(message.accountUsername||'').trim().replace(/[\u0000-\u001f\u007f]/g,'').slice(0,20);
+  if(!/^[\w-]{8,64}$/.test(accountKey)||!accountUsername){gardenSendError(socket,'Log in to a Sektor account before joining Garden Siege.');return;}
+  const clientId=accountKey;
   const name=String(message.name||'').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,20);
   if(!name){gardenSendError(socket,'Choose a player name first.');return;}
-  const requestedClientId=String(message.clientId||'');
-  const clientId=/^[\w-]{8,64}$/.test(requestedClientId)?requestedClientId:randomUUID();
   let room;
   let roomId='';
   let mode=String(message.mode||'');
@@ -297,14 +303,15 @@ function handleGardenJoin(socket,message) {
     if(!room||room.mode!=='private'){gardenSendError(socket,'That private garden code was not found.');return;}
   } else {gardenSendError(socket,'Choose public matchmaking or a private garden.');return;}
   if(room.players.size>=8){gardenSendError(socket,'This garden is full (8 players maximum).');return;}
-  const saved=room.mode==='private'?room.savedPlayers.get(clientId):null;
+  if(Array.from(room.players.values()).some(player=>player.clientId===clientId)){gardenSendError(socket,'This Sektor account is already playing in this garden.');return;}
+  const saved=room.savedPlayers.get(clientId);
   const farmIndex=assignGardenFarm(room,clientId,saved?.farmIndex);
   if(farmIndex<0){gardenSendError(socket,'All eight farms are assigned in this garden.');return;}
   const farmSpawn=gardenFarmSpawn(farmIndex),resumePosition=saved?.farmIndex===farmIndex;
   const id=saved?.id||randomUUID();
   room.savedPlayers.delete(clientId);
   const player={
-    ...saved,id,clientId,name,color:typeof message.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.color)?message.color:saved?.color||'#79d98a',
+    ...saved,id,clientId,accountKey,accountUsername,name,color:typeof message.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.color)?message.color:saved?.color||'#79d98a',
     farmIndex,
     x:resumePosition&&Number.isFinite(Number(saved?.x))?Number(saved.x):farmSpawn.x,z:resumePosition&&Number.isFinite(Number(saved?.z))?Number(saved.z):farmSpawn.z,
     coins:Math.max(0,Number.isFinite(Number(saved?.coins))?Number(saved.coins):100),seeds:saved?.seeds&&typeof saved.seeds==='object'?saved.seeds:{},
@@ -491,20 +498,23 @@ function handleGardenAction(socket,message) {
     const weapon=player.weapon,custom=player.customGuns.find(gun=>gun.id===weapon);
     if(!player.weapons[weapon]&&!custom){gardenSendError(socket,'Unlock or craft a weapon before firing.');return;}
     const range=custom?.range||(weapon==='cornZooka'?16:13);
+    let directionX=0,directionZ=-1;
     let zombie=room.zombies.get(String(message.target||''));
     if(!zombie){
       const direction=message.direction||{},length=Math.hypot(Number(direction.x),Number(direction.z));
       if(!Number.isFinite(length)||length<.5){gardenSendError(socket,'Aim your shot in a valid direction.');return;}
-      const dx=Number(direction.x)/length,dz=Number(direction.z)/length;
+      directionX=Number(direction.x)/length;directionZ=Number(direction.z)/length;
       zombie=Array.from(room.zombies.values()).map(candidate=>{
         const offsetX=candidate.x-player.x,offsetZ=candidate.z-player.z;
-        return {candidate,distance:offsetX*dx+offsetZ*dz,side:Math.abs(offsetX*dz-offsetZ*dx)};
+        return {candidate,distance:offsetX*directionX+offsetZ*directionZ,side:Math.abs(offsetX*directionZ-offsetZ*directionX)};
       }).filter(hit=>hit.distance>0&&hit.distance<=range&&hit.side<=1.1).sort((a,b)=>a.distance-b.distance)[0]?.candidate||null;
     }
     if(zombie&&Math.hypot(zombie.x-player.x,zombie.z-player.z)>range){gardenSendError(socket,'That zombie is out of range.');return;}
+    if(zombie){const distance=Math.hypot(zombie.x-player.x,zombie.z-player.z)||1;directionX=(zombie.x-player.x)/distance;directionZ=(zombie.z-player.z)/distance;}
     if(!(player.magazines[weapon]>0)){gardenSendError(socket,'Your magazine is empty. Press R to reload.');return;}
     const damage=custom?.damage||(weapon==='cornZooka'?55:18);
     player.magazines[weapon]--;player.lastShot=now;
+    room.projectiles.push({id:randomUUID(),kind:weapon==='cornZooka'||custom?.blast?'rocket':'player',from:{x:player.x,y:1.45,z:player.z},to:{x:zombie?.x??player.x+directionX*range,y:.72,z:zombie?.z??player.z+directionZ*range},duration:320,expiresAt:now+1200});
     if(zombie&&(custom?.blast||weapon==='cornZooka')){
       for(const nearby of Array.from(room.zombies.values())){
         if(Math.hypot(nearby.x-zombie.x,nearby.z-zombie.z)<(custom?.blast||2))gardenDamageZombie(room,nearby,damage,player);
@@ -551,6 +561,7 @@ function handleGardenAction(socket,message) {
 function tickGardenRooms() {
   const now=Date.now();
   for(const room of gardenRooms.values()) {
+    room.projectiles=room.projectiles.filter(projectile=>projectile.expiresAt>now);
     const offline=room.players.size===0;
     if(offline&&room.mode==='public')continue;
     const cycleLength=gardenCycle.day+gardenCycle.night;
@@ -596,7 +607,11 @@ function tickGardenRooms() {
       const definition=gardenPlants[plant.type];
       if(definition.kind!=='defense'||!isNight||now-plant.lastAttack<definition.rate)continue;
       const target=Array.from(room.zombies.values()).filter(zombie=>Math.hypot(zombie.x-plant.x,zombie.z-plant.z)<=definition.range).sort((a,b)=>Math.hypot(a.x-plant.x,a.z-plant.z)-Math.hypot(b.x-plant.x,b.z-plant.z))[0];
-      if(target){plant.lastAttack=now;gardenDamageZombie(room,target,definition.damage,room.players.get(plant.ownerId));}
+      if(target){
+        plant.lastAttack=now;
+        room.projectiles.push({id:randomUUID(),kind:plant.type==='cornzooka'?'rocket':'plant',from:{x:plant.x,y:.78,z:plant.z},to:{x:target.x,y:.72,z:target.z},duration:320,expiresAt:now+1200});
+        gardenDamageZombie(room,target,definition.damage,room.players.get(plant.ownerId));
+      }
     }
     if(isNight)for(const zombie of room.zombies.values()) {
       const target=Array.from(room.plants.values()).sort((a,b)=>Math.hypot(zombie.x-a.x,zombie.z-a.z)-Math.hypot(zombie.x-b.x,zombie.z-b.z))[0];

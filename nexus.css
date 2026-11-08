@@ -674,8 +674,8 @@ body::before {
 .nexus-war-panel { grid-column:1 / -1; padding:18px; border-color:rgba(101,230,173,.24); background:linear-gradient(145deg,#15231d,#101713 72%); }
 .nexus-war-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .nexus-war-heading-actions { display:flex; align-items:center; gap:8px; }
-.nexus-war-map-wrap:fullscreen { display:grid; width:100vw; height:100vh; height:100dvh; place-items:center; overflow:hidden; background:#090f0d; }
-.nexus-war-map-wrap:fullscreen .nexus-war-canvas { width:min(100vw,200dvh); max-width:100vw; max-height:100dvh; border:0; border-radius:0; }
+.nexus-war-map-wrap:fullscreen { position:fixed; z-index:9999; inset:0; display:block; width:100vw; height:100vh; height:100dvh; min-height:0; overflow:hidden; border:0; border-radius:0; background:#090f0d; }
+.nexus-war-map-wrap:fullscreen .nexus-war-canvas,.nexus-war-map-wrap:fullscreen .nexus-war-3d-canvas { position:absolute; inset:0; width:100%; height:100%; max-width:none; max-height:none; border:0; border-radius:0; }
 .nexus-war-map-wrap:fullscreen .nexus-war-minimap { width:min(18vw,220px); }
 .nexus-war-map-wrap [data-war-action="fullscreen"] { position:absolute; z-index:3; top:12px; right:12px; }
 .nexus-war-heading > div:first-child > span { color:#88d9a5; font-size:10px; font-weight:850; letter-spacing:.15em; }
@@ -691,7 +691,24 @@ body::before {
 .nexus-war-wallet { margin:7px 0; color:#b9d9c1; font-size:11px; font-weight:750; }
 .nexus-war-status { min-height:19px; margin:8px 0; color:#9de9c2; font-size:11px; }
 .nexus-war-status.error { color:#ffaaaa; }
-.nexus-war-map-wrap { position:relative; }
+.nexus-war-map-wrap { position:relative; width:100%; height:clamp(420px,68vh,820px); min-height:420px; overflow:hidden; border:1px solid #65e6ad33; border-radius:10px; background:#101915; }
+.nexus-war-map-wrap:not(.dropzone-3d-ready):not(.nexus-war-3d-fallback) { height:auto; min-height:0; }
+.nexus-war-3d-canvas { position:absolute; z-index:1; inset:0; display:block; width:100%; height:100%; pointer-events:none; }
+.nexus-war-3d-reticle { position:absolute; z-index:3; top:50%; left:50%; display:none; transform:translate(-50%,-52%); color:#f4f4dc; font:700 22px/1 system-ui,sans-serif; text-shadow:0 1px 5px #000; pointer-events:none; }
+.nexus-war-map-wrap.dropzone-pointer-locked .nexus-war-3d-reticle { display:block; }
+.nexus-war-map-wrap.dropzone-pointer-locked .nexus-war-canvas { cursor:none; }
+.nexus-war-scope-overlay { position:absolute; z-index:4; inset:0; overflow:hidden; background:radial-gradient(circle at center,transparent 0 31%,rgba(3,8,7,.64) 32% 100%); pointer-events:none; }
+.nexus-war-scope-overlay[hidden] { display:none; }
+.nexus-war-scope-overlay::before { position:absolute; top:50%; left:50%; width:min(68vh,78vw); aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid rgba(226,237,222,.78); border-radius:50%; box-shadow:0 0 0 2px #09110c88,0 0 20px #0009; content:""; }
+.nexus-war-scope-overlay::after { position:absolute; top:50%; left:50%; width:24px; height:24px; transform:translate(-50%,-50%); border:1px solid rgba(255,235,180,.9); border-radius:50%; content:""; }
+.nexus-war-scope-overlay[data-scope="iron"] { background:transparent; }
+.nexus-war-scope-overlay[data-scope="iron"]::before { width:0; height:0; border:0; box-shadow:none; }
+.nexus-war-scope-overlay[data-scope="iron"]::after { width:28px; height:28px; border-color:#e4eadc; border-radius:0; clip-path:polygon(0 0,34% 0,34% 38%,66% 38%,66% 0,100% 0,100% 100%,66% 100%,66% 62%,34% 62%,34% 100%,0 100%); }
+.nexus-war-scope-overlay[data-scope="holo"]::before,.nexus-war-scope-overlay[data-scope="reflex"]::before { width:44vh; border-color:#b7d4be99; }
+.nexus-war-scope-overlay[data-scope="holo"]::after,.nexus-war-scope-overlay[data-scope="reflex"]::after { width:7px; height:7px; border:0; background:#ff594e; box-shadow:0 0 7px #ff483f; }
+.nexus-war-scope-overlay[data-scope="thermal"] { background:radial-gradient(circle at center,rgba(164,68,31,.08) 0 28%,rgba(23,36,25,.68) 34% 100%); }
+.nexus-war-scope-overlay[data-scope="thermal"]::before { border-color:#f0a36d; box-shadow:0 0 0 2px #35130e,0 0 25px #e36d3677; }
+.nexus-war-scope-readout { position:absolute; top:18px; right:22px; padding:6px 9px; border:1px solid #d5e2d566; background:#07100bd9; color:#e7f2e7; font:800 11px/1 system-ui,sans-serif; }
 .nexus-war-map-connecting { min-height:clamp(340px,56vh,640px); overflow:hidden; border:1px solid #65e6ad33; border-radius:8px; background:#101915; }
 .nexus-war-connection { position:absolute; z-index:8; inset:0; display:grid; place-items:center; padding:20px; background:rgba(8,15,11,.94); color:#edf5ef; text-align:center; }
 .nexus-war-connection[hidden] { display:none; }
@@ -706,6 +723,7 @@ body::before {
 .nexus-war-notice[data-kind="error"] { border-color:#ff788799; color:#ffc0c3; }
 .nexus-war-notice[hidden] { display:none; }
 .nexus-war-chat { position:relative; z-index:4; display:grid; width:100%; gap:6px; margin-top:8px; pointer-events:auto; }
+.nexus-war-chat[hidden] { display:none; }
 .nexus-war-map-wrap:fullscreen .nexus-war-chat { position:absolute; right:12px; bottom:12px; width:min(310px,42%); margin:0; }
 .nexus-war-chat form { display:flex; gap:5px; padding:5px; border:1px solid #d5e2d544; border-radius:6px; background:rgba(7,13,9,.92); }
 .nexus-war-chat input { min-width:0; flex:1; padding:7px 8px; border:1px solid #d5e2d522; border-radius:4px; background:#0d1410; color:#edf5ef; font:inherit; font-size:11px; }
@@ -715,7 +733,11 @@ body::before {
 .nexus-war-chat [data-war-chat-log] strong { flex:0 0 auto; color:#9de9c2; }
 .nexus-war-chat [data-war-chat-log][hidden] { display:none; }
 .nexus-war-voice-audio { display:none; }
-.nexus-war-canvas { display:block; width:100%; height:auto; border:1px solid #65e6ad33; border-radius:10px; background:#101915; touch-action:none; cursor:crosshair; }
+.nexus-war-canvas { position:absolute; z-index:2; inset:0; display:block; width:100%; height:100%; border:0; border-radius:inherit; background:transparent; opacity:1; touch-action:none; cursor:crosshair; }
+.nexus-war-map-wrap:not(.dropzone-3d-ready) .nexus-war-canvas { position:relative; inset:auto; height:auto; }
+.nexus-war-map-wrap.dropzone-3d-ready .nexus-war-canvas { opacity:0; }
+.nexus-war-3d-fallback { height:auto; min-height:0; }
+.nexus-war-3d-fallback .nexus-war-canvas { position:relative; inset:auto; width:100%; height:auto; opacity:1; border:1px solid #65e6ad33; background:#101915; }
 .nexus-war-reload-hud { position:absolute; z-index:3; right:14px; bottom:14px; display:grid; min-width:158px; padding:9px 12px 11px; overflow:hidden; border:1px solid #e5bd5570; border-radius:7px; background:rgba(9,14,11,.9); color:#f4dda1; box-shadow:0 6px 20px #0007; font-size:10px; font-weight:850; font-variant-numeric:tabular-nums; letter-spacing:.08em; pointer-events:none; }
 .nexus-war-reload-hud[hidden] { display:none; }
 .nexus-war-reload-hud > [data-war-reload-timer] { position:relative; z-index:1; }

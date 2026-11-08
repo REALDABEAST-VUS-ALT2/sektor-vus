@@ -194,7 +194,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       types:['Submachine gun'],dualWield:true,rate:.86,spread:1.18,recoil:1.12,cost:750},
     trigger_light:{name:'Lightened trigger',effect:'Faster firing · increased recoil',rate:.82,recoil:1.12,cost:650},
     stock_heavy:{name:'Weighted stock',effect:'Reduces recoil on sustained fire',recoil:.68,spread:.94,cost:700},
-    optic_holo:{name:'Holographic sight',effect:'Improves aiming precision',spread:.78,cost:600},
+    optic_holo:{name:'Holographic sight',effect:'1.5× aimed view with illuminated reticle',spread:.78,optic:'holo',cost:600},
     bolt_fast:{name:'Polished bolt',effect:'Faster cycling and reload',rate:.9,reload:.88,cost:850},
     barrel_ported:{name:'Ported barrel',effect:'Reduces recoil, increases spread',recoil:.78,spread:1.08,cost:750},
     burst_triple:{name:'Three-round burst kit',effect:'Fires three rounds in sequence per trigger',
@@ -239,9 +239,11 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     muzzle_flash_hider:{name:'Flash hider',effect:'Cleaner sight picture and reduced recoil',spread:.94,recoil:.88,cost:450},
     barrel_precision:{name:'Precision barrel',effect:'Longer range and tighter shots',range:1.16,spread:.82,rate:1.1,cost:900},
     barrel_light:{name:'Lightweight barrel',effect:'Faster handling and fire rate',rate:.91,range:.92,recoil:1.1,cost:700},
-    optic_reflex:{name:'Reflex optic',effect:'Faster close-range target acquisition',spread:.88,rate:.97,cost:500},
-    optic_3x:{name:'3× combat optic',effect:'Improved mid-range precision',types:['Assault rifle','Marksman rifle','Sniper rifle'],spread:.76,range:1.12,cost:850},
-    optic_thermal:{name:'Thermal optic',effect:'Clearer aim through smoke',spread:.83,range:1.08,cost:1150},
+    optic_iron:{name:'Iron sights',effect:'Low-magnification aimed sight picture',spread:.94,optic:'iron',cost:250},
+    optic_reflex:{name:'Reflex optic',effect:'1.4× close-range aimed view',spread:.88,rate:.97,optic:'reflex',cost:500},
+    optic_3x:{name:'3× combat optic',effect:'3× magnification for mid-range aiming',types:['Assault rifle','Marksman rifle','Sniper rifle'],spread:.76,range:1.12,optic:'3x',cost:850},
+    optic_thermal:{name:'Thermal optic',effect:'2.5× thermal view highlights players through smoke',spread:.83,range:1.08,optic:'thermal',cost:1150},
+    optic_variable:{name:'Variable 1–8× optic',effect:'Scroll or pinch while aiming to adjust magnification',types:['Assault rifle','Marksman rifle','Sniper rifle'],spread:.82,range:1.14,optic:'variable',cost:1450},
     stock_skeleton:{name:'Skeleton stock',effect:'Faster movement with the weapon raised',spread:1.04,rate:.94,cost:650},
     stock_precision:{name:'Precision stock',effect:'Steadier aim and lower recoil',spread:.84,recoil:.8,rate:1.08,cost:750},
     stock_recoil:{name:'Recoil pad',effect:'Reduces sustained-fire climb',recoil:.72,mag:.96,cost:550},
@@ -447,6 +449,9 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
   let positionWriteBusy = false;
   let grapplePull=null;
   let supportTargeting='';
+  let armorAnimationUntil=0;
+  let chatOpen=false;
+  let localExplosion=null;
   let movementVelocity={x:0,y:0};
   function resetMovementMomentum() {
     movementVelocity={x:0,y:0};
@@ -470,12 +475,15 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
   let localDronePosition=null;
   let localTransportId='';
   let cameraPosition={x:0,y:0};
+  let viewYaw=0,viewPitch=0,lastMovementMode='';
   let lastDroneWriteAt=0;
   let giveUpBusy=false;
   let keys = new Set();
   let aim = {x:500,y:280};
   let aimOffset={x:0,y:0};
   let aimActive=false;
+  let aimMode=false,scopeZoom=1,touchAimGesture=false,touchPinchDistance=0;
+  const touchPointers=new Map();
   let traces = [];
   let muzzleFlashes=[];
   let pointerDown = false;
@@ -513,7 +521,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (!ui?.mapWrap||!ui.fullscreen) return;
     try {
       if (document.fullscreenElement===ui.mapWrap) await document.exitFullscreen();
-      else if (ui.mapWrap.requestFullscreen) await ui.mapWrap.requestFullscreen();
+      else if (ui.mapWrap.requestFullscreen) await ui.mapWrap.requestFullscreen({navigationUI:'hide'});
       else setStatus('Fullscreen is not supported by this browser.',true);
     } catch(error) {
       setStatus(error.message||'Could not change fullscreen mode.',true);
@@ -1298,7 +1306,21 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       line.append(speaker,text);
       ui.chatLog.appendChild(line);
     });
-    ui.chatLog.hidden=!nearby.length;
+    ui.chatPanel.hidden=!chatOpen;
+    ui.chatLog.hidden=!chatOpen||!nearby.length;
+  }
+
+  function openChatComposer(){
+    if(paused||!ui?.chatInput)return;
+    chatOpen=true;ui.chatPanel.hidden=false;renderChat();
+    if(document.pointerLockElement===ui.canvas)document.exitPointerLock();
+    ui.chatInput.focus();
+  }
+
+  function closeChatComposer(){
+    chatOpen=false;
+    if(ui?.chatPanel)ui.chatPanel.hidden=true;
+    ui?.chatInput?.blur();
   }
 
   async function sendChatMessage(event) {
@@ -1310,6 +1332,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       sender:playerKey,name:playerName,text,team:playerTeam,x:Number(position?.x)||0,
       y:Number(position?.y)||0,createdAt:Date.now()};
     ui.chatInput.value='';
+    closeChatComposer();
     try {
       await updateWar('chat',current=>[...(Array.isArray(current)?current:[]),message].slice(-40));
       renderChat();
@@ -1462,6 +1485,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     const spawn=basePositions[playerTeam];
     return {
       name:playerName,team:playerTeam,x:playerTeam==='vortex'?spawn.x+150:spawn.x-150,y:spawn.y,
+      facingAngle:playerTeam==='vortex'?0:Math.PI,
       hp:100,ammo:effectiveWeapon(initial,'primary').mag,
       secondaryAmmo:effectiveWeapon(initial,'secondary').mag,kills:0,deaths:0,...initial,loadoutSet:false,
       vehiclePad:'',vehicleAmmo:0,
@@ -1576,6 +1600,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     localPosition={x:Number(activePlayer.x),y:Number(activePlayer.y)};
     lastPositionWritePosition={...localPosition};
     cameraPosition={...localPosition};
+    viewYaw=-Number(activePlayer.facingAngle||0)-Math.PI/2;viewPitch=0;lastMovementMode='';
     refreshProgressUi();
     updateHeader();
     startLoops();
@@ -1738,10 +1763,15 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     window.addEventListener('keydown',onKeyDown);
     window.addEventListener('keyup',onKeyUp);
     window.addEventListener('blur',onBlur);
+    document.addEventListener('pointerlockchange',onPointerLockChange);
+    document.addEventListener('pointerlockerror',()=>setStatus('Click-to-look is unavailable in this browser.',true));
+    document.addEventListener('mousemove',onLockedMouseMove);
     ui.canvas.addEventListener('pointermove',onPointerMove);
     ui.canvas.addEventListener('pointerdown',onPointerDown);
     ui.canvas.addEventListener('pointerup',onPointerUp);
     ui.canvas.addEventListener('pointercancel',onPointerUp);
+    ui.canvas.addEventListener('wheel',onScopeWheel,{passive:false});
+    ui.canvas.addEventListener('contextmenu',onCanvasContextMenu);
     container.addEventListener('pointerdown',onControlPointerDown);
     container.addEventListener('pointerup',onControlPointerUp);
     container.addEventListener('pointercancel',onControlPointerUp);
@@ -1800,31 +1830,19 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       const transport=player.transportId&&warState.vehicles&&warState.vehicles[player.transportId];
       const pilot=transport&&transport.pilot===playerKey;
       const vehicle=vehicles[player.vehicle];
+      const movementMode=transport?`transport:${transport.id}:${pilot?'pilot':'crew'}`:vehicle?`vehicle:${player.vehicle}`:'foot';
+      if(movementMode!==lastMovementMode){lastMovementMode=movementMode;resetMovementMomentum();}
       const topSpeed=(vehicle?1700*vehicle.speed:1500)*(Number(player.speedBoostUntil||0)>Date.now()?1.8:1);
       const canDrive=!player.transportId||pilot;
       const dx=canDrive?((keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)):0;
       const dy=canDrive?((keys.has('s')||keys.has('arrowdown')?1:0)-(keys.has('w')||keys.has('arrowup')?1:0)):0;
       if (pilot&&!dx&&!dy) localPosition={x:Number(transport.x),y:Number(transport.y)};
-      let moveX=dx;
-      let moveY=dy;
-      const length=Math.hypot(moveX,moveY)||1;
-      const ease=1-Math.exp(-10*elapsed);
-      const inputActive = Math.abs(moveX) > 0 || Math.abs(moveY) > 0 || grapplePull;
-      if (!inputActive) {
-        movementVelocity.x *= Math.max(0, 1 - 18 * elapsed);
-        movementVelocity.y *= Math.max(0, 1 - 18 * elapsed);
-        if (Math.hypot(movementVelocity.x, movementVelocity.y) < 10) resetMovementMomentum();
-      } else {
-        movementVelocity.x += (moveX/length*topSpeed - movementVelocity.x) * ease;
-        movementVelocity.y += (moveY/length*topSpeed - movementVelocity.y) * ease;
-      }
-      const maxSpeed = Math.max(80, topSpeed * 1.1);
-      const speed = Math.hypot(movementVelocity.x, movementVelocity.y);
-      if (speed > maxSpeed) {
-        const scale = maxSpeed / speed;
-        movementVelocity.x *= scale;
-        movementVelocity.y *= scale;
-      }
+      const forward=(keys.has('w')||keys.has('arrowup')?1:0)-(keys.has('s')||keys.has('arrowdown')?1:0);
+      const side=(keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0);
+      const length=Math.hypot(forward,side)||1;
+      const moveX=(side*Math.cos(viewYaw)-forward*Math.sin(viewYaw))/length*topSpeed;
+      const moveY=(-side*Math.sin(viewYaw)-forward*Math.cos(viewYaw))/length*topSpeed;
+      movementVelocity={x:canDrive?moveX:0,y:canDrive?moveY:0};
       let next={x:Math.max(70,Math.min(worldWidth-70,localPosition.x+movementVelocity.x*elapsed)),
         y:Math.max(110,Math.min(worldHeight-110,localPosition.y+movementVelocity.y*elapsed))};
       const grappling=!!grapplePull;
@@ -1887,15 +1905,14 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         positionWriteBusy=true;
         const next={...localPosition};
         lastPositionWritePosition=next;
-        const facingAngle=aimActive?Math.atan2(aimOffset.y,aimOffset.x):Number(player.facingAngle)||0;
+        const facingAngle=-viewYaw-Math.PI/2;
         mutatePlayer(current=>current?{...current,...next,facingAngle,lastSeen:Date.now()}:current)
           .catch(error=>setStatus(error.message,true))
           .finally(()=>{positionWriteBusy=false;});
       }
       if (pilot) updateTransportPosition(transport,localPosition,
         transport.type===transportType?(keys.has('e')?1:0)-(keys.has('q')?1:0):0,
-        aimActive&&Math.hypot(aimOffset.x,aimOffset.y)>1
-          ?Math.atan2(aimOffset.y,aimOffset.x):Number(transport.facingAngle)||0)
+        -viewYaw-Math.PI/2)
         .catch(error=>setStatus(error.message||'Could not update helicopter lift.',true));
     }
     const viewPosition=player&&player.transportId&&warState.vehicles[player.transportId]
@@ -1922,8 +1939,43 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     animation = requestAnimationFrame(gameFrame);
   }
 
+  function onPointerLockChange(){
+    const locked=document.pointerLockElement===ui?.canvas;
+    ui?.canvas?.parentElement?.classList.toggle('dropzone-pointer-locked',locked);
+    if(locked)setStatus('Click-to-look active. Press Escape to release the mouse.');
+  }
+
+  function publishDropzoneFrame(){
+    const now=Date.now();
+    traces=traces.filter(trace=>now-Number(trace.time||0)<150);
+    muzzleFlashes=muzzleFlashes.filter(flash=>now-Number(flash.time||0)<130);
+    if(localExplosion&&Number(localExplosion.expiresAt)<=now)localExplosion=null;
+    const player=warState?.players?.[playerKey];
+    const slot=player?.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'?'secondary':'primary';
+    const equipped=player&&(vehicleWeapons[player.vehicle]||effectiveWeapon(player,slot));
+    const attachmentIds=player&&!vehicleWeapons[player.vehicle]?(player.attachments||[]).filter(id=>
+      attachments[id]&&(!attachments[id].types||attachments[id].types.includes(equipped?.type))):[];
+    const opticId=attachmentIds.find(id=>attachments[id]?.optic)||'';
+    window.dispatchEvent(new CustomEvent('dropzone:frame',{detail:{
+      warState,playerKey,playerName,playerTeam,localPosition:localPosition?{...localPosition}:null,
+      cameraPosition:{...cameraPosition},aim:aimActive?{...aim}:null,aimOffset:{...aimOffset},viewYaw,viewPitch,
+      weapon:equipped?{...equipped,weaponId:equipped.weaponId||player.vehicle||player[slot==='secondary'?'secondary':'weapon'],customColors:player.weaponColors||{},attachmentIds}:null,
+      hasVehicleWeapon:!!(player&&vehicleWeapons[player.vehicle]),
+      aimMode,scopeZoom,opticId,
+      activeDrone,droneControlled,localDronePosition:localDronePosition?{...localDronePosition}:null,
+      grapplePull:grapplePull?{...grapplePull}:null,armorPulse:Math.max(0,armorAnimationUntil-now),
+      supportTargeting,localExplosion:localExplosion?{...localExplosion}:null,
+      paused,houseInside,houseFloor,mapObstacles,nodePositions,basePositions,safeZoneRadius,
+      worldWidth,worldHeight,mapId:activeMapId,traces,muzzleFlashes,
+    }}));
+  }
+
   function draw() {
     if (!ui || !warState || !ui.canvas.isConnected) return;
+    const visiblePlayers = Object.values(warState.players || {}).filter(player => player && player.online && Date.now() - Number(player.lastSeen || 0) < 20000);
+    if(window.dropzone3DActive){
+      drawMinimap();updateStats(visiblePlayers);updateCaptureProgress();publishDropzoneFrame();return;
+    }
     const context = ui.canvas.getContext('2d');
     const width = ui.canvas.width;
     const height = ui.canvas.height;
@@ -1956,7 +2008,6 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     drawBase(context,'krypton',basePositions.krypton.x,basePositions.krypton.y,warState.bases.krypton);
     mapObstacles.forEach(obstacle=>drawObstacle(context,obstacle));
     Object.entries(nodePositions).forEach(([id,node]) => drawNode(context,id,node,warState.nodes[id]));
-    const visiblePlayers = Object.values(warState.players || {}).filter(player => player && player.online && Date.now() - Number(player.lastSeen || 0) < 20000);
     visiblePlayers.forEach(player=>{
       if (player.transportId) return;
       const self=player.name===playerName;
@@ -2019,6 +2070,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     drawMinimap();
     updateStats(visiblePlayers);
     updateCaptureProgress();
+    publishDropzoneFrame();
   }
 
   function drawTerrain(context,left,top,width,height) {
@@ -2827,8 +2879,8 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (!changed) {showGameNotice('That seat is already occupied.','error');return;}
     ui.seatMenu.hidden=true;
     movementVelocity={x:0,y:0};
-    showGameNotice(seat==='pilot'?'Pilot seat selected. Fly toward the cursor with W.':
-      seat.startsWith('gunner-')?'Gunner seat selected. Aim with the cursor and fire with the mouse.':'Passenger seat selected.','info');
+    showGameNotice(seat==='pilot'?'Pilot seat selected. Fly forward relative to view with W.':
+      seat.startsWith('gunner-')?'Gunner seat selected. Look around and fire with the mouse.':'Passenger seat selected.','info');
   }
 
   async function updateTransportPosition(vehicle,position,altitudeInput=0,facingAngle=0) {
@@ -3271,14 +3323,44 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (markup!==lastHudMarkup) { ui.hud.innerHTML=markup;lastHudMarkup=markup; }
   }
 
+  function activeOpticId(player=warState?.players?.[playerKey]){
+    if(!player||vehicleWeapons[player.vehicle])return'';
+    const slot=player.activeWeaponSlot==='secondary'&&weapons[player.secondary]?.slot==='secondary'?'secondary':'primary';
+    const weapon=effectiveWeapon(player,slot);
+    return player.attachments?.find(id=>attachments[id]?.optic&&
+      (!attachments[id].types||attachments[id].types.includes(weapon.type)))||'';
+  }
+
+  function toggleAimMode(){
+    aimMode=!aimMode;
+    if(!aimMode)scopeZoom=1;
+    ui?.mapWrap?.classList.toggle('dropzone-aim-mode',aimMode);
+    if(ui?.aimButton){ui.aimButton.textContent=aimMode?'Aim · on':'Aim';ui.aimButton.setAttribute('aria-pressed',String(aimMode));}
+    const optic=attachments[activeOpticId()];
+    showGameNotice(aimMode?'Aiming · '+(optic?.name||'iron sights')+(optic?.optic==='variable'?' · pinch or scroll to zoom':''):'Aim mode off.','info');
+    draw();
+  }
+
   function onPointerMove(event) {
-    const rect = ui.canvas.getBoundingClientRect();
-    aimOffset={
-      x:(event.clientX-rect.left)*ui.canvas.width/rect.width-ui.canvas.width/2,
-      y:(event.clientY-rect.top)*ui.canvas.height/rect.height-ui.canvas.height/2
-    };
+    if(event.pointerType==='touch'){
+      const rect=ui.canvas.getBoundingClientRect();
+      touchPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      aimOffset={x:(event.clientX-rect.left)*ui.canvas.width/rect.width-ui.canvas.width/2,
+        y:(event.clientY-rect.top)*ui.canvas.height/rect.height-ui.canvas.height/2};
+      aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
+      if(aimMode){viewYaw=-Math.atan2(aimOffset.y,aimOffset.x)-Math.PI/2;viewPitch=Math.max(-.8,Math.min(.8,-aimOffset.y/Math.max(1,ui.canvas.height)*1.6));}
+      if(touchPointers.size>=2&&activeOpticId()==='optic_variable'){
+        const [first,second]=Array.from(touchPointers.values()),distance=Math.hypot(first.x-second.x,first.y-second.y);
+        if(touchPinchDistance)scopeZoom=Math.max(1,Math.min(8,scopeZoom+(distance-touchPinchDistance)*.018));
+        touchPinchDistance=distance;
+      }
+    }else if(document.pointerLockElement!==ui.canvas){
+      const rect=ui.canvas.getBoundingClientRect();
+      aimOffset={x:(event.clientX-rect.left)*ui.canvas.width/rect.width-ui.canvas.width/2,
+        y:(event.clientY-rect.top)*ui.canvas.height/rect.height-ui.canvas.height/2};
+      aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
+    }
     aimActive=true;
-    aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
     const player=warState?.players?.[playerKey];
     const vehicle=player?.transportId&&warState.vehicles?.[player.transportId];
     if (vehicle&&Date.now()-lastVehicleAimWriteAt>140) {
@@ -3295,21 +3377,78 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     }
   }
 
+  function onLockedMouseMove(event){
+    if(document.pointerLockElement!==ui?.canvas)return;
+    viewYaw-=event.movementX*.003;viewPitch=Math.max(-1.15,Math.min(1.15,viewPitch-event.movementY*.003));
+    const directionX=-Math.sin(viewYaw),directionY=-Math.cos(viewYaw);
+    aimOffset={x:directionX*1500,y:directionY*1500};
+    aim={x:cameraPosition.x+aimOffset.x,y:cameraPosition.y+aimOffset.y};
+    aimActive=true;
+  }
+
   function onPointerDown(event) {
     if (event.button !== 0||paused||warState?.matchPhase!=='playing') return;
+    if(event.pointerType==='touch'){
+      touchPointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      try{ui.canvas.setPointerCapture(event.pointerId);}catch(error){}
+      if(touchPointers.size>=2){
+        event.preventDefault();
+        if(!touchAimGesture){touchAimGesture=true;toggleAimMode();}
+        const [first,second]=Array.from(touchPointers.values());touchPinchDistance=Math.hypot(first.x-second.x,first.y-second.y);
+        return;
+      }
+      pointerDown=true;onPointerMove(event);return;
+    }
     onPointerMove(event);
+    if(activeDrone){event.preventDefault();detonateRemoteDrone().catch(error=>setStatus(error.message||'Remote detonation failed.',true));return;}
     if (supportTargeting) {
       event.preventDefault();
       const target={x:aim.x,y:aim.y};
       launchSupportStrike(target).catch(error=>setStatus(error.message||'Support strike failed.',true));
       return;
     }
+    if(document.pointerLockElement!==ui.canvas){
+      if(typeof ui.canvas.requestPointerLock==='function'){
+        try{
+          const request=ui.canvas.requestPointerLock();
+          request?.catch(error=>{console.warn('Could not lock the Dropzone view to the pointer.',error);setStatus('Click-to-look is unavailable in this browser.',true);});
+        }catch(error){console.warn('Could not lock the Dropzone view to the pointer.',error);setStatus('Click-to-look is unavailable in this browser.',true);}
+      }
+      if(event.pointerType!=='touch'){
+        pointerDown=true;fireWeapon();
+      }
+      return;
+    }
     pointerDown = true;
-    ui.canvas.setPointerCapture(event.pointerId);
     fireWeapon();
   }
 
-  function onPointerUp() { pointerDown = false; }
+  function onPointerUp(event) {
+    if(event?.pointerType==='touch'){
+      touchPointers.delete(event.pointerId);
+      if(touchPointers.size===0){
+        const shouldFire=!touchAimGesture;
+        touchAimGesture=false;touchPinchDistance=0;pointerDown=false;
+        if(shouldFire){
+          if(activeDrone)detonateRemoteDrone().catch(error=>setStatus(error.message||'Remote detonation failed.',true));
+          else if(supportTargeting)launchSupportStrike({x:aim.x,y:aim.y}).catch(error=>setStatus(error.message||'Support strike failed.',true));
+          else fireWeapon();
+        }
+      }
+      return;
+    }
+    pointerDown=false;
+  }
+
+  function onScopeWheel(event){
+    if(!aimMode||activeOpticId()!=='optic_variable')return;
+    event.preventDefault();scopeZoom=Math.max(1,Math.min(8,scopeZoom+(event.deltaY<0?.5:-.5)));
+    showGameNotice('Variable optic · '+scopeZoom.toFixed(1)+'×','info');draw();
+  }
+
+  function onCanvasContextMenu(event){
+    event.preventDefault();if(!paused&&warState?.matchPhase==='playing')toggleAimMode();
+  }
 
   function onControlPointerDown(event) {
     const lethalButton=event.target.closest('[data-war-action="use-lethal"]');
@@ -3393,6 +3532,28 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     setStatus(droneControlled?'Manual drone control active. WASD steers; the operator stays in place.':'Drone released to continue on its current heading.');
   }
 
+  async function detonateRemoteDrone(){
+    const drone=warState?.drones?.[playerKey],position=localDronePosition||drone;
+    if(!drone||!position)return;
+    const isMini=drone.type==='mini_rc_car',isCar=drone.type==='rc_car'||isMini;
+    const radius=isMini?150:isCar?220:180,center={x:Number(position.x),y:Number(position.y)};
+    const victims=Object.values(warState.players||{}).filter(enemy=>enemy&&enemy.team!==playerTeam&&enemy.online&&enemy.hp>0&&
+      Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<=radius);
+    for(const enemy of victims){
+      const distance=Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y);
+      const direct=distance<(isCar?65:45);
+      hitPlayer(enemy,direct?(isMini?40:isCar?120:60):(isMini?19:isCar?58:30),{name:playerName,team:playerTeam})
+        .catch(error=>setStatus(error.message||'Remote detonation damage failed.',true));
+    }
+    try{
+      const remaining=await updateWar('drones',current=>{const next={...(current||{})};delete next[playerKey];return next;});
+      if(warState)warState.drones=remaining||{};
+    }catch(error){setStatus(error.message||'Could not detonate the remote vehicle.',true);return;}
+    activeDrone=false;localDronePosition=null;droneControlled=true;
+    localExplosion={x:center.x,y:center.y,startedAt:Date.now(),expiresAt:Date.now()+700,radius};playSound('explosion');
+    showGameNotice('Remote '+(isCar?'car':'drone')+' detonated.','objective');draw();
+  }
+
   function beginC4Hold(source) {
     if (c4HoldSource) return;
     c4HoldSource=source;
@@ -3418,6 +3579,11 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
   function onKeyDown(event) {
     const key = event.key.toLowerCase();
     const target=event.target instanceof Element?event.target:null;
+    if(key==='escape'&&chatOpen){event.preventDefault();closeChatComposer();return;}
+    if((event.key==='/'||event.code==='Slash'&&event.shiftKey)&&!paused&&
+      !(target&&target.closest('input,textarea,[contenteditable="true"]'))){
+      event.preventDefault();openChatComposer();return;
+    }
     if (key==='escape') {
       event.preventDefault();
       if (ui?.spawnMenu&&!ui.spawnMenu.hidden) closeVehicleSpawnMenu();
@@ -3438,6 +3604,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     }
     if (target&&target.closest('input,textarea,[contenteditable="true"]')) return;
     if (target instanceof HTMLSelectElement&&key!=='v') return;
+    if(event.code==='Space'&&activeDrone){event.preventDefault();if(!event.repeat)detonateRemoteDrone().catch(error=>setStatus(error.message||'Remote detonation failed.',true));return;}
     if (!paused&&key==='c'&&warState?.players?.[playerKey]?.lethal==='c4') {
       event.preventDefault();
       if (!event.repeat) beginC4Hold('keyboard');
@@ -3555,6 +3722,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     const shooterPosition=transport?gunnerPosition||transport:localPosition||shooter;
     if (isInOwnSafeZone(shooter.team,Number(shooterPosition.x),Number(shooterPosition.y))) {
       setStatus('Weapons are disabled inside your team safe zone.');
+      showGameNotice('Safe zone · leave the base protection ring to fire.','info');
       return;
     }
     const vehicleWeapon=vehicleWeapons[shooter.vehicle];
@@ -3575,6 +3743,18 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (ammoAttachment&&attachmentRounds<1) {setStatus('Incendiary magazine empty. Press R to reload.');return;}
     lastShot = now;
     playSound('shot');
+    const shotAt=Date.now();
+    const recoilRecovery=Math.max(0,now-lastRecoilAt)/1000*.24;
+    recoilKick=Math.min(.22,Math.max(0,recoilKick-recoilRecovery)+(weapon.recoil||.02));
+    lastRecoilAt=now;
+    const origin={...shooter,x:Number(shooterPosition.x),y:Number(shooterPosition.y)};
+    const flashAngle=Math.atan2(aim.y-origin.y,aim.x-origin.x)-recoilKick;
+    for(let flash=0;flash<burstCount;flash++){
+      muzzleFlashes.push({x:origin.x+Math.cos(flashAngle)*48,y:origin.y+Math.sin(flashAngle)*48,
+        angle:flashAngle,time:shotAt+flash*18});
+      if(muzzleFlashes.length>24)muzzleFlashes.shift();
+    }
+    draw();
     let fired;
     try {
       fired = await mutatePlayer(current => {
@@ -3589,20 +3769,12 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         return {...current,[ammoField]:Number(current[ammoField])-ammoCost,
           ...(ammoAttachment?{attachmentAmmo}:{}),
           facingAngle:Math.atan2(aim.y-shooterPosition.y,aim.x-shooterPosition.x),
-          lastShotAt:Date.now(),lastSeen:Date.now()};
+          lastShotAt:shotAt,lastSeen:shotAt};
       });
     } catch (error) { setStatus(error.message,true); return; }
-    if (!fired||fired[ammoField]!==Number(shooter[ammoField])-ammoCost||
-      ammoAttachment&&Number(fired.attachmentAmmo?.[ammoAttachment.attachmentId])!==attachmentRounds-1) return;
-    const recoilRecovery=Math.max(0,now-lastRecoilAt)/1000*.24;
-    recoilKick=Math.min(.22,Math.max(0,recoilKick-recoilRecovery)+(weapon.recoil||.02));
-    lastRecoilAt=now;
-    const origin = {...shooter,x:Number(shooterPosition.x),y:Number(shooterPosition.y)};
-    const flashAngle=Math.atan2(aim.y-origin.y,aim.x-origin.x)-recoilKick;
-    for (let flash=0;flash<burstCount;flash++) {
-      muzzleFlashes.push({x:origin.x+Math.cos(flashAngle)*48,y:origin.y+Math.sin(flashAngle)*48,
-        angle:flashAngle,time:Date.now()+flash*18});
-      if (muzzleFlashes.length>24) muzzleFlashes.shift();
+    if(!fired||Number(fired.lastShotAt)!==shotAt){
+      setStatus('Shot was not accepted by the frontline. Check ammo, match state, or safe-zone position.',true);
+      return;
     }
     const pelletCount=Math.max(1,Math.floor(Number(weapon.pellets)||1));
     const projectileCount=pelletCount*burstCount;
@@ -3631,6 +3803,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         if (baseHit&&(!impact||baseHit.distance<impact.distance)) impact=baseHit;
         traces.push({x1:origin.x,y1:origin.y,x2:impact?impact.x:shotEnd.x,y2:impact?impact.y:shotEnd.y,
           time:Date.now(),color:shooter.team==='vortex'?'#80b7ff':'#ff8792',impact:!!wallHit&&!impact});
+        draw();
         if (weapon.radius) {
           const center=impact?{x:impact.x,y:impact.y}:shotEnd;
           const explosionId='impact_'+playerKey+'_'+Date.now()+'_'+pellet;
@@ -4019,8 +4192,9 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
           angle,hp:1,manual:true,lastWriteAt:0};
         await updateWar('drones/'+playerKey,()=>car);
         localDronePosition={x:car.x,y:car.y,angle:car.angle};
+        viewYaw=-angle-Math.PI/2;viewPitch=0;
         lastDroneWriteAt=Date.now();activeDrone=true;droneControlled=true;
-        setStatus('Mini kamikaze car launched. Its blast deals one third of a standard RC car.');
+        setStatus('Mini kamikaze car launched. WASD steers; click or press Space to detonate.');
       } else if (attachment.utility==='miniPistol') {
         await consumeAttachmentAmmo(attachment);
         await fireMiniPistol(player,position,angle,attachment);
@@ -4257,8 +4431,9 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
           angle,hp:1,manual:true,lastWriteAt:0};
         await updateWar('drones/'+playerKey,()=>car);
         localDronePosition={x:car.x,y:car.y,angle:car.angle};
+        viewYaw=-angle-Math.PI/2;viewPitch=0;
         lastDroneWriteAt=Date.now();activeDrone=true;droneControlled=true;
-        setStatus('RC kamikaze car launched. WASD steers; Shift releases control.');
+        setStatus('RC kamikaze car launched. WASD steers; Shift releases control; click or press Space to detonate.');
       } else if (item==='drone') {
         if (warState.drones[playerKey]) { setStatus('Your drone is already active.',true);return; }
         await launchDrone();
@@ -4633,7 +4808,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       return plated?{...current,armorPlates:Number(current.armorPlates)-1,
         armorHp:Math.min(150,Number(current.armorHp||0)+50)}:current;
     });
-    if (plated) setStatus('Armor plate applied. Armor: '+Number(warState.players[playerKey].armorHp||0)+' / 150.');
+    if (plated) {armorAnimationUntil=Date.now()+900;setStatus('Armor plate applied. Armor: '+Number(warState.players[playerKey].armorHp||0)+' / 150.');}
     else setStatus('Buy or carry an armor plate and make room by taking damage first.',true);
   }
 
@@ -4694,6 +4869,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       if (purchaseError) throw new Error(purchaseError);
       if (type==='armor') {
         await mutatePlayer(current=>({...current,armorPlates:Number(current.armorPlates||0)+1}));
+        armorAnimationUntil=Date.now()+900;
       } else if (type==='armorSatchel') {
         await mutatePlayer(current=>({...current,armorSatchel:true}));
       } else if (type==='selfRevive') {
@@ -4738,10 +4914,11 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     refreshEquipmentUi();
     await updateWar('drones/'+playerKey,()=>drone);
     localDronePosition={x:drone.x,y:drone.y,angle:drone.angle};
+    viewYaw=-angle-Math.PI/2;viewPitch=0;
     lastDroneWriteAt=Date.now();
     activeDrone=true;
     droneControlled=true;
-    setStatus('Drone launched. WASD steers it; toggle control to let it fly straight.');
+    setStatus('Drone camera active. WASD steers; Shift releases control; click or press Space to detonate.');
   }
 
   async function updateParkedVehicles() {
@@ -4788,14 +4965,18 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (!Number.isFinite(localDronePosition.angle)) localDronePosition.angle=0;
     const elapsed=Math.min(.05,Math.max(0,(timestamp-(updateDrone.lastFrame||timestamp))/1000));
     updateDrone.lastFrame=timestamp;
-    let dx=droneControlled?(keys.has('d')?1:0)-(keys.has('a')?1:0):0;
-    let dy=droneControlled?(keys.has('s')?1:0)-(keys.has('w')?1:0):0;
-    if (dx||dy) localDronePosition.angle=Math.atan2(dy,dx);
+    const forward=droneControlled?(keys.has('w')?1:0)-(keys.has('s')?1:0):0;
+    const side=droneControlled?(keys.has('d')?1:0)-(keys.has('a')?1:0):0;
+    const inputLength=Math.hypot(forward,side)||1;
+    const dx=(side*Math.cos(viewYaw)-forward*Math.sin(viewYaw))/inputLength;
+    const dy=(-side*Math.sin(viewYaw)-forward*Math.cos(viewYaw))/inputLength;
+    if (forward||side) localDronePosition.angle=Math.atan2(dy,dx);
+    const heading=localDronePosition.angle;
     const isRcCar=current.type==='rc_car'||current.type==='mini_rc_car';
     const isMiniRcCar=current.type==='mini_rc_car';
     const distance=(isMiniRcCar?500:isRcCar?650:430)*elapsed;
-    const next={x:localDronePosition.x+Math.cos(localDronePosition.angle)*distance,
-      y:localDronePosition.y+Math.sin(localDronePosition.angle)*distance};
+    const next={x:localDronePosition.x+Math.cos(heading)*distance,
+      y:localDronePosition.y+Math.sin(heading)*distance};
     const collisionRadius=isRcCar?16:10;
     const obstacle=mapObstacles.some(item=>circleIntersectsRect(next.x,next.y,collisionRadius,item))||
       lootBoxIntersects(next.x,next.y,collisionRadius);
@@ -4805,6 +4986,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (obstacle||hit||outOfBounds||isInEnemySafeZone(playerTeam,next.x,next.y)) {
       const center=hit?{x:Number(hit.x),y:Number(hit.y)}:localDronePosition;
       const blastRadius=isMiniRcCar?150:isRcCar?220:180;
+      localExplosion={x:center.x,y:center.y,startedAt:Date.now(),expiresAt:Date.now()+700,radius:blastRadius};
       const victims=Object.values(warState.players||{}).filter(enemy=>enemy&&enemy.team!==playerTeam&&
         enemy.online&&enemy.hp>0&&Math.hypot(Number(enemy.x)-center.x,Number(enemy.y)-center.y)<=blastRadius);
       for (const enemy of victims) {
@@ -5161,7 +5343,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
           closeVehicleSpawnMenu();
           setStatus('Boarded '+vehicles[crewType].name+' as '+boardedRole+' ('+(nearby[1].passengers.length+1)+'/'+
             (crewType==='jeep'?5:10)+'). '+(boardedRole==='pilot'||boardedRole==='driver'
-              ?'WASD drives toward the cursor. ':'')+'Hold V to change seats.');
+              ?'WASD drives relative to view. ':'')+'Hold V to change seats.');
           return;
         }
         if (!atOwnBase) {
@@ -5189,7 +5371,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         paidCost=0;
         closeVehicleSpawnMenu();
         setStatus(type==='jeep'?'Gun jeep deployed. Five seats: driver, three passengers, and a cursor-aimed turret gunner. Hold V to change seats.':
-          'Transport helicopter deployed. WASD flies toward the cursor; hold Q to descend or E to climb. Up to 10 occupants. Hold V to change seats.');
+          'Transport helicopter deployed. WASD flies relative to view; hold Q to descend or E to climb. Up to 10 occupants. Hold V to change seats.');
         return;
       }
       const occupied=Object.entries(warState.players||{}).some(([key,other])=>key!==playerKey&&other&&
@@ -5397,6 +5579,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       received=Math.min(5,room);
       return {...current,armorPlates:Number(current.armorPlates||0)+received};
     });
+    if(received)armorAnimationUntil=Date.now()+900;
     setStatus('Plate box: '+received+' armor plates added · '+remainingUses+' use'+(remainingUses===1?'':'s')+' remain.');
     showGameNotice('Picked up '+received+' armor plates.','loot');
     draw();
@@ -5442,6 +5625,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
         setStatus('Someone else reached that loot crate first.');
         return;
       }
+      if(warState?.lootBoxes?.[nearest.id])warState.lootBoxes[nearest.id]={...warState.lootBoxes[nearest.id],available:false};
       if (drop.kind==='resources') {
         await updateWar('economy/'+playerTeam,economy=>({...economy,
           resources:Number(economy&&economy.resources||0)+drop.amount}));
@@ -5463,6 +5647,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
           }
           return {...current,[drop.field]:Number(current[drop.field]||0)+drop.amount};
         });
+        if(drop.kind==='plate'||drop.kind==='satchel')armorAnimationUntil=Date.now()+900;
         setStatus('Loot crate: '+rewardLabel+' added to your loadout.');
         showGameNotice('Loot acquired: '+rewardLabel+'.','loot');
       }
@@ -5847,7 +6032,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     if (ui?.connectionPanel) ui.connectionPanel.hidden=true;
     ui?.mapWrap?.classList.remove('nexus-war-map-connecting');
     if (ui?.minimap) ui.minimap.hidden=false;
-    if (ui?.chatPanel) ui.chatPanel.hidden=false;
+    if (ui?.chatPanel) ui.chatPanel.hidden=!chatOpen;
     ui.weapon.value=player.weapon;
     ui.secondaryWeapon.value=player.secondary||'pistol_sidekick';
     ui.attachmentSelects.forEach((select,index)=>{select.value=(player.attachments||[])[index]||'';});
@@ -5877,7 +6062,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       '<div class="nexus-war-status" data-war-status role="status" aria-live="polite">Connecting to the frontline…</div>' +
       '<div class="nexus-war-progression" data-war-progression></div><div class="nexus-war-wallet" data-war-wallet></div>' +
       '<div class="nexus-war-stats" data-war-stats></div>' +
-      '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="Top-down multiplayer war arena, six times its previous width and height, following your player"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
+      '<div class="nexus-war-map-wrap"><canvas class="nexus-war-canvas" width="3000" height="1500" aria-label="First-person multiplayer war arena with a full battlefield minimap"></canvas><canvas class="nexus-war-minimap" data-war-minimap width="360" height="180" aria-label="Full battlefield minimap showing bases, relays, buildings, players, and your viewport"></canvas></div>' +
       '<div class="nexus-war-capture" data-war-capture-progress hidden><strong>Capturing relay</strong><div><span></span></div></div>' +
       '<div class="nexus-war-controls"><span><kbd>W A S D</kbd> Move relative to cursor / steer drone</span><span><kbd>Mouse</kbd> Aim + fire</span><span><kbd>Z</kbd> Plate up</span><span><kbd>E</kbd> Open shop / loot / capture</span><span><kbd>Q</kbd> Enter / exit house</span><span><kbd>F</kbd> Revive nearby ally</span><span><kbd>V</kbd> Deploy / board / exit (press once)</span><span><kbd>R</kbd> Reload</span><label>Vehicle<select data-war-vehicle><option value="scout_bike">Scout bike · fast</option><option value="assault_rover">Assault rover · very fast</option><option value="tank">Battle tank · cannon</option><option value="anti_air">Anti-air · cannon</option><option value="transport_helicopter">Transport helicopter · 10 seats</option><option value="apache">Apache attack helicopter</option></select></label><button class="nexus-button secondary" type="button" data-war-action="capture">Loot / capture nearby</button><button class="nexus-button secondary" type="button" data-war-action="vehicle">Deploy / board / dismount (V)</button><button class="nexus-button secondary" type="button" data-war-action="reload">Reload</button><span data-war-reload-timer aria-live="polite"></span></div>' +
       '<div class="nexus-war-controls"><strong>Base upgrades</strong><button class="nexus-button secondary" type="button" data-war-action="armor">Buy armor plate · 150</button><span>Press <kbd>Z</kbd> to plate up</span><button class="nexus-button secondary" type="button" data-war-action="self-revive-buy">Self-revive · 400</button><button class="nexus-button secondary" type="button" data-war-action="turret">Buy sentry turret · 350</button><button class="nexus-button secondary" type="button" data-war-action="drone-buy">Buy kamikaze drone · 250</button><button class="nexus-button secondary" type="button" data-war-action="drone-toggle">Toggle drone control</button><button class="nexus-button secondary" type="button" data-war-action="revive">Revive ally</button><button class="nexus-button secondary" type="button" data-war-action="self-revive">Use self-revive</button><button class="nexus-button secondary" type="button" data-war-action="give-up" hidden>Hold to give up</button></div>' +
@@ -5887,6 +6072,8 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
       '<div class="nexus-war-arsenal"><strong>Arsenal</strong><span>Primary and secondary weapons across nine classes · unlocks through level 100</span><small>Weapons unlock at levels 1–100. Eliminations earn 100 XP; new relay captures earn 75 XP. Each captured relay pays its owner 25 Sektorium and 50 XP per minute. Armor absorbs damage before health and is capped at three plates. Changing an established loadout costs 20 team resources.</small></div>';
     const description=container.querySelector('.nexus-war-description');
     if (description) description.textContent=description.textContent
+      .replace('Move on foot relative to the cursor, and use high-speed vehicles from your team base.','Move with WASD relative to your view. Click the battlefield to capture the mouse and look around. Two-finger tap or right-click toggles aim; pinch or scroll adjusts variable optics. Use high-speed vehicles from your team base.')
+      .replace('Fixed crates respawn, and random airdrops arrive during the match.','Fixed crates respawn, and random airdrops arrive during the match. Press / to open nearby chat. While piloting an RC car or drone, click or press Space to detonate.')
       .replace('Press Z to apply a purchased armor plate.','Press Z to apply a carried armor plate.')
       .replace(
       'or hold G while downed to give up.',
@@ -5951,6 +6138,7 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     ui.mapWrap.appendChild(ui.notice);
     ui.chatPanel=document.createElement('section');
     ui.chatPanel.className='nexus-war-chat';
+    ui.chatPanel.hidden=true;
     ui.chatPanel.innerHTML='<div data-war-chat-log aria-live="polite" hidden></div><form><input type="text" maxlength="180" autocomplete="off" placeholder="Nearby message" aria-label="Send a nearby chat message"><button type="submit" aria-label="Send message" title="Send message">Send</button></form><div class="nexus-war-voice-audio" data-war-voice-audio></div>';
     ui.chatLog=ui.chatPanel.querySelector('[data-war-chat-log]');
     ui.chatInput=ui.chatPanel.querySelector('input');
@@ -6234,6 +6422,15 @@ window.updateVehicleShopPrice = window.updateVehicleShopPrice || function () {};
     window.removeEventListener('keyup',onKeyUp);
     window.removeEventListener('blur',onBlur);
     window.removeEventListener('pagehide',markOffline);
+    document.removeEventListener('pointerlockchange',onPointerLockChange);
+    document.removeEventListener('mousemove',onLockedMouseMove);
+    ui?.canvas?.removeEventListener('pointermove',onPointerMove);
+    ui?.canvas?.removeEventListener('pointerdown',onPointerDown);
+    ui?.canvas?.removeEventListener('pointerup',onPointerUp);
+    ui?.canvas?.removeEventListener('pointercancel',onPointerUp);
+    ui?.canvas?.removeEventListener('wheel',onScopeWheel);
+    ui?.canvas?.removeEventListener('contextmenu',onCanvasContextMenu);
+    if(document.pointerLockElement===ui?.canvas)document.exitPointerLock();
     document.removeEventListener('click',onActionClick);
     document.removeEventListener('fullscreenchange',updateFullscreenButton);
     if (container) {
