@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#17241e">
   <title>Gardenfall · Sektor</title>
-  <link rel="stylesheet" href="./garden-siege.css?v=20261107-special-craft-9">
+  <link rel="stylesheet" href="./garden-siege.css?v=20261108-garden-night-effects-1">
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+        "three": "./vendor/three.module.js"
       }
     }
   </script>
-  <script type="module" src="./garden-siege.js?v=20261107-special-craft-9"></script>
+  <script type="module" src="./garden-siege.js?v=20261108-garden-night-effects-1"></script>
 </head>
 <body>
   <main class="game-shell">
@@ -78,21 +78,37 @@
         </section>
         <section class="join-screen" id="joinScreen">
           <div class="join-card">
-            <span class="eyebrow">GROW TOGETHER. SURVIVE THE NIGHT.</span>
-            <h1>Build a garden.<br>Hold off the horde.</h1>
-            <p>Claim your own farm on the shared eight-farm map. Grow crops for coins, raise auto-firing plants, and defend the garden when night falls.</p>
-            <label>Your name<input id="playerName" maxlength="20" autocomplete="nickname" placeholder="Garden Guardian"></label>
-            <small id="accountStatus" role="status">Connect a Sektor account to play and save your garden.</small>
-            <a id="accountLink" href="./VUS-Servers.html?returnTo=garden">Log in or create a Sektor account</a>
-            <div class="join-actions">
-              <button id="publicButton" class="primary" type="button" disabled>Join public garden</button>
-              <button id="createPrivateButton" type="button" disabled>Create private garden</button>
+            <span class="eyebrow">SEKTOR GARDEN GAME</span>
+            <h1>Welcome to<br>Gardenfall</h1>
+            <p>Grow your farm by day. Defend it after dark. Sign in or create a Gardenfall account to continue.</p>
+            <div class="account-gate" id="accountGate">
+              <form id="accountForm" class="garden-account-form">
+                <div class="account-tabs" role="tablist" aria-label="Gardenfall account">
+                  <button id="loginModeButton" class="active" type="button" role="tab" aria-selected="true">Log in</button>
+                  <button id="signupModeButton" type="button" role="tab" aria-selected="false">Create account</button>
+                </div>
+                <label>Username<input id="accountUsername" maxlength="20" autocomplete="username" required placeholder="GardenGuardian"></label>
+                <label>Password<input id="accountPassword" type="password" minlength="8" maxlength="128" autocomplete="current-password" required placeholder="At least 8 characters"></label>
+                <button id="accountSubmit" class="account-submit" type="submit">Log in</button>
+                <button id="offlineGuestButton" class="account-guest" type="button">Play offline as guest</button>
+                <small class="guest-note">Guest progress stays on this device and does not sync.</small>
+                <small id="accountStatus" role="status" aria-live="polite">This account belongs to Gardenfall.</small>
+              </form>
             </div>
-            <form id="privateForm">
-              <label>5-digit private code<input id="privateCode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="12345" autocomplete="off"></label>
-              <button type="submit">Join private garden</button>
-            </form>
-            <small id="joinStatus" role="status">Public gardens match you with other players. Private gardens fit up to 8.</small>
+            <div class="game-entry" id="gameOptions" hidden>
+              <div class="game-entry-heading"><small id="accountWelcome" role="status"></small><button id="accountLogout" type="button">Log out</button></div>
+              <label>Your name<input id="playerName" maxlength="20" autocomplete="nickname" placeholder="Garden Guardian"></label>
+              <div class="join-actions">
+                <button id="publicButton" class="primary" type="button">Join public garden</button>
+                <button id="createPrivateButton" type="button">Create private garden</button>
+                <button id="offlineButton" class="offline-action" type="button">Play offline</button>
+              </div>
+              <form id="privateForm" class="private-form">
+                <label>5-digit private code<input id="privateCode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="12345" autocomplete="off"></label>
+                <button type="submit">Join private garden</button>
+              </form>
+              <small id="joinStatus" role="status">Public gardens match you with other players. Private gardens fit up to 8.</small>
+            </div>
           </div>
         </section>
       </div>
@@ -110,14 +126,16 @@
             <button id="shovelButton" type="button" disabled>Remove plant</button>
             <button id="sprinklerButton" type="button" disabled>Place sprinkler</button>
             <button id="trowelButton" type="button" disabled>Move plant (trowel)</button>
+            <button id="favoriteButton" type="button" disabled>Favorite plant</button>
             <button id="refillButton" type="button" disabled>Refill water (F)</button>
           </div>
           <label class="selection-label">Seed to plant<select id="seedSelect" disabled></select></label>
-          <label class="selection-label">Weapon<select id="weaponSelect" disabled><option value="peaBlaster">Pea Blaster</option><option value="cornZooka">Cornzooka</option></select></label>
+          <div class="seed-capacity" id="seedCapacity">Seed pack 0 / 1</div>
+          <label class="selection-label">Weapon<select id="weaponSelect" disabled><option value="peaBlaster">Pea Blaster</option><option value="cornZooka">Cornzooka</option><option value="brambleRifle" disabled>Bramble Rifle</option><option value="bloomShotgun" disabled>Bloom Shotgun</option><option value="sunseedRepeater" disabled>Sunseed Repeater</option></select></label>
           <div class="ammo-readout" id="ammoReadout">Pea Blaster · Magazine 0/10 · Reserve 0 · R reloads</div>
         </section>
 
-        <div class="how-to-play"><strong>Daylight is 20 minutes.</strong><span>Use the day to grow, harvest and prepare. Zombies attack for 2 minutes each night. Plants attack automatically; harvest them for ammo to shoot yourself.</span></div>
+        <div class="how-to-play"><strong>Daylight is 20 minutes.</strong><span>Use the day to grow, harvest and prepare. Zombies attack for 5 minutes each night. Plants attack automatically; harvest them for ammo to shoot yourself.</span></div>
         <details class="keybinds" id="keybinds">
           <summary>Keyboard controls</summary>
           <dl>
@@ -132,7 +150,8 @@
         </details>
       </aside>
     </section>
-    <footer><span>Private gardens save crops, inventory and offline growth on this server.</span><a href="./VUS-Servers.html">Back to Sektor</a></footer>
+    <footer><span>Private gardens save on the server. Offline gardens save in this browser.</span><a href="./VUS-Servers.html">Back to Sektor</a></footer>
   </main>
+  <script src="./garden-auth.js?v=20261108-garden-night-effects-1"></script>
 </body>
 </html>

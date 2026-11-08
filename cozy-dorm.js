@@ -451,10 +451,21 @@ function selectComputerApp(appId) {
   drawComputer();
 }
 function handleWorldClick(event) {
-  if(roomLobby.hidden===false||state.draggingItem||state.usingComputer)return;
+  if(roomLobby.hidden===false||state.draggingItem)return;
   if(state.suppressClick){state.suppressClick=false;return;}
   worldPoint(event);
   const screenHit=raycaster.intersectObject(state.computerScreen,false)[0];
+  if(state.usingComputer){
+    if(screenHit?.uv){
+      const screenX=screenHit.uv.x*state.screenCanvas.width;
+      const screenY=(1-screenHit.uv.y)*state.screenCanvas.height;
+      if(screenY<82){
+        const tab=Math.min(computerApps.length-1,Math.floor(screenX/(state.screenCanvas.width/computerApps.length)));
+        selectComputerApp(computerApps[tab].id);
+      }
+    }
+    return;
+  }
   const monitorHit=raycaster.intersectObject(state.computerMonitor,false)[0];
   if(screenHit||monitorHit) {
     enterComputerMode();
