@@ -16,7 +16,7 @@ const pointer=new THREE.Vector2();
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x9bc5a0);
 scene.fog=new THREE.Fog(0x9bc5a0,90,220);
-scene.add(new THREE.HemisphereLight(0xe5f5da,0x405b42,2.1));
+const hemisphere=new THREE.HemisphereLight(0xe5f5da,0x405b42,2.1);scene.add(hemisphere);
 const sunlight=new THREE.DirectionalLight(0xfff0ce,2.2);sunlight.position.set(-5,12,8);scene.add(sunlight);
 const camera=new THREE.PerspectiveCamera(42,1,.1,240);
 scene.add(camera);
@@ -26,8 +26,8 @@ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const heldWeapon=new THREE.Group();camera.add(heldWeapon);heldWeapon.visible=false;
 
 const state={
-  socket:null,roomId:'',playerId:'',roomMode:'',day:1,phase:'day',phaseRemaining:0,phaseDeadline:0,weatherDeadline:0,gardenHealth:100,
-  players:new Map(),plants:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),
+  socket:null,roomId:'',playerId:'',roomMode:'',gardenAccount:null,offline:false,day:1,phase:'day',phaseRemaining:0,phaseDeadline:0,weatherDeadline:0,gardenHealth:100,
+  players:new Map(),plants:new Map(),seedDrops:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),seedDropMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),
   selectedTile:null,selectedSeed:'',selectedShop:'seeds',seedCategory:'all',keys:new Set(),x:0,z:4.7,lastMove:0,
   yaw:0,pitch:-.28,velocity:new THREE.Vector2(),targetX:0,targetZ:4.7,weather:'clear',ponds:[],jumpHeight:0,jumpVelocity:0,
   weatherRemaining:0,weatherKnown:false,clientId:'',trowelFrom:null,nearbyStation:'',ziplineTarget:'',ziplineRide:null,pendingPlantKey:'',
@@ -44,8 +44,17 @@ const seeds=[
   {id:'clover',name:'Clover Patch',cost:18,kind:'crop',description:'Quick-growing lucky crop · sell for 25'},
   {id:'lavender',name:'Lavender',cost:36,kind:'crop',description:'Aromatic purple crop · sell for 48'},
   {id:'snowdrop',name:'Snowdrop',cost:40,kind:'crop',description:'Cold-hardy flower · sell for 54'},
+  {id:'apple',name:'Apple Tree',cost:29,kind:'crop',description:'A sturdy orchard crop · sell for 43'},
+  {id:'dragonfruit',name:'Dragon Fruit',cost:58,kind:'crop',description:'Rare, high-value fruit · sell for 92'},
+  {id:'bluebell',name:'Bluebell',cost:25,kind:'crop',description:'Quick-growing spring flower · sell for 35'},
+  {id:'marigold',name:'Marigold',cost:33,kind:'crop',description:'Bright garden bloom · sell for 46'},
+  {id:'nightshade',name:'Nightshade',cost:47,kind:'crop',description:'Unusual dusk fruit · sell for 72'},
   {id:'peashooter',name:'Pea Shooter',cost:55,kind:'attack',description:'Auto-attacks zombies · harvest to unlock the Pea Blaster + 10 ammo'},
   {id:'cornzooka',name:'Rocket Corn',cost:95,kind:'attack',description:'Splash-damage defender · harvest to unlock Rocket Corn + 2 ammo'},
+  {id:'snapdragon',name:'Snapdragon',cost:78,kind:'attack',description:'Fast close-range fire bursts · harvest for Pea Blaster ammo'},
+  {id:'frostFern',name:'Frost Fern',cost:82,kind:'attack',description:'Long-range frost volleys · harvest for Pea Blaster ammo'},
+  {id:'melonMortar',name:'Melon Mortar',cost:118,kind:'attack',description:'Heavy splash-damage shots · harvest for Rocket Corn ammo'},
+  {id:'roseTurret',name:'Rose Turret',cost:72,kind:'attack',description:'Rapid thorn shots · harvest for Pea Blaster ammo'},
   {id:'thornGuard',name:'Thorn Guard',cost:64,kind:'attack',description:'Very tough defensive plant'},
   {id:'bamboo',name:'Bamboo Stalk',cost:30,kind:'special',description:'Sell for 6 coins or craft a gun barrel'},
   {id:'reedTube',name:'Reed Tube',cost:24,kind:'special',description:'Long-range custom gun barrel'},
@@ -58,16 +67,34 @@ const seeds=[
   {id:'crystalBud',name:'Crystal Bud',cost:54,kind:'special',description:'Adds range and damage to custom guns'},
   {id:'epicSoil',name:'Epic Soil',cost:75,kind:'special',description:'Makes neighboring crops grow 30% faster'},
 ];
+const seedIcons={sunflower:'🌻',berry:'🫐',moonberry:'🌙',starfruit:'⭐',pumpkin:'🎃',glowMushroom:'🍄',clover:'🍀',lavender:'💜',snowdrop:'❄️',apple:'🍎',dragonfruit:'🐉',bluebell:'🔔',marigold:'🌼',nightshade:'🌑',peashooter:'🟢',cornzooka:'🌽',snapdragon:'🌺',frostFern:'❄️',melonMortar:'🍈',roseTurret:'🌹',thornGuard:'🌵',bamboo:'🎋',reedTube:'🌾',magazineVine:'🍃',pumpkinShell:'🎃',blastCorn:'🌽',pollenPod:'🌼',triggerBloom:'🌸',thornVine:'🌿',crystalBud:'💎',epicSoil:'🪴'};
+const fruitPlantSpecs={apple:{count:5,regrow:18000},dragonfruit:{count:4,regrow:22000}};
 const gear=[
   {id:'wateringCan',name:'Watering Can',cost:20,description:'Water your own plant for a growth boost'},
   {id:'shovel',name:'Garden Shovel',cost:25,description:'Remove your own plant and free its plot'},
-  {id:'trowel',name:'Trowel',cost:25,description:'Move your own plants to a different plot'},
+  {id:'trowel',name:'Trowel',cost:25,description:'One use · move one of your plants to another plot'},
   {id:'sprinkler',name:'Sprinkler',cost:45,description:'Auto-waters plants in nearby plots'},
   {id:'fertilizer',name:'Plant Fertilizer',cost:30,description:'Required to craft a garden gun'},
+  {id:'backpack',name:'Seed Backpack',cost:125,description:'Carry up to 10 seeds instead of one'},
 ];
 const ammoListings=[
   {id:'peaBlaster',name:'Pea Blaster ammo',cost:18,amount:10},
   {id:'cornZooka',name:'Rocket Corn ammo',cost:25,amount:2},
+  {id:'brambleRifle',name:'Bramble Rifle ammo',cost:32,amount:16},
+  {id:'bloomShotgun',name:'Bloom Shotgun shells',cost:30,amount:12},
+  {id:'sunseedRepeater',name:'Sunseed Repeater ammo',cost:48,amount:36},
+];
+const weaponSpecs={
+  peaBlaster:{name:'Pea Blaster',damage:18,range:13,capacity:10,blast:0},
+  cornZooka:{name:'Cornzooka',damage:55,range:16,capacity:2,blast:2},
+  brambleRifle:{name:'Bramble Rifle',damage:32,range:21,capacity:8,blast:0},
+  bloomShotgun:{name:'Bloom Shotgun',damage:46,range:8.5,capacity:6,blast:0},
+  sunseedRepeater:{name:'Sunseed Repeater',damage:22,range:17,capacity:18,blast:0},
+};
+const purchasableWeapons=[
+  {id:'brambleRifle',name:'Bramble Rifle',cost:90,description:'Long-range, hard-hitting shots. Includes one magazine and reserve ammo.'},
+  {id:'bloomShotgun',name:'Bloom Shotgun',cost:165,description:'Heavy damage up close. Includes one magazine and reserve shells.'},
+  {id:'sunseedRepeater',name:'Sunseed Repeater',cost:220,description:'Fast follow-up shots with a larger magazine and ammo reserve.'},
 ];
 const landTiers=[
   {id:'common',name:'Common',cost:0,multiplier:1},
@@ -78,6 +105,9 @@ const landTiers=[
 ];
 let statusTimeout;
 let weatherBannerTimer;
+let offlineWorldElapsed=0;
+let offlineSaveElapsed=0;
+let gardenAuthMode='login';
 
 const farmGrid={count:8,radius:70,mapRadius:95};
 function farmOffset(farmIndex){
@@ -119,14 +149,10 @@ function makeZiplineTower(offset,radius){
 }
 for(let farmIndex=0;farmIndex<farmGrid.count;farmIndex++){
   const offset=farmOffset(farmIndex),farmEndpoint=farmGrid.radius-6.7,hubEndpoint=8;
-  const points=[
-    new THREE.Vector3(offset.radialX*hubEndpoint,6.2,offset.radialZ*hubEndpoint),
-    new THREE.Vector3(offset.radialX*23,16,offset.radialZ*23),
-    new THREE.Vector3(offset.radialX*47,16,offset.radialZ*47),
-    new THREE.Vector3(offset.radialX*farmEndpoint,6.2,offset.radialZ*farmEndpoint),
-  ];
-  const curve=new THREE.CatmullRomCurve3(points);ziplineCurves.push(curve);
-  const cable=new THREE.Mesh(new THREE.TubeGeometry(curve,48,.045,7,false),ziplineMaterial);scene.add(cable);
+  const start=new THREE.Vector3(offset.radialX*hubEndpoint,6.2,offset.radialZ*hubEndpoint);
+  const end=new THREE.Vector3(offset.radialX*farmEndpoint,6.2,offset.radialZ*farmEndpoint);
+  const line=new THREE.LineCurve3(start,end);ziplineCurves.push(line);
+  const cable=new THREE.Mesh(new THREE.TubeGeometry(line,48,.045,7,false),ziplineMaterial);scene.add(cable);
   makeZiplineTower(offset,hubEndpoint);makeZiplineTower(offset,farmEndpoint);
 }
 const garden=new THREE.Group();scene.add(garden);
@@ -282,11 +308,24 @@ function drawFarmMap(){
   context.restore();context.beginPath();context.arc(center,center,center-2,0,Math.PI*2);context.strokeStyle='rgba(230,241,207,.7)';context.lineWidth=2;context.stroke();
 }
 
+function addMutationFruitVisual(group,mutation){
+  const colors={aurora:0x5ff2d1,solarFlare:0xff9b45,fireworks:0xff67bf,rainbow:0xb978ff};
+  const color=colors[mutation];if(!color)return;
+  const fruitMaterial=new THREE.MeshStandardMaterial({color,roughness:.24,metalness:.12,emissive:color,emissiveIntensity:.42});
+  const leafMaterial=new THREE.MeshStandardMaterial({color:0xb4e76e,roughness:.65});
+  for(let index=0;index<3;index++){
+    const angle=index*Math.PI*2/3;
+    const fruit=new THREE.Mesh(mutation==='aurora'?new THREE.OctahedronGeometry(.15):new THREE.IcosahedronGeometry(.15,1),fruitMaterial);
+    fruit.position.set(Math.cos(angle)*.29,.34+(index%2)*.11,Math.sin(angle)*.29);fruit.scale.set(.9,1.15,.9);group.add(fruit);
+    const leaf=new THREE.Mesh(new THREE.ConeGeometry(.045,.15,5),leafMaterial);leaf.position.copy(fruit.position).add(new THREE.Vector3(0,.15,0));leaf.rotation.z=-.35;group.add(leaf);
+  }
+}
 function addMutationVisual(group,mutation){
   const styles={
     aurora:{label:'AURORA',color:0x67f2d1,text:'#c5fff2'},
     solarFlare:{label:'SOLAR FLARE',color:0xffad48,text:'#ffe2a3'},
     fireworks:{label:'FIREWORKS',color:0xff70bc,text:'#ffd1e8'},
+    rainbow:{label:'RAINBOW',color:0xc987ff,text:'#f2d5ff'},
   };
   const style=styles[mutation];
   if(!style)return;
@@ -330,7 +369,8 @@ function updatePlantLabels(){
     if(!plant||!label)continue;
     const seconds=Math.max(0,Math.ceil((plant.matureAt-now)/1000));
     const timer=seconds?`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:'READY';
-    const text=`${label.name.toUpperCase()} · ${timer}`;
+    const fruitSpec=fruitPlantSpecs[plant.type],fruitText=fruitSpec?` · ${Number(plant.fruitsAvailable)||0}/${fruitSpec.count} FRUIT`:'';
+    const text=`${label.name.toUpperCase()} · ${timer}${fruitText}`;
     if(text===label.text)continue;
     label.text=text;label.context.clearRect(0,0,label.canvas.width,label.canvas.height);
     label.context.fillStyle='rgba(12,24,18,.94)';label.context.beginPath();label.context.roundRect(2,2,380,68,18);label.context.fill();
@@ -351,7 +391,23 @@ function addSpecialPlantSignature(group,type){
   }
 }
 
-function makeFlower(type,mutation=''){
+function addHarvestableFruit(group,type,count){
+  for(let index=0;index<count;index++){
+    const angle=index*2.399963,ring=index%2?.42:.28,y=type==='apple'?1.65+(index%3)*.22:1.55+(index%2)*.34;
+    const x=Math.cos(angle)*ring,z=Math.sin(angle)*ring;
+    if(type==='apple'){
+      const apple=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:index%2?0xd94335:0xe9873c,roughness:.36}));
+      apple.position.set(x,y,z);group.add(apple);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.018,.022,.1,6),new THREE.MeshStandardMaterial({color:0x60452b}));stem.position.set(x,y+.13,z);group.add(stem);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),new THREE.MeshStandardMaterial({color:0x73ad4e}));leaf.scale.set(1,.35,.55);leaf.position.set(x+.045,y+.17,z);group.add(leaf);
+    }else{
+      const fruit=new THREE.Mesh(new THREE.SphereGeometry(.17,12,10),new THREE.MeshStandardMaterial({color:index%2?0xed5598:0xc93382,roughness:.3}));
+      fruit.scale.set(.82,1.25,.82);fruit.position.set(x,y,z);group.add(fruit);
+      for(let bract=0;bract<4;bract++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.045,.17,5),new THREE.MeshStandardMaterial({color:0x71b44b}));leaf.position.set(x+Math.cos(bract*Math.PI/2)*.13,y+.1,z+Math.sin(bract*Math.PI/2)*.13);leaf.rotation.z=Math.cos(bract*Math.PI/2)*-.75;leaf.rotation.x=Math.sin(bract*Math.PI/2)*.75;group.add(leaf);}
+    }
+  }
+}
+function makeFlower(type,mutation='',fruitsAvailable=0){
   const group=new THREE.Group();
   group.userData.mutation=mutation||'';
   const material=(color,roughness=.72,emissive=0)=>new THREE.MeshStandardMaterial({color,roughness,emissive,emissiveIntensity:emissive?1.4:0});
@@ -394,6 +450,22 @@ function makeFlower(type,mutation=''){
     for(let i=0;i<5;i++){
       const berry=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),new THREE.MeshStandardMaterial({color:0xa73363}));berry.position.set(Math.sin(i*4)*.26,.45+(i%2)*.22,Math.cos(i*4)*.25);group.add(berry);
     }
+  }else if(type==='snapdragon'){
+    createStem(.78,0x498b48,.09);leaf(-.16,.35,0,.6);leaf(.16,.48,.02,-.6);
+    const bloom=new THREE.Mesh(new THREE.SphereGeometry(.27,12,8),material(0xe35748));bloom.position.set(0,.82,-.06);bloom.scale.set(1,.75,1.15);group.add(bloom);
+    for(let index=0;index<5;index++){const angle=index*Math.PI*2/5,petal=new THREE.Mesh(new THREE.ConeGeometry(.1,.27,7),material(index%2?0xffb34f:0xf16a48));petal.position.set(Math.cos(angle)*.23,.82,Math.sin(angle)*.23);petal.rotation.x=Math.PI/2;group.add(petal);}
+  }else if(type==='frostFern'){
+    createStem(.9,0x54874f,.055);
+    for(let side of [-1,1])for(let index=0;index<4;index++){const y=.25+index*.17;leaf(side*(.18+index*.025),y,0,side*(.4+index*.12),0x6bb98c,.72);}
+    for(let index=0;index<3;index++)bud((index-1)*.13,1.02,0,.1,0x8be9ef,true);
+  }else if(type==='melonMortar'){
+    const melon=new THREE.Mesh(new THREE.SphereGeometry(.34,14,10),material(0x54a84b));melon.position.y=.48;melon.scale.set(1,.9,1);group.add(melon);
+    for(let index=0;index<6;index++){const angle=index*Math.PI/3,rib=new THREE.Mesh(new THREE.SphereGeometry(.13,8,7),material(0x78c94b));rib.scale.set(.55,1,.75);rib.position.set(Math.cos(angle)*.22,.47,Math.sin(angle)*.22);group.add(rib);}
+    const tube=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.42,10),material(0x4a7440));tube.rotation.x=Math.PI/2;tube.position.set(0,.68,-.34);group.add(tube);
+  }else if(type==='roseTurret'){
+    createStem(.82,0x477f48,.065);leaf(-.18,.34,0,.6);leaf(.18,.45,.02,-.6);
+    petalRing(.88,.16,8,0xd94157,.13);bud(0,.88,0,.14,0xff8b72);
+    for(let index=0;index<5;index++){const thorn=new THREE.Mesh(new THREE.ConeGeometry(.045,.15,5),material(0xe2d58d));thorn.position.set(Math.sin(index*2)*.07,.25+index*.12,.04);group.add(thorn);}
   }else if(type==='peashooter'){
     const head=new THREE.Mesh(new THREE.SphereGeometry(.27,12,9),new THREE.MeshStandardMaterial({color:0x55b85c}));head.position.set(0,.8,-.05);head.scale.set(1,1,.82);group.add(head);
     const snout=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.38,12),new THREE.MeshStandardMaterial({color:0x387e42}));snout.rotation.x=Math.PI/2;snout.position.set(0,.77,-.32);group.add(snout);
@@ -448,6 +520,25 @@ function makeFlower(type,mutation=''){
     createStem(.78,0x5b974e,.035);leaf(-.11,.34,0,.5,0x8bc86a,.66);leaf(.11,.22,.02,-.5,0x6da84f,.58);
     const bell=new THREE.Mesh(new THREE.SphereGeometry(.17,12,9),material(0xf3f4dc,.32));bell.scale.set(.72,1.1,.72);bell.position.set(0,.82,0);group.add(bell);
     bud(0,.71,0,.07,0x9bbd70);
+  }else if(type==='apple'||type==='dragonfruit'||type==='bluebell'||type==='marigold'||type==='nightshade'){
+    if(type==='apple'){
+      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.11,.18,1.55,9),material(0x795335));trunk.position.y=.78;group.add(trunk);
+      for(const side of [-1,1]){const branch=new THREE.Mesh(new THREE.CylinderGeometry(.06,.095,.85,7),material(0x795335));branch.position.set(side*.27,1.38,0);branch.rotation.z=side*-.58;group.add(branch);}
+      for(const [x,y,z,radius]of [[0,1.85,0,.5],[-.34,1.67,.04,.36],[.34,1.7,-.02,.37],[0,2.1,-.12,.34]]){const crown=new THREE.Mesh(new THREE.SphereGeometry(radius,11,8),material(0x5d9147));crown.position.set(x,y,z);crown.scale.set(1,.82,1);group.add(crown);}
+      addHarvestableFruit(group,type,fruitsAvailable);
+    }else if(type==='dragonfruit'){
+      const cactus=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,1.9,10),material(0x42945a));cactus.position.y=.95;group.add(cactus);
+      for(const side of [-1,1]){const arm=new THREE.Mesh(new THREE.CylinderGeometry(.1,.13,.86,9),material(0x4da765));arm.position.set(side*.35,1.2,0);arm.rotation.z=side*-.62;group.add(arm);const upright=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.7,9),material(0x4da765));upright.position.set(side*.62,1.45,0);group.add(upright);}
+      for(let thorn=0;thorn<8;thorn++){const angle=thorn*Math.PI/4,spike=new THREE.Mesh(new THREE.ConeGeometry(.025,.12,4),material(0xd5dda2));spike.position.set(Math.cos(angle)*.15,.42+thorn*.19,Math.sin(angle)*.15);spike.rotation.z=Math.cos(angle)*.9;spike.rotation.x=Math.sin(angle)*.9;group.add(spike);}
+      addHarvestableFruit(group,type,fruitsAvailable);
+    }else if(type==='bluebell'){
+      for(let index=0;index<5;index++){const x=(index-2)*.12;createStem(.64+(index%2)*.12,0x54884d,.035);const bell=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),material(0x718de0));bell.scale.set(.8,1.25,.8);bell.position.set(x,.72+(index%2)*.12,0);group.add(bell);}
+    }else if(type==='marigold'){
+      createStem(.62,0x4e8a45,.05);petalRing(.72,.18,10,0xf28d25,.12);bud(0,.72,0,.11,0x70421d);
+    }else{
+      createStem(.65,0x514b69,.05);leaf(-.16,.35,0,.7,0x53694d);leaf(.16,.48,.02,-.7,0x53694d);
+      for(let index=0;index<5;index++){const angle=index*Math.PI*2/5;bud(Math.cos(angle)*.18,.58+(index%2)*.12,Math.sin(angle)*.18,.085,0x7355a6,true);}
+    }
   }else if(type==='bamboo'||type==='reedTube'){
     const tall=type==='bamboo'?1.18:.86;
     const radius=type==='bamboo'?.09:.075;
@@ -527,7 +618,7 @@ function makeFlower(type,mutation=''){
     for(let i=0;i<4;i++){const kernel=new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),material(0xffb52d));kernel.position.set(Math.sin(i*1.6)*.17,.48+(i%2)*.2,Math.cos(i*1.6)*.17);group.add(kernel);}
   }
   addSpecialPlantSignature(group,type);addPlantLabel(group,type);
-  if(mutation)addMutationVisual(group,mutation);
+  if(mutation){addMutationFruitVisual(group,mutation);addMutationVisual(group,mutation);}
   group.traverse(object=>{if(object.isMesh)object.castShadow=true;});
   return group;
 }
@@ -555,15 +646,24 @@ function makePlayer(color){
 function updateHeldWeapon(player){
   const weapon=player?.weapon||'',custom=player?.customGuns?.find(gun=>gun.id===weapon);
   const unlocked=!!player?.weapons?.[weapon]||!!custom;
-  heldWeapon.visible=unlocked;
-  if(!unlocked)return;
+  const seedType=state.selectedSeed&&player?.seeds?.[state.selectedSeed]>0?state.selectedSeed:'';
+  heldWeapon.visible=unlocked||!!seedType;
+  if(!unlocked&&!seedType)return;
   const attachments=custom?.components||[],components=new Set(attachments),counts=attachments.reduce((total,part)=>{total[part]=(total[part]||0)+1;return total;},{});
-  const signature=JSON.stringify([weapon,[...attachments].sort()]);
+  const signature=JSON.stringify([weapon,seedType,[...attachments].sort()]);
   if(signature===state.weaponSignature)return;
   state.weaponSignature=signature;
   for(const child of [...heldWeapon.children])disposeGroup(child);
+  if(seedType){
+    heldWeapon.position.set(.34,-.29,-.46);heldWeapon.rotation.set(-.04,.08,.02);heldWeapon.scale.setScalar(1);
+    const packet=makeSeedPacket(seedType);packet.position.set(-.05,-.1,-.18);packet.scale.setScalar(.82);heldWeapon.add(packet);
+    const plant=makeFlower(seedType);plant.scale.setScalar(.29);plant.position.set(.1,-.02,-.38);heldWeapon.add(plant);
+    heldWeapon.userData.baseY=-.29;return;
+  }
   const launcher=weapon==='cornZooka'||custom?.base==='cornZooka';
-  const bodyColor=launcher?0x765633:0x426744,darkColor=launcher?0x443423:0x263e2b;
+  const bramble=weapon==='brambleRifle',shotgun=weapon==='bloomShotgun',repeater=weapon==='sunseedRepeater';
+  const bodyColor=launcher?0x765633:bramble?0x546c43:shotgun?0x557868:repeater?0x788249:0x426744;
+  const darkColor=launcher?0x443423:bramble?0x2d3f2a:shotgun?0x30443c:repeater?0x494e2c:0x263e2b;
   heldWeapon.position.set(.32,-.27,-.48);heldWeapon.rotation.set(-.08,.12,.04);heldWeapon.scale.setScalar(launcher?1.12:1);
   const addBox=(size,color,position,emissive=0)=>{
     const material=new THREE.MeshStandardMaterial({color,roughness:.55,metalness:.18,emissive,emissiveIntensity:emissive?.65:0});
@@ -577,17 +677,22 @@ function updateHeldWeapon(player){
     const mesh=new THREE.Mesh(new THREE.SphereGeometry(radius,10,8),new THREE.MeshStandardMaterial({color,roughness:.28,emissive:color,emissiveIntensity:.8}));
     mesh.position.set(position.x,position.y,position.z);heldWeapon.add(mesh);return mesh;
   };
-  const barrelLength=(launcher?.55:.36)+Math.min(.6,(counts.reed||0)*.24)+Math.min(.36,(counts.bamboo||0)*.12);
-  addBox(launcher?[.3,.19,.44]:[.22,.15,.38],bodyColor,{x:0,y:-.045,z:-.29});
+  const barrelLength=(launcher?.55:bramble?.58:shotgun?.26:repeater?.43:.36)+Math.min(.6,(counts.reed||0)*.24)+Math.min(.36,(counts.bamboo||0)*.12);
+  const bodySize=launcher?[.3,.19,.44]:bramble?[.22,.15,.48]:shotgun?[.3,.18,.34]:repeater?[.25,.17,.38]:[.22,.15,.38];
+  addBox(bodySize,bodyColor,{x:0,y:-.045,z:-.29});
   addBox([.13,.13,.2],darkColor,{x:0,y:-.03,z:-.05});
   addBox([.105,.22,.14],darkColor,{x:.045,y:-.2,z:-.2});
-  const barrelRadius=launcher?.072:.045;
-  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(barrelRadius,barrelRadius,barrelLength,12),new THREE.MeshStandardMaterial({color:0x737d68,metalness:.68,roughness:.3}));
-  barrel.rotation.x=Math.PI/2;barrel.position.set(0,.01,-.48-barrelLength/2);barrel.castShadow=true;heldWeapon.add(barrel);
+  const barrelRadius=launcher?.072:shotgun?.052:.045;
+  const barrelXs=shotgun?[-.065,.065]:[0];
+  for(const barrelX of barrelXs){
+    const barrel=new THREE.Mesh(new THREE.CylinderGeometry(barrelRadius,barrelRadius,barrelLength,12),new THREE.MeshStandardMaterial({color:repeater?0xb5aa5e:0x737d68,metalness:.68,roughness:.3}));
+    barrel.rotation.x=Math.PI/2;barrel.position.set(barrelX,.01,-.48-barrelLength/2);barrel.castShadow=true;heldWeapon.add(barrel);
+  }
   const muzzleZ=-.48-barrelLength;
-  addRing(launcher?.09:.062,.018,launcher?0xe2a447:0x9cad80,{x:0,y:.01,z:muzzleZ});
+  for(const barrelX of barrelXs)addRing(launcher?.09:shotgun?.065:.062,.018,launcher?0xe2a447:bramble?0xa4b67a:shotgun?0xd4aa70:repeater?0xe0c855:0x9cad80,{x:barrelX,y:.01,z:muzzleZ});
   addBox([.11,.035,.15],0x819773,{x:0,y:.095,z:-.32});
-  addOrb(.045,launcher?0xffbd45:0x75e690,{x:0,y:.19,z:-.31});
+  addOrb(.045,launcher?0xffbd45:bramble?0xa9d975:shotgun?0xe57d63:repeater?0xffdf62:0x75e690,{x:0,y:.19,z:-.31});
+  if(repeater)addBox([.1,.22,.15],0x948e43,{x:.14,y:-.18,z:-.28});
   for(let index=0;index<Math.min(6,(counts.bamboo||0)*3);index++)addRing(barrelRadius+.012,.018,0x9bbd56,{x:0,y:.01,z:-.54-index*barrelLength*.16});
   for(let index=0;index<(counts.magazine||0);index++)addBox([.105,.19,.13],0x5e8b47,{x:.13+index*.09,y:-.16,z:-.29});
   for(let index=0;index<(counts.shell||0);index++)addBox([.09,.12,.3],0xc59b4f,{x:-.145-index*.08,y:-.06,z:-.3});
@@ -621,21 +726,64 @@ function updateObjects(source,meshes,create,place){
   }
   for(const [id,mesh]of meshes)if(!alive.has(id)){disposeGroup(mesh);meshes.delete(id);}
 }
+function makeSeedPacket(type){
+  const group=new THREE.Group(),colors={apple:0xc96246,dragonfruit:0xd64d8d,sunflower:0xe5b94c,berry:0x9a5272,pumpkin:0xd17a38};
+  const color=colors[type]||0x678e62;
+  const packet=new THREE.Mesh(new THREE.BoxGeometry(.4,.5,.09),new THREE.MeshStandardMaterial({color,roughness:.72}));group.add(packet);
+  const label=document.createElement('canvas');label.width=128;label.height=128;
+  const context=label.getContext('2d');context.fillStyle='#f0ead4';context.fillRect(10,10,108,108);
+  context.fillStyle=`#${color.toString(16).padStart(6,'0')}`;context.font='56px serif';context.textAlign='center';context.textBaseline='middle';context.fillText(seedIcons[type]||'🌱',64,63);
+  context.fillStyle='#26352a';context.font='bold 11px sans-serif';context.fillText((seeds.find(seed=>seed.id===type)?.name||type).slice(0,14).toUpperCase(),64,105);
+  const texture=new THREE.CanvasTexture(label);texture.colorSpace=THREE.SRGBColorSpace;
+  const face=new THREE.Mesh(new THREE.PlaneGeometry(.34,.34),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));face.position.z=-.048;group.add(face);
+  group.userData.seedType=type;return group;
+}
+function makeSprinkler(){
+  const group=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.19,.23,.16,10),new THREE.MeshStandardMaterial({color:0x82bdcc,metalness:.25,roughness:.4}));group.add(base);
+  const stem=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.45,8),new THREE.MeshStandardMaterial({color:0x8db7a5}));stem.position.y=.27;group.add(stem);
+  const rotor=new THREE.Group();rotor.position.y=.51;group.add(rotor);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.11,10,8),new THREE.MeshStandardMaterial({color:0x8ed2d3,metalness:.32,roughness:.35}));rotor.add(head);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(.07,.045,.66),new THREE.MeshStandardMaterial({color:0x89b8ac,metalness:.22,roughness:.4}));rotor.add(arm);
+  const secondArm=arm.clone();secondArm.rotation.y=Math.PI/2;rotor.add(secondArm);
+  const droplets=[];
+  for(let index=0;index<8;index++){
+    const drop=new THREE.Mesh(new THREE.SphereGeometry(.035,7,5),new THREE.MeshBasicMaterial({color:0xb8f3ff,transparent:true,opacity:.8,depthWrite:false}));
+    group.add(drop);droplets.push(drop);
+  }
+  group.userData.sprinkler={rotor,droplets,time:0};
+  return group;
+}
+function animateSprinklers(delta){
+  for(const mesh of state.sprinklerMeshes?.values()||[]){
+    const sprinkler=mesh.userData.sprinkler;if(!sprinkler)continue;
+    sprinkler.time+=delta;sprinkler.rotor.rotation.y+=delta*4.5;
+    sprinkler.droplets.forEach((drop,index)=>{
+      const phase=sprinkler.time*4+index*Math.PI/4,radius=.43+Math.sin(phase)*.12;
+      drop.position.set(Math.cos(phase)*radius,.45+Math.sin(phase*1.7)*.14,Math.sin(phase)*radius);
+    });
+  }
+}
 
 function updateWorld(){
   for(const plant of state.plants.values()){
     const mesh=state.plantMeshes.get(plant.id);
-    if(mesh&&mesh.userData.mutation!==(plant.mutation||'')){disposeGroup(mesh);state.plantMeshes.delete(plant.id);}
+    const fruitsAvailable=Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0;
+    if(mesh&&(mesh.userData.mutation!==(plant.mutation||'')||mesh.userData.fruitsAvailable!==fruitsAvailable)){disposeGroup(mesh);state.plantMeshes.delete(plant.id);}
   }
   updateObjects(state.plants.values(),state.plantMeshes,
-    plant=>makeFlower(plant.type,plant.mutation||''),(mesh,plant)=>{
+    plant=>makeFlower(plant.type,plant.mutation||'',Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0),(mesh,plant)=>{
       mesh.userData.plantData=plant;
+      mesh.userData.fruitsAvailable=Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0;
       mesh.position.set(plant.x,0,plant.z);
       const grow=Math.min(1,Math.max(.62,(Date.now()-plant.plantedAt)/Math.max(1,plant.matureAt-plant.plantedAt)));
       const fruitScale=1+Math.min(.25,Math.max(0,(plant.fruitSize||1)-1)*.125);
-      mesh.scale.setScalar(grow*fruitScale);
+      const size=plant.type==='apple'?{x:1.55,y:2.1,z:1.55}:plant.type==='dragonfruit'?{x:1.55,y:2.2,z:1.55}:{x:1,y:1,z:1};
+      mesh.scale.set(grow*fruitScale*size.x,grow*fruitScale*size.y,grow*fruitScale*size.z);
       mesh.rotation.y=(plant.col*1.71+plant.row*.83)%6.28;
     });
+  updateObjects(state.seedDrops.values(),state.seedDropMeshes,drop=>makeSeedPacket(drop.type),
+    (mesh,drop)=>{mesh.position.set(drop.x,.28,drop.z);mesh.rotation.y=Math.sin(performance.now()*.001+drop.id.length)*.08;});
   updateObjects(state.zombies.values(),state.zombieMeshes,
     zombie=>{const mesh=makeZombie();mesh.userData.zombieId=zombie.id;return mesh;},
     (mesh,zombie)=>{mesh.position.set(zombie.x,0,zombie.z);mesh.rotation.y=Math.PI;});
@@ -643,10 +791,8 @@ function updateWorld(){
     player=>makePlayer(player.color),(mesh,player)=>{mesh.visible=player.id!==state.playerId;mesh.position.set(player.x,0,player.z);mesh.rotation.y=Math.PI;});
   updateObjects(Array.from(state.sprinklers,key=>{
     const tile=gardenTileFromKey(key);return tile?{id:key,...tile}:null;
-  }).filter(Boolean),state.sprinklerMeshes||=new Map(),()=>{
-    const base=new THREE.Mesh(new THREE.CylinderGeometry(.19,.23,.16,10),new THREE.MeshStandardMaterial({color:0x82bdcc,metalness:.25,roughness:.4}));
-    const stem=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.45,8),new THREE.MeshStandardMaterial({color:0x8db7a5}));stem.position.y=.27;base.add(stem);return base;
-  },(mesh,item)=>mesh.position.set(item.x,.12,item.z));
+  }).filter(Boolean),state.sprinklerMeshes||=new Map(),makeSprinkler,
+  (mesh,item)=>mesh.position.set(item.x,.12,item.z));
   if(state.selectedTile){
     const tile=plotMeshes.find(mesh=>mesh.userData.farmIndex===state.selectedTile.farmIndex&&mesh.userData.col===state.selectedTile.col&&mesh.userData.row===state.selectedTile.row);
     if(tile){
@@ -702,37 +848,238 @@ function resize(){
   renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();
 }
 function send(action,data={}){
+  if(state.offline){handleOfflineAction(action,data);return;}
   if(!state.socket||state.socket.readyState!==WebSocket.OPEN){status.textContent='Join a garden before using its shops and tools.';return;}
   state.socket.send(JSON.stringify({type:'garden:action',action,...data}));
 }
-function readSektorAccount(){
+const offlineGrowthTimes={sunflower:25000,berry:18000,moonberry:32000,starfruit:38000,pumpkin:33000,glowMushroom:24000,clover:16000,lavender:28000,snowdrop:30000,apple:38000,dragonfruit:44000,bluebell:21000,marigold:27000,nightshade:35000,peashooter:12000,cornzooka:18000,thornGuard:26000,snapdragon:15000,frostFern:17000,melonMortar:22000,roseTurret:14000,bamboo:22000,reedTube:18000,magazineVine:25000,pumpkinShell:27000,blastCorn:28000,pollenPod:26000,triggerBloom:25000,thornVine:23000,crystalBud:36000,epicSoil:28000};
+const offlineSellValues={sunflower:38,berry:27,moonberry:64,starfruit:78,pumpkin:52,glowMushroom:42,clover:25,lavender:48,snowdrop:54,apple:43,dragonfruit:92,bluebell:35,marigold:46,nightshade:72,bamboo:6,reedTube:4,magazineVine:8,pumpkinShell:6,blastCorn:10,pollenPod:6,triggerBloom:7,thornVine:7,crystalBud:12};
+const offlinePartTypes={bamboo:'bamboo',reedTube:'reed',magazineVine:'magazine',pumpkinShell:'shell',blastCorn:'blastCorn',pollenPod:'pollen',triggerBloom:'trigger',thornVine:'grip',crystalBud:'crystal'};
+const offlineDefenders={peashooter:{health:55,damage:8,range:7,rate:900,ammo:'peaBlaster',yield:10},cornzooka:{health:75,damage:24,range:8,rate:2600,ammo:'cornZooka',yield:2,blast:2},snapdragon:{health:90,damage:13,range:4.5,rate:700,ammo:'peaBlaster',yield:6},frostFern:{health:75,damage:9,range:9,rate:950,ammo:'peaBlaster',yield:10},melonMortar:{health:95,damage:30,range:11,rate:2700,ammo:'cornZooka',yield:3,blast:3},roseTurret:{health:65,damage:7,range:8,rate:520,ammo:'peaBlaster',yield:10},thornGuard:{health:220,damage:0,range:0,rate:0}};
+function saveOfflineGarden(){
+  if(!state.offline)return;
+  const player=state.players.get(state.playerId);
+  if(!player)return;
   try{
-    const account=JSON.parse(localStorage.getItem('vusServersSession')||'null');
-    return account&&/^[\w-]{8,64}$/.test(String(account.key||''))&&typeof account.username==='string'
-      ?{key:String(account.key),username:account.username.trim().slice(0,20)}:null;
+    localStorage.setItem('gardenfallOfflineSave',JSON.stringify({player,plants:Array.from(state.plants.values()),seedDrops:Array.from(state.seedDrops.values()),sprinklers:Array.from(state.sprinklers),soil:Array.from(state.soil),gardenHealth:state.gardenHealth,day:state.day,weather:state.weather}));
+  }catch(error){status.textContent='Could not save this offline garden in browser storage.';}
+}
+function offlineRefresh(){
+  const player=state.players.get(state.playerId);
+  renderSeedSelect(player);updateWorld();updateHud(player);updateActions(player);saveOfflineGarden();
+}
+function startOfflineGarden(guestMode=false){
+  const account=updateAccountGate();
+  if(!account&&!guestMode){$('accountStatus').textContent='Sign in to Gardenfall or choose local guest play.';return;}
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem('gardenfallOfflineSave')||'null');}catch(error){localStorage.removeItem('gardenfallOfflineSave');}
+  const player=saved?.player&&typeof saved.player==='object'?saved.player:{
+    id:'offline-player',clientId:'offline',name:($('playerName').value.trim()||$('accountUsername').value.trim()).slice(0,20)||'Garden Guest',color:'#79d98a',farmIndex:0,
+    coins:100,seeds:{},goods:{},parts:{},gear:{wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false},
+    ammo:{peaBlaster:20,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0},magazines:{peaBlaster:10,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0},weapons:{peaBlaster:true,cornZooka:false,brambleRifle:false,bloomShotgun:false,sunseedRepeater:false},customGuns:[],weapon:'peaBlaster',
+    kills:0,landTier:'common',safetyOn:false,wateringCanCharges:0,x:0,z:-64.3,
+  };
+  player.id='offline-player';player.clientId='offline';player.farmIndex=0;
+  player.weapons={peaBlaster:true,cornZooka:false,brambleRifle:false,bloomShotgun:false,sunseedRepeater:false,...player.weapons};
+  player.ammo={peaBlaster:20,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.ammo};
+  player.magazines={peaBlaster:10,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.magazines};
+  player.gear={wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false,...player.gear};
+  state.offline=true;state.socket=null;state.roomId='offline-garden';state.roomMode='offline';state.playerId=player.id;state.clientId='offline';state.players=new Map([[player.id,player]]);
+  state.plants=new Map((Array.isArray(saved?.plants)?saved.plants:[]).map(plant=>[gardenPlotKey(plant),plant]));
+  state.seedDrops=new Map((Array.isArray(saved?.seedDrops)?saved.seedDrops:[]).map(drop=>[drop.id,drop]));
+  state.sprinklers=new Set(saved?.sprinklers||[]);state.soil=new Set(saved?.soil||[]);state.zombies.clear();state.gardenHealth=Number(saved?.gardenHealth)||100;state.day=Math.max(1,Number(saved?.day)||1);
+  state.weather='clear';state.weatherKnown=true;state.x=Number.isFinite(Number(player.x))?Number(player.x):0;state.z=Number.isFinite(Number(player.z))?Number(player.z):-64.3;
+  state.targetX=state.x;state.targetZ=state.z;state.joinedPosition=true;state.selectedTile=null;state.phase='day';state.phaseRemaining=90000;state.phaseDeadline=performance.now()+90000;state.offlineNextZombieAt=0;state.offlineLastWeatherAt=performance.now()+45000;
+  updateWeather('clear');$('status').textContent='Offline solo garden';joinStatus.textContent='Playing offline. Progress saves in this browser.';joinScreen.hidden=true;$('leaveButton').hidden=false;
+  $('roomTitle').textContent='Offline Garden';$('copyCode').disabled=true;$('playerCount').textContent='1/1 player';
+  state.seedSignature=null;offlineRefresh();
+}
+function offlineTile(value){
+  if(typeof value==='string')return gardenTileFromKey(value);
+  if(!value||!Number.isInteger(value.farmIndex)||!Number.isInteger(value.col)||!Number.isInteger(value.row))return null;
+  return gardenTileFromKey(`${value.farmIndex}:${value.col}:${value.row}`);
+}
+function handleOfflineAction(action,data={}){
+  const player=state.players.get(state.playerId);if(!player)return;
+  const fail=message=>{status.textContent=message;};
+  const tile=offlineTile(data.tile),key=tile&&gardenPlotKey(tile),plant=key&&state.plants.get(key),now=Date.now();
+  if(action==='move'){player.x=state.x=Number(data.x)||0;player.z=state.z=Number(data.z)||0;return;}
+  if(action==='buy-seed'){
+    const seed=seeds.find(item=>item.id===data.item);if(!seed||player.coins<seed.cost){fail('Not enough coins for those seeds.');return;}player.coins-=seed.cost;
+    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
+    if(carried<capacity)player.seeds[seed.id]=(player.seeds[seed.id]||0)+1;
+    else{const angle=Math.random()*Math.PI*2,id=`offline-seed-${now}-${Math.random()}`;state.seedDrops.set(id,{id,type:seed.id,x:state.x+Math.cos(angle)*1.1,z:state.z+Math.sin(angle)*1.1,ownerId:player.id});}
+  }else if(action==='pickup-seed'){
+    const drop=state.seedDrops.get(String(data.id||''));if(!drop){fail('That seed is no longer on the ground.');return;}
+    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
+    if(carried>=capacity){fail(player.gear.backpack?'Your backpack is full.':'You are already carrying a seed. Buy a backpack to carry more.');return;}
+    player.seeds[drop.type]=(player.seeds[drop.type]||0)+1;state.seedDrops.delete(drop.id);
+  }else if(action==='buy-gear'){
+    const item=gear.find(entry=>entry.id===data.item);if(!item||player.coins<item.cost){fail('Not enough coins for that gear.');return;}player.coins-=item.cost;
+    if(item.id==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}else if(item.id==='shovel'||item.id==='trowel'||item.id==='backpack')player.gear[item.id]=true;else player.gear[item.id]=(player.gear[item.id]||0)+1;
+  }else if(action==='buy-weapon'){
+    const item=purchasableWeapons.find(weapon=>weapon.id===data.item),specification=item&&weaponSpecs[item.id];
+    if(!item||!specification||player.weapons[item.id]){fail('That weapon is unavailable or already owned.');return;}
+    if(player.coins<item.cost){fail('Not enough coins for that weapon.');return;}
+    player.coins-=item.cost;player.weapons[item.id]=true;player.magazines[item.id]=specification.capacity;
+    player.ammo[item.id]=ammoListings.find(listing=>listing.id===item.id)?.amount||0;
+  }else if(action==='buy-ammo'){
+    const weapon=data.item,custom=player.customGuns?.find(gun=>gun.id===weapon),listing=ammoListings.find(item=>item.id===weapon),amount=custom?.capacity||listing?.amount,cost=custom?custom.capacity*3:listing?.cost;
+    if(!player.weapons[weapon]&&!custom){fail('Unlock that weapon before buying ammo.');return;}if(!amount||player.coins<cost){fail('Not enough coins for that ammo.');return;}player.coins-=cost;player.ammo[weapon]=(player.ammo[weapon]||0)+amount;
+  }else if(action==='buy-land'){
+    const index=landTiers.findIndex(item=>item.id===(player.landTier||'common')),next=landTiers[index+1];if(!next||next.id!==data.item||player.coins<next.cost){fail('You need more coins for the next land tier.');return;}player.coins-=next.cost;player.landTier=next.id;
+  }else if(action==='plant'){
+    const seed=seeds.find(item=>item.id===data.item);if(!seed||!tile||tile.farmIndex!==player.farmIndex||state.plants.has(key)||state.sprinklers.has(key)||!(player.seeds[seed.id]>0)){fail('Choose an empty plot on your farm and a seed you own.');return;}
+    player.seeds[seed.id]--;const defender=offlineDefenders[seed.id],fruitSpec=fruitPlantSpecs[seed.id];const definition={id:`offline-${now}-${Math.random()}`,type:seed.id,farmIndex:tile.farmIndex,col:tile.col,row:tile.row,x:tile.x,z:tile.z,ownerId:player.id,plantedAt:now,matureAt:now+(offlineGrowthTimes[seed.id]||25000),health:defender?.health||35,lastAttack:0,harvestsLeft:fruitSpec?999999:1,reusable:!!fruitSpec,fruitCount:fruitSpec?.count||0,fruitsAvailable:fruitSpec?.count||0,nextFruitAt:0,mutation:'',fruitSize:1};
+    state.plants.set(key,definition);if(seed.id==='epicSoil')state.soil.add(key);
+  }else if(action==='harvest'){
+    const target=plant||state.plants.get(String(data.tile||''));if(!target||target.ownerId!==player.id||now<target.matureAt){fail('That plant is not ready to harvest.');return;}
+    if(target.favorite&&data.confirmFavorite!==true){fail('Confirm before harvesting this favorite plant.');return;}
+    const seed=seeds.find(item=>item.id===target.type),defender=offlineDefenders[target.type],fruitSpec=fruitPlantSpecs[target.type];
+    if(defender){if(!defender.ammo||!defender.yield){fail('Use a shovel to remove this defensive plant.');return;}player.weapons[defender.ammo]=true;player.ammo[defender.ammo]=(player.ammo[defender.ammo]||0)+defender.yield;state.plants.delete(gardenPlotKey(target));}
+    else if(fruitSpec){if(!(target.fruitsAvailable>0)){fail('No fruit is ready yet.');return;}const multiplier=target.mutation==='rainbow'?4:target.mutation==='aurora'?3:target.mutation==='solarFlare'||target.mutation==='fireworks'?2:1;player.goods[target.type]=(player.goods[target.type]||0)+multiplier;target.fruitsAvailable--;target.nextFruitAt=now+fruitSpec.regrow;}
+    else if(seed?.kind==='crop'){player.goods[target.type]=(player.goods[target.type]||0)+(target.mutation==='aurora'?3:target.mutation==='rainbow'?4:1);state.plants.delete(gardenPlotKey(target));}
+    else if(offlinePartTypes[target.type]){const part=offlinePartTypes[target.type];player.parts[part]=(player.parts[part]||0)+1;player.goods[target.type]=(player.goods[target.type]||0)+1;state.plants.delete(gardenPlotKey(target));}
+    else fail('This plant cannot be harvested.');
+  }else if(action==='favorite'){
+    if(!plant||plant.ownerId!==player.id){fail('Select one of your plants to favorite.');return;}plant.favorite=data.favorite===true;
+  }else if(action==='water'){
+    if(!player.gear.wateringCan||!plant||plant.ownerId!==player.id||player.wateringCanCharges<=0){fail('Buy and refill a watering can first.');return;}player.wateringCanCharges--;plant.matureAt=Math.max(now,plant.matureAt-12000);
+  }else if(action==='shovel'){
+    if(!player.gear.shovel||!plant||plant.ownerId!==player.id){fail('Buy a shovel and select one of your plants.');return;}state.plants.delete(key);state.soil.delete(key);
+  }else if(action==='sprinkler'){
+    if(!tile||tile.farmIndex!==player.farmIndex||plant||state.sprinklers.has(key)||!(player.gear.sprinkler>0)){fail('Buy a sprinkler and select an empty plot.');return;}state.sprinklers.add(key);player.gear.sprinkler--;
+  }else if(action==='refill-water'){
+    if(!player.gear.wateringCan){fail('Buy a watering can from Gear first.');return;}if(Math.hypot(state.x,state.z)>12&&state.weather!=='rain'){fail('Stand by the market pond or wait for rain to refill your can.');return;}player.wateringCanCharges=5;
+  }else if(action==='move-plant'){
+    const from=offlineTile(data.from),to=offlineTile(data.to),fromKey=from&&gardenPlotKey(from),toKey=to&&gardenPlotKey(to),moving=fromKey&&state.plants.get(fromKey);if(!player.gear.trowel||!moving||moving.ownerId!==player.id||!to||to.farmIndex!==player.farmIndex||state.plants.has(toKey)||state.sprinklers.has(toKey)){fail('Buy a trowel and select an empty plot on your farm.');return;}state.plants.delete(fromKey);state.plants.set(toKey,{...moving,...to});player.gear.trowel=false;
+  }else if(action==='sell'){
+    let earned=0;for(const [type,quantity]of Object.entries(player.goods)){if(data.item!=='all'&&data.item!==type)continue;const value=offlineSellValues[type]||0;earned+=value*Math.max(0,Number(quantity)||0);delete player.goods[type];}if(!earned){fail('You have no harvested goods to sell.');return;}player.coins+=earned;
+  }else if(action==='equip'){
+    if(!player.weapons[data.item]&&!player.customGuns?.some(gun=>gun.id===data.item)){fail('You have not unlocked that weapon.');return;}player.weapon=data.item;
+  }else if(action==='safety')player.safetyOn=data.enabled===true;
+  else if(action==='reload'){
+    const weapon=player.weapon,capacity=player.customGuns?.find(gun=>gun.id===weapon)?.capacity||weaponSpecs[weapon]?.capacity||10,needed=capacity-(player.magazines[weapon]||0),loaded=Math.min(needed,player.ammo[weapon]||0);player.magazines[weapon]=(player.magazines[weapon]||0)+loaded;player.ammo[weapon]=(player.ammo[weapon]||0)-loaded;
+  }else if(action==='shoot'){
+    const weapon=player.weapon,custom=player.customGuns?.find(gun=>gun.id===weapon);if(player.safetyOn){fail('Gun safety is on. Press G to switch it off.');return;}if(!player.weapons[weapon]&&!custom){fail('Unlock a weapon before shooting.');return;}if(!(player.magazines[weapon]>0)){fail('Your magazine is empty. Press R to reload.');return;}
+    player.magazines[weapon]--;const direction=data.direction||{},target=state.zombies.get(String(data.target||''))||Array.from(state.zombies.values()).sort((a,b)=>Math.hypot(a.x-state.x,a.z-state.z)-Math.hypot(b.x-state.x,b.z-state.z))[0];
+    const specification=weaponSpecs[weapon],range=custom?.range||specification?.range||13,damage=custom?.damage||specification?.damage||18,blast=custom?.blast||specification?.blast||0;
+    if(target&&Math.hypot(target.x-state.x,target.z-state.z)<range){
+      const targets=blast?Array.from(state.zombies.values()).filter(zombie=>Math.hypot(zombie.x-target.x,zombie.z-target.z)<blast):[target];
+      for(const zombie of targets){zombie.health-=damage;if(zombie.health<=0){state.zombies.delete(zombie.id);player.coins+=8;player.kills++;}}
+    }
+  }else if(action==='craft')fail('Custom crafting is available in multiplayer gardens.');
+  offlineRefresh();
+}
+function updateOfflineSimulation(delta){
+  if(!state.offline)return;
+  const now=performance.now(),time=Date.now();
+  state.phaseRemaining=Math.max(0,state.phaseDeadline-now);
+  if(state.phaseRemaining===0){
+    if(state.phase==='day'){state.phase='night';state.phaseRemaining=300000;state.phaseDeadline=now+300000;state.offlineNextZombieAt=now+700;status.textContent='Nightfall. Defend the garden!';updateWeather(state.weather,true);}
+    else{state.phase='day';state.day++;state.phaseRemaining=90000;state.phaseDeadline=now+90000;state.zombies.clear();status.textContent='Daylight. Grow and prepare.';updateWeather(state.weather,true);saveOfflineGarden();}
+  }
+  if(now>=state.offlineLastWeatherAt){
+    const next=state.weather==='aurora'?'clear':Math.random()<.28?'aurora':'clear';state.weather=next;state.weatherRemaining=45000;state.weatherDeadline=now+45000;updateWeather(next,true);
+    if(next==='aurora')for(const plant of state.plants.values())if(seeds.find(seed=>seed.id===plant.type)?.kind==='crop'&&plant.matureAt>time&&!plant.mutation&&Math.random()<.45)plant.mutation='aurora';
+    state.offlineLastWeatherAt=now+45000;
+  }
+  if(state.phase==='night'&&now>=state.offlineNextZombieAt&&state.zombies.size<12){
+    const angle=Math.random()*Math.PI*2,radius=7+Math.random()*3;state.zombies.set(`offline-z${time}`,{id:`offline-z${time}`,x:Math.cos(angle)*radius,z:Math.sin(angle)*radius,health:40,speed:.8});state.offlineNextZombieAt=now+4500;
+  }
+  for(const [key,plant]of state.plants){
+    const fruitSpec=fruitPlantSpecs[plant.type];
+    if(fruitSpec&&time>=plant.matureAt&&plant.fruitsAvailable<fruitSpec.count&&time>=(plant.nextFruitAt||0)){
+      plant.fruitsAvailable++;plant.nextFruitAt=plant.fruitsAvailable<fruitSpec.count?time+fruitSpec.regrow:0;
+    }
+    const defender=offlineDefenders[plant.type];if(!defender?.damage||time<plant.matureAt||state.phase!=='night'||now-(plant.lastAttack||0)<defender.rate)continue;
+    const target=Array.from(state.zombies.values()).filter(zombie=>Math.hypot(zombie.x-plant.x,zombie.z-plant.z)<=defender.range).sort((a,b)=>Math.hypot(a.x-plant.x,a.z-plant.z)-Math.hypot(b.x-plant.x,b.z-plant.z))[0];
+    if(!target)continue;plant.lastAttack=now;
+    const targets=defender.blast?Array.from(state.zombies.values()).filter(zombie=>Math.hypot(zombie.x-target.x,zombie.z-target.z)<defender.blast):[target];
+    for(const zombie of targets){zombie.health-=defender.damage;if(zombie.health<=0){state.zombies.delete(zombie.id);const owner=state.players.get(plant.ownerId);if(owner){owner.coins+=8;owner.kills++;}}}
+  }
+  for(const zombie of state.zombies.values()){
+    const target=Array.from(state.plants.values()).sort((a,b)=>Math.hypot(zombie.x-a.x,zombie.z-a.z)-Math.hypot(zombie.x-b.x,zombie.z-b.z))[0];
+    if(target&&Math.hypot(zombie.x-target.x,zombie.z-target.z)<.7){target.health-=delta*8;if(target.health<=0){const key=gardenPlotKey(target);state.plants.delete(key);state.soil.delete(key);}}
+    else{const x=target?.x??state.x,z=target?.z??state.z,distance=Math.hypot(x-zombie.x,z-zombie.z)||1;zombie.x+=(x-zombie.x)/distance*zombie.speed*delta;zombie.z+=(z-zombie.z)/distance*zombie.speed*delta;}
+  }
+  offlineWorldElapsed+=delta;if(offlineWorldElapsed>=.12){offlineWorldElapsed=0;updateWorld();}
+  offlineSaveElapsed+=delta;if(offlineSaveElapsed>=5){offlineSaveElapsed=0;saveOfflineGarden();}
+}
+function readGardenAccount(){
+  try{
+    const account=JSON.parse(localStorage.getItem('gardenfallSession')||'null');
+    return account&&/^[\w-]{8,64}$/.test(String(account.id||''))&&/^[a-f0-9]{64}$/i.test(String(account.token||''))&&typeof account.username==='string'
+      ?{id:String(account.id),token:String(account.token),username:account.username.trim().slice(0,20)}:null;
   }catch(error){return null;}
 }
 function updateAccountGate(){
-  const account=readSektorAccount();
-  $('accountStatus').textContent=account?`Connected to Sektor as ${account.username}. Your garden saves to this account.`:'Connect a Sektor account to play and save your garden.';
-  $('accountLink').hidden=!!account;
+  const account=state.gardenAccount||readGardenAccount();state.gardenAccount=account;
+  $('accountStatus').textContent='This account belongs to Gardenfall.';
+  $('accountGate').hidden=!!account;$('gameOptions').hidden=!account;
+  $('accountWelcome').textContent=account?`Signed in as ${account.username}. Choose how to play.`:'';
   $('publicButton').disabled=!account;$('createPrivateButton').disabled=!account;
   if(account&&!$('playerName').value)$('playerName').value=account.username;
   return account;
 }
+async function restoreGardenAccount(){
+  const account=readGardenAccount();state.gardenAccount=account;
+  if(account){
+    try{
+      const response=await fetch('/api/garden/auth/session',{headers:{Authorization:`Bearer ${account.token}`},cache:'no-store'});
+      if(response.ok){const result=await response.json();state.gardenAccount={...account,...result.user};}
+      else{localStorage.removeItem('gardenfallSession');state.gardenAccount=null;}
+    }catch(error){state.gardenAccount=account;}
+  }
+  const current=updateAccountGate();
+  if(current){
+    try{$('playerName').value=localStorage.getItem(`gardenfallName:${current.id}`)||current.username;}
+    catch(error){$('playerName').value=current.username;}
+  }
+}
+function setGardenAuthMode(mode){
+  gardenAuthMode=mode;
+  const isSignup=mode==='signup';
+  $('loginModeButton').classList.toggle('active',!isSignup);$('loginModeButton').setAttribute('aria-selected',String(!isSignup));
+  $('signupModeButton').classList.toggle('active',isSignup);$('signupModeButton').setAttribute('aria-selected',String(isSignup));
+  $('accountSubmit').textContent=isSignup?'Create account':'Log in';$('accountPassword').autocomplete=isSignup?'new-password':'current-password';
+  $('accountStatus').textContent=isSignup?'Choose a username and password for Gardenfall.':'This account belongs to Gardenfall.';
+}
+async function submitGardenAccount(event){
+  event.preventDefault();
+  const submit=$('accountSubmit'),username=$('accountUsername').value.trim(),password=$('accountPassword').value;
+  submit.disabled=true;$('accountStatus').textContent=gardenAuthMode==='signup'?'Creating your account…':'Logging in…';
+  try{
+    const response=await fetch(`/api/garden/auth/${gardenAuthMode}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||'Gardenfall account request failed.');
+    state.gardenAccount={...result.user,token:result.token};localStorage.setItem('gardenfallSession',JSON.stringify(state.gardenAccount));
+    $('accountPassword').value='';$('playerName').value=state.gardenAccount.username;
+    $('joinStatus').textContent='Signed in. Choose a garden to play.';updateAccountGate();
+  }catch(error){$('accountStatus').textContent=error.message||'Could not reach Gardenfall account service.';}
+  finally{submit.disabled=false;}
+}
+async function logoutGardenAccount(){
+  const account=state.gardenAccount;
+  if(state.offline)saveOfflineGarden();
+  if(account?.token)fetch('/api/garden/auth/logout',{method:'POST',headers:{Authorization:`Bearer ${account.token}`,'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
+  state.socket?.close();state.socket=null;state.offline=false;state.roomId='';state.gardenAccount=null;
+  localStorage.removeItem('gardenfallSession');joinScreen.hidden=false;$('leaveButton').hidden=true;$('status').textContent='Not in a garden';
+  updateAccountGate();
+}
 function connect(mode,roomId=''){
   const account=updateAccountGate();
-  if(!account){joinStatus.textContent='Log in to Sektor before joining Garden Siege.';return;}
+  if(!account){$('accountStatus').textContent='Log in to your Gardenfall account before joining.';return;}
   const name=$('playerName').value.trim().replace(/[\u0000-\u001f\u007f]/g,'').slice(0,20);
   if(!name){joinStatus.textContent='Enter your name before joining.';$('playerName').focus();return;}
-  localStorage.setItem(`gardenfallName:${account.key}`,name);
+  localStorage.setItem(`gardenfallName:${account.id}`,name);
   state.joinedPosition=false;state.selectedTile=null;state.trowelFrom=null;state.seedSignature=null;
-  state.clientId=account.key;
+  state.clientId=account.id;
   if(state.socket)state.socket.close();
   const scheme=location.protocol==='https:'?'wss:':'ws:';
   const socket=new WebSocket(scheme+'//'+location.host);state.socket=socket;
   status.textContent='Connecting…';joinStatus.textContent='Connecting to the garden server…';
-  socket.addEventListener('open',()=>socket.send(JSON.stringify({type:'garden:join',mode,roomId,name,clientId:state.clientId,accountKey:account.key,accountUsername:account.username})));
+  socket.addEventListener('open',()=>socket.send(JSON.stringify({type:'garden:join',mode,roomId,name,accountToken:account.token})));
   socket.addEventListener('message',event=>{
     if(state.socket!==socket)return;
     let message;try{message=JSON.parse(event.data);}catch(error){console.warn('Could not read garden update.',error);return;}
@@ -744,6 +1091,7 @@ function connect(mode,roomId=''){
     state.phaseDeadline=performance.now()+state.phaseRemaining;state.gardenHealth=message.gardenHealth;
     state.players=new Map((message.players||[]).map(player=>[player.id,player]));
     state.plants=new Map((message.plants||[]).map(plant=>[gardenPlotKey(plant),plant]));
+    state.seedDrops=new Map((message.seedDrops||[]).map(drop=>[drop.id,drop]));
     state.zombies=new Map((message.zombies||[]).map(zombie=>[zombie.id,zombie]));
     syncProjectiles(message.projectiles||[]);
     state.sprinklers=new Set(message.sprinklers||[]);
@@ -786,6 +1134,7 @@ function connect(mode,roomId=''){
 function updateHud(player){
   $('phaseBadge').textContent=state.phase==='night'?'☾ NIGHT · ZOMBIES!':'☀ DAY · PREPARE';
   $('phaseBadge').classList.toggle('night',state.phase==='night');
+  document.querySelector('.world-wrap').classList.toggle('night-shift',state.phase==='night');
   $('dayClock').textContent=`DAY ${state.day} · ${formatTime(state.phaseRemaining)}`;
   $('coins').textContent=`🪙 ${player?.coins??0}`;
   const land=landTiers.find(tier=>tier.id===(player?.landTier||'common'))||landTiers[0];
@@ -811,9 +1160,12 @@ function updateWeather(weather,announce=false){
     snowstorm:{sky:0x9aaab0,light:0xd9e8ef,intensity:1.25},
   };
   const style=styles[weather]||styles.clear;
+  const night=state.phase==='night',bloodNight=night&&state.day%4===0;
   const color=new THREE.Color(style.sky);
+  if(night)color.lerp(new THREE.Color(bloodNight?0x5c2038:0x18263e),.7);
   scene.background.copy(color);scene.fog.color.copy(color);
-  sunlight.color.setHex(style.light);sunlight.intensity=style.intensity;
+  sunlight.color.setHex(night?(bloodNight?0xd07988:0x8798bc):style.light);sunlight.intensity=style.intensity*(night?(bloodNight?.34:.24):1);
+  hemisphere.intensity=night?(bloodNight?.65:.48):2.1;
   $('weatherEffects').dataset.weather=weather;
   $('weatherLabel').textContent=`Weather · ${weatherName(weather)} · ${formatTime(state.weatherRemaining)}`;
   rainLines.visible=weather==='rain';snowflakes.visible=weather==='snowstorm';rainbowGroup.visible=weather==='rainbow';
@@ -868,8 +1220,9 @@ function renderShop(){
   state.shopSignature=signature;
   document.querySelector('.seed-filters').hidden=state.selectedShop!=='seeds';
   shopItems.replaceChildren();
-  const addRow=(name,description,label,onBuy,disabled=false)=>{
+  const addRow=(name,description,label,onBuy,disabled=false,icon='')=>{
     const row=document.createElement('div');row.className='shop-item';
+    if(icon){const preview=document.createElement('span');preview.className='seed-icon';preview.textContent=icon;preview.setAttribute('aria-hidden','true');row.append(preview);}
     const copy=document.createElement('div');copy.className='shop-item-copy';
     const title=document.createElement('strong');title.textContent=name;
     const detail=document.createElement('span');detail.textContent=description;
@@ -878,11 +1231,22 @@ function renderShop(){
     row.append(copy,buy);shopItems.append(row);
   };
   if(state.selectedShop==='sell'){
-    const row=document.createElement('div');row.className='shop-item';
-    const copy=document.createElement('div');copy.className='shop-item-copy';
-    const title=document.createElement('strong');title.textContent='Sell harvested goods';
-    const description=document.createElement('span');description.textContent='Harvesting stores fruit and plant parts. Sell them only when you choose.';
-    copy.append(title,description);row.append(copy);shopItems.append(row);
+    const goods=Object.entries(player?.goods||{}).filter(([,quantity])=>Number(quantity)>0);
+    const land=landTiers.find(item=>item.id===(player?.landTier||'common'))||landTiers[0];
+    if(!goods.length){
+      const row=document.createElement('div');row.className='shop-item';
+      const copy=document.createElement('div');copy.className='shop-item-copy';
+      const title=document.createElement('strong');title.textContent='No goods to sell';
+      const description=document.createElement('span');description.textContent='Harvest ripe crops or plant parts to stock this stall.';
+      copy.append(title,description);row.append(copy);shopItems.append(row);
+    }
+    for(const [type,quantityValue]of goods){
+      const quantity=Math.max(0,Math.floor(Number(quantityValue)||0)),definition=seeds.find(item=>item.id===type);
+      const unitValue=offlineSellValues[type]||0,multiplier=definition?.kind==='crop'?land.multiplier:1;
+      const total=Math.floor(quantity*unitValue*multiplier);
+      addRow(`${definition?.name||type} ×${quantity}`,`${unitValue} coins each${multiplier>1?` · ${multiplier}× land bonus`:''}`,
+        `Sell · ${total} 🪙`,()=>send('sell',{item:type}));
+    }
     $('sellAllButton').hidden=false;
     return;
   }
@@ -901,10 +1265,15 @@ function renderShop(){
   for(const item of listings){
     if(state.selectedShop==='seeds'&&state.seedCategory!=='all'&&item.kind!==state.seedCategory)continue;
     addRow(item.name,item.description,`Buy · ${item.cost} 🪙`,
-      ()=>send(state.selectedShop==='seeds'?'buy-seed':'buy-gear',{item:item.id}));
+      ()=>send(state.selectedShop==='seeds'?'buy-seed':'buy-gear',{item:item.id}),false,state.selectedShop==='seeds'?seedIcons[item.id]||'🌱':'');
   }
   if(state.selectedShop==='gear'){
     const player=state.players.get(state.playerId);
+    for(const item of purchasableWeapons){
+      const owned=!!player?.weapons[item.id];
+      addRow(`${item.name}${owned?' · Owned':''}`,item.description,owned?'Owned':`Buy · ${item.cost} 🪙`,
+        ()=>send('buy-weapon',{item:item.id}),owned||Number(player?.coins||0)<item.cost);
+    }
     for(const item of ammoListings){
       const unlocked=!!player?.weapons[item.id],ammo=Number(player?.ammo[item.id])||0;
       addRow(item.name,`${item.amount} rounds · ${ammo} in inventory`, `Buy · ${item.cost} 🪙`,
@@ -974,6 +1343,8 @@ function updateNearbyStation(){
   state.nearbyStation=closest?.id||'';
   if(!$('shopPopup').hidden||!$('workbenchPopup').hidden){interactionPrompt.hidden=true;return;}
   const prompts=[];
+  const seedDrop=nearestSeedDrop();
+  if(seedDrop&&Math.hypot(state.x-seedDrop.x,state.z-seedDrop.z)<=2.5)prompts.push(`H · Pick up ${seeds.find(seed=>seed.id===seedDrop.type)?.name||'seed'} seed`);
   if(state.ziplineTarget)prompts.push(`T · Zipline to ${state.ziplineTarget==='farm'?'your farm':'the market'}`);
   if(closest)prompts.push(`E · ${closest.title}`);
   interactionPrompt.hidden=prompts.length===0;
@@ -981,7 +1352,9 @@ function updateNearbyStation(){
 }
 function renderSeedSelect(player){
   if(!player)return;
-  const signature=JSON.stringify(player.seeds);
+  const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds||{}).reduce((total,amount)=>total+Math.max(0,Number(amount)||0),0);
+  $('seedCapacity').textContent=`Seed pack ${carried} / ${capacity}${player.gear.backpack?' · Backpack':''}`;
+  const signature=JSON.stringify([player.seeds,player.gear.backpack]);
   if(signature===state.seedSignature)return;
   state.seedSignature=signature;
   const available=seeds.filter(item=>(player.seeds[item.id]||0)>0);
@@ -1002,31 +1375,34 @@ function selectedPlant(){
 function updateActions(player){
   if(!player)return;
   const plant=selectedPlant();
-  const defenderInfo={peashooter:'unlock Pea Blaster + 10 ammo',cornzooka:'unlock Rocket Corn + 2 ammo'};
-  $('selectedTile').textContent=state.selectedTile?plant?`Farm ${state.selectedTile.farmIndex+1} · ${seeds.find(item=>item.id===plant.type)?.name||plant.type} · ${Date.now()>=plant.matureAt?'Ready to harvest':'Growing'}${plant.mutation?` · ${plant.mutation} mutation`:''}${defenderInfo[plant.type]?` · Harvest to ${defenderInfo[plant.type]}`:''}${plant.reusable?' · Reusable; shovel to remove':` · ${plant.harvestsLeft??1} harvest(s) left`} · ${Math.ceil(plant.health)} HP`:`Farm ${state.selectedTile.farmIndex+1} · Plot ${state.selectedTile.col+1}, ${state.selectedTile.row+1} · Empty`:'Select a garden plot';
+  const defenderInfo={peashooter:'unlock Pea Blaster + ammo',cornzooka:'unlock Rocket Corn + ammo',snapdragon:'unlock Pea Blaster + ammo',frostFern:'unlock Pea Blaster + ammo',melonMortar:'unlock Rocket Corn + ammo',roseTurret:'unlock Pea Blaster + ammo'};
+  const fruitSpec=plant&&fruitPlantSpecs[plant.type];
+  $('selectedTile').textContent=state.selectedTile?plant?`Farm ${state.selectedTile.farmIndex+1} · ${seeds.find(item=>item.id===plant.type)?.name||plant.type} · ${Date.now()>=plant.matureAt?'Ready to harvest':'Growing'}${fruitSpec?` · ${Number(plant.fruitsAvailable)||0}/${fruitSpec.count} fruits ready`:''}${plant.favorite?' · ★ Favorite':''}${plant.mutation?` · ${plant.mutation} mutation`:''}${defenderInfo[plant.type]?` · Harvest to ${defenderInfo[plant.type]}`:''}${plant.reusable?' · Reusable; shovel to remove':` · ${plant.harvestsLeft??1} harvest(s) left`} · ${Math.ceil(plant.health)} HP`:`Farm ${state.selectedTile.farmIndex+1} · Plot ${state.selectedTile.col+1}, ${state.selectedTile.row+1} · Empty`:'Select a garden plot';
   $('plantButton').disabled=!state.selectedTile||state.selectedTile.farmIndex!==player.farmIndex||!!plant||!state.selectedSeed;
   const shovelOnly=plant?.type==='epicSoil';
-  $('harvestButton').disabled=!plant||shovelOnly||Date.now()<plant.matureAt||plant.ownerId!==state.playerId;
-  $('harvestButton').textContent=shovelOnly?'Remove with shovel':plant&&defenderInfo[plant.type]?`Harvest · ${defenderInfo[plant.type]}`:'Harvest plant or fruit';
+  $('harvestButton').disabled=!plant||shovelOnly||Date.now()<plant.matureAt||plant.ownerId!==state.playerId||!!fruitSpec&&!(plant.fruitsAvailable>0);
+  $('harvestButton').textContent=shovelOnly?'Remove with shovel':fruitSpec?`Harvest fruit · ${plant.fruitsAvailable||0} ready`:plant&&defenderInfo[plant.type]?`Harvest · ${defenderInfo[plant.type]}`:'Harvest plant or fruit';
   $('waterButton').disabled=!plant||plant.ownerId!==state.playerId||!player.gear.wateringCan;
   $('shovelButton').disabled=!plant||plant.ownerId!==state.playerId||!player.gear.shovel;
   $('sprinklerButton').disabled=!state.selectedTile||state.selectedTile.farmIndex!==player.farmIndex||state.sprinklers.has(gardenPlotKey(state.selectedTile))||!!plant||!(player.gear.sprinkler>0);
   $('trowelButton').disabled=!plant||plant.ownerId!==state.playerId||!player.gear.trowel;
   $('trowelButton').textContent=state.trowelFrom?'Choose destination plot':'Move plant (trowel)';
+  $('favoriteButton').disabled=!plant||plant.ownerId!==state.playerId;
+  $('favoriteButton').textContent=plant?.favorite?'Unfavorite plant':'Favorite plant';
   $('refillButton').disabled=!player.gear.wateringCan||player.wateringCanCharges>=5;
   const custom=player.customGuns?.find(gun=>gun.id===player.weapon);
-  const weapon=custom?.name||(player.weapon==='cornZooka'?'Rocket Corn':'Pea Blaster');
-  const capacity=custom?.capacity||(player.weapon==='cornZooka'?2:10);
+  const specification=weaponSpecs[player.weapon];
+  const weapon=custom?.name||specification?.name||'Pea Blaster';
+  const capacity=custom?.capacity||specification?.capacity||10;
   const loaded=player.magazines?.[player.weapon]||0;
   $('ammoReadout').textContent=`${weapon} · Magazine ${loaded}/${capacity} · Reserve ${player.ammo[player.weapon]||0} · R reloads · Safety ${player.safetyOn?'ON':'OFF'} (G)`;
   $('gunSafety').textContent=`Gun safety · ${player.safetyOn?'ON':'OFF'}`;
   $('gunSafety').classList.toggle('safety-on',!!player.safetyOn);
   $('partsReadout').textContent=`Bamboo ${player.parts.bamboo||0} · Reed ${player.parts.reed||0} · Magazine ${player.parts.magazine||0} · Shell ${player.parts.shell||0} · Blast ${player.parts.blastCorn||0} · Pollen ${player.parts.pollen||0} · Trigger ${player.parts.trigger||0} · Grip ${player.parts.grip||0} · Crystal ${player.parts.crystal||0} · Fertilizer ${player.gear.fertilizer||0}`;
   weaponSelect.disabled=false;
-  weaponSelect.querySelector('[value="peaBlaster"]').disabled=!player.weapons.peaBlaster;
-  weaponSelect.querySelector('[value="cornZooka"]').disabled=!player.weapons.cornZooka;
   for(const option of Array.from(weaponSelect.options)){
     if(option.value.startsWith('custom-')&&!player.customGuns?.some(gun=>gun.id===option.value))option.remove();
+    else option.disabled=!player.weapons[option.value]&&!player.customGuns?.some(gun=>gun.id===option.value);
   }
   for(const gun of player.customGuns||[]){
     let option=weaponSelect.querySelector(`[value="${gun.id}"]`);
@@ -1068,17 +1444,22 @@ function updateActions(player){
   const goods=Object.entries(player.goods||{}).filter(([,amount])=>amount>0);
   $('goodsReadout').textContent=goods.length?goods.map(([type,amount])=>`${seeds.find(item=>item.id===type)?.name||type} ×${amount}`).join(' · '):'No harvested goods yet.';
   $('sellAllButton').disabled=!goods.length;
-  if(state.selectedShop==='gear'||state.selectedShop==='lands')renderShop();
-  renderSeedSelect(player);
+  if(state.selectedShop==='gear'||state.selectedShop==='lands'||state.selectedShop==='sell')renderShop();
+  renderSeedSelect(player);updateHeldWeapon(player);
 }
 
 function selectPlot(tile){
   state.selectedTile={...tile};
   updateWorld();updateActions(state.players.get(state.playerId));
 }
+function nearestSeedDrop(){
+  return Array.from(state.seedDrops.values()).map(drop=>({...drop,distance:Math.hypot(state.x-drop.x,state.z-drop.z)})).filter(drop=>drop.distance<=2.5).sort((a,b)=>a.distance-b.distance)[0]||null;
+}
 function harvestNearbyPlant(){
+  const seedDrop=nearestSeedDrop();
+  if(seedDrop){send('pickup-seed',{id:seedDrop.id});return true;}
   const selected=selectedPlant();
-  const harvestable=plant=>plant&&plant.ownerId===state.playerId&&plant.type!=='epicSoil'&&Date.now()>=plant.matureAt;
+  const harvestable=plant=>plant&&plant.ownerId===state.playerId&&plant.type!=='epicSoil'&&Date.now()>=plant.matureAt&&(!fruitPlantSpecs[plant.type]||plant.fruitsAvailable>0);
   const isNearby=plant=>Math.hypot(plant.x-state.x,plant.z-state.z)<=2.5;
   const plant=harvestable(selected)&&isNearby(selected)?selected:Array.from(state.plants.values())
     .filter(harvestable)
@@ -1086,9 +1467,10 @@ function harvestNearbyPlant(){
     .filter(candidate=>candidate.distance<=2.5)
     .sort((a,b)=>a.distance-b.distance)[0]?.plant;
   if(!plant)return false;
+  if(plant.favorite&&!window.confirm('This plant is favorited. Harvest it anyway?'))return false;
   state.selectedTile={farmIndex:plant.farmIndex,col:plant.col,row:plant.row};
   updateWorld();updateActions(state.players.get(state.playerId));
-  send('harvest',{tile:gardenPlotKey(plant)});
+  send('harvest',{tile:gardenPlotKey(plant),confirmFavorite:true});
   return true;
 }
 function plantSeedAt(tile){
@@ -1097,7 +1479,7 @@ function plantSeedAt(tile){
   const key=gardenPlotKey(tile);
   if(tile.farmIndex!==state.players.get(state.playerId)?.farmIndex){status.textContent='You can only plant on your own farm.';return;}
   if(state.plants.has(key)||state.sprinklers.has(key)){status.textContent='That plot is occupied. Select another plot.';return;}
-  if(!state.socket||state.socket.readyState!==WebSocket.OPEN){status.textContent='Reconnect to the garden before planting.';return;}
+  if(!state.offline&&(!state.socket||state.socket.readyState!==WebSocket.OPEN)){status.textContent='Reconnect to the garden before planting.';return;}
   state.pendingPlantKey=key;
   send('plant',{item:state.selectedSeed,tile:{...tile}});
 }
@@ -1167,7 +1549,15 @@ function bindAction(id,action,extra=()=>({})){
   $(id).addEventListener('click',()=>{if(!state.selectedTile)return;send(action,{tile:gardenPlotKey(state.selectedTile),...extra()});});
 }
 $('plantButton').addEventListener('click',()=>plantSeedAt(state.selectedTile));
-bindAction('harvestButton','harvest');
+$('harvestButton').addEventListener('click',()=>{
+  const plant=selectedPlant();if(!plant||!state.selectedTile)return;
+  if(plant.favorite&&!window.confirm('This plant is favorited. Harvest it anyway?'))return;
+  send('harvest',{tile:gardenPlotKey(state.selectedTile),confirmFavorite:true});
+});
+$('favoriteButton').addEventListener('click',()=>{
+  const plant=selectedPlant();if(!plant||!state.selectedTile)return;
+  send('favorite',{tile:gardenPlotKey(state.selectedTile),favorite:!plant.favorite});
+});
 bindAction('waterButton','water');
 bindAction('shovelButton','shovel');
 bindAction('sprinklerButton','sprinkler',()=>({tile:{...state.selectedTile}}));
@@ -1183,7 +1573,7 @@ $('trowelButton').addEventListener('click',()=>{
   updateWorld();updateActions(state.players.get(state.playerId));
 });
 $('refillButton').addEventListener('click',()=>send('refill-water'));
-seedSelect.addEventListener('change',()=>{state.selectedSeed=seedSelect.value;});
+seedSelect.addEventListener('change',()=>{state.selectedSeed=seedSelect.value;updateActions(state.players.get(state.playerId));});
 weaponSelect.addEventListener('change',()=>send('equip',{item:weaponSelect.value}));
 document.querySelectorAll('[data-shop-tab]').forEach(button=>button.addEventListener('click',()=>{
   state.selectedShop=button.dataset.shopTab;
@@ -1197,12 +1587,17 @@ document.querySelectorAll('[data-seed-filter]').forEach(button=>button.addEventL
 }));
 $('publicButton').addEventListener('click',()=>connect('public'));
 $('createPrivateButton').addEventListener('click',()=>connect('private-create'));
+$('offlineButton').addEventListener('click',startOfflineGarden);
+$('offlineGuestButton').addEventListener('click',()=>startOfflineGarden(true));
+window.addEventListener('gardenfall:account',event=>{state.gardenAccount=event.detail||null;updateAccountGate();});
+$('accountLogout').addEventListener('click',logoutGardenAccount);
 $('privateForm').addEventListener('submit',event=>{event.preventDefault();connect('private-join',$('privateCode').value.trim());});
 $('copyCode').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText(state.roomId);status.textContent='Private garden code copied.';}
   catch(error){status.textContent=`Share private code: ${state.roomId}`;}
 });
 $('leaveButton').addEventListener('click',()=>{
+  if(state.offline){saveOfflineGarden();state.offline=false;state.roomId='';state.zombies.clear();joinScreen.hidden=false;$('leaveButton').hidden=true;$('status').textContent='Not in a garden';updateAccountGate();return;}
   state.socket?.close();state.socket=null;joinScreen.hidden=false;$('leaveButton').hidden=true;
   state.nearbyStation='';state.dismissedStation='';hideInteractionPopups();
 });
@@ -1244,7 +1639,7 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyB'){cycleWeapon();return;}
   if(event.code==='KeyN'){cycleSeed(1);return;}
   if(event.code==='KeyF'){send('refill-water');return;}
-  if(event.code==='KeyH'){if(harvestNearbyPlant())status.textContent='Harvested the nearest ripe plant.';return;}
+  if(event.code==='KeyH'){if(harvestNearbyPlant())status.textContent=nearestSeedDrop()?'Picked up a seed.':'Harvested the nearest ripe plant.';return;}
   if(event.code==='KeyU'){activateAction('waterButton');return;}
   if(event.code==='KeyX'){activateAction('shovelButton');return;}
   if(event.code==='KeyC'){activateAction('sprinklerButton');return;}
@@ -1280,7 +1675,8 @@ function animate(){
   state.mapDrawElapsed+=delta;
   if(state.mapDrawElapsed>=.12){state.mapDrawElapsed=0;drawFarmMap();}
   updateWeatherInWorld(delta);
-  if(state.roomId&&state.socket?.readyState===WebSocket.OPEN){
+  if(state.offline)updateOfflineSimulation(delta);
+  if(state.roomId&&(state.offline||state.socket?.readyState===WebSocket.OPEN)){
     const interactionOpen=!$('shopPopup').hidden||!$('workbenchPopup').hidden;
     let cameraY=1.65;
     if(state.ziplineRide){
@@ -1326,7 +1722,7 @@ function animate(){
       camera.lookAt(state.x+Math.sin(state.yaw)*cosPitch,1.65+Math.sin(state.pitch),state.z-Math.cos(state.yaw)*cosPitch);
     }
   }
-  animateMutationEffects(delta);animateHeldWeapon(delta);animateProjectiles();
+  animateMutationEffects(delta);animateSprinklers(delta);animateHeldWeapon(delta);animateProjectiles();
   renderer.render(scene,camera);
   requestAnimationFrame(animate);
 }
@@ -1342,18 +1738,12 @@ function uiTick(){
   setTimeout(uiTick,250);
 }
 function init(){
-  try{
-    const account=readSektorAccount();
-    $('playerName').value=account?localStorage.getItem(`gardenfallName:${account.key}`)||account.username:'';
-  }catch(error){console.warn('Could not load the Sektor account session.',error);}
   updateAccountGate();
+  restoreGardenAccount();
   renderShop();resize();drawFarmMap();requestAnimationFrame(animate);uiTick();
 }
 window.addEventListener('pagehide',()=>{
   state.disposed=true;state.socket?.close();renderer.setAnimationLoop(null);renderer.dispose();
 });
 init();
-window.addEventListener('pagehide',()=>{
-  state.disposed=true;state.socket?.close();renderer.setAnimationLoop(null);renderer.dispose();
-});
-init();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./garden-siege-sw.js').catch(error=>console.warn('Could not cache Gardenfall for offline play.',error));

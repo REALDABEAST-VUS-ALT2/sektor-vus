@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#18251f">
+  <title>After Hours · Store 01</title>
+  <link rel="stylesheet" href="./after-hours.css">
+  <script type="importmap">
+    {"imports":{"three":"./vendor/three.module.js"}}
+  </script>
+  <script type="module" src="./after-hours.js?v=20261108-fogfix-1"></script>
+</head>
+<body>
+  <main class="game-shell">
+    <canvas id="world" aria-label="Explore a procedural furniture store, collect supplies, and build a safe base"></canvas>
+    <header class="topbar">
+      <a class="wordmark" href="./after-hours.html" aria-label="After Hours Store 01 home"><span>AFTER HOURS</span><strong>STORE 01</strong></a>
+      <div class="cycle-status" aria-live="polite"><span class="cycle-dot" id="cycleDot"></span><span id="phaseName">DAY SHIFT</span><span id="dayStamp">DAY 01</span><time id="clock">06:00</time></div>
+      <div class="top-actions"><span id="saveStatus" role="status">Autosaved</span><button id="pauseButton" type="button" title="Pause game">Pause</button></div>
+    </header>
+
+    <section class="survival-hud" aria-label="Player survival status">
+      <div class="stat-line"><span class="stat-icon health-icon" aria-hidden="true">+</span><div class="stat-copy"><div><strong>HEALTH</strong><span id="healthValue">100</span></div><div class="meter"><i id="healthBar"></i></div></div></div>
+      <div class="stat-line"><span class="stat-icon hunger-icon" aria-hidden="true">◒</span><div class="stat-copy"><div><strong>HUNGER</strong><span id="hungerValue">100</span></div><div class="meter"><i id="hungerBar"></i></div></div></div>
+      <div class="stat-line"><span class="stat-icon stamina-icon" aria-hidden="true">↗</span><div class="stat-copy"><div><strong>STAMINA</strong><span id="staminaValue">100</span></div><div class="meter"><i id="staminaBar"></i></div></div></div>
+      <div class="supply-line"><span>FOOD <b id="foodCount">0</b></span><span>MED <b id="medCount">0</b></span><span>FURNITURE <b id="furnitureCount">0</b></span></div>
+    </section>
+
+    <div class="crosshair" aria-hidden="true"><i></i></div>
+    <div class="phase-banner" id="phaseBanner" hidden><span>STORE ANNOUNCEMENT</span><strong id="bannerTitle"></strong><p id="bannerText"></p></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <div class="interaction-prompt" id="interactionPrompt" hidden><kbd>E</kbd><span id="interactionText"></span></div>
+    <div class="store-map" aria-hidden="true"><span class="map-label">AISLE GRID</span><div id="mapGrid"></div><i id="mapPlayer"></i></div>
+
+    <section class="build-panel" aria-label="Building tools">
+      <div class="build-heading"><div><span class="section-label">BASE WORKSHOP</span><strong id="buildState">Scavenge furniture to build</strong></div><button id="buildModeButton" type="button" aria-pressed="false" title="Toggle build mode">Build <kbd>B</kbd></button></div>
+      <div class="build-options" role="group" aria-label="Choose build piece">
+        <button type="button" data-build="pallet" aria-pressed="true"><span class="piece-swatch pallet-swatch"></span><span>Pallet wall</span><kbd>1</kbd></button>
+        <button type="button" data-build="shelf"><span class="piece-swatch shelf-swatch"></span><span>Shelf block</span><kbd>2</kbd></button>
+        <button type="button" data-build="table"><span class="piece-swatch table-swatch"></span><span>Table</span><kbd>3</kbd></button>
+      </div>
+      <div class="build-tools"><button id="rotateBuildButton" type="button" title="Rotate selected piece">Rotate <kbd>Q</kbd></button><button id="lockButton" type="button" title="Lock or unlock nearby structure">Lock nearby <kbd>L</kbd></button><button id="eatButton" type="button" title="Eat food">Eat <kbd>F</kbd></button></div>
+    </section>
+
+    <div class="objective"><span class="objective-mark">01</span><div><small>TONIGHT'S PLAN</small><strong id="objectiveText">Find food. Gather furniture. Pick a corner.</strong></div></div>
+    <div class="world-tip" id="worldTip">WASD move · Shift sprint · E scavenge · B build · Q rotate · L lock · F eat</div>
+
+    <div class="touch-controls" aria-label="Touch movement controls">
+      <button type="button" data-move="forward" aria-label="Move forward">↑</button><button type="button" data-move="left" aria-label="Move left">←</button><button type="button" data-move="back" aria-label="Move backward">↓</button><button type="button" data-move="right" aria-label="Move right">→</button>
+    </div>
+
+    <section class="pause-screen" id="pauseScreen" hidden>
+      <div class="pause-card"><span class="section-label">STORE 01 · SHIFT PAUSED</span><h1>Take a breath.</h1><p>Your progress is saved on this device.</p><div class="pause-actions"><button id="resumeButton" class="primary" type="button">Resume shift</button><button id="newGameButton" type="button">Start fresh</button></div><a href="./VUS-Servers.html">Back to Sektor</a></div>
+    </section>
+  </main>
+</body>
+</html>
