@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#17241e">
   <title>Gardenfall · Sektor</title>
-  <link rel="stylesheet" href="./garden-siege.css?v=20261107-garden-controls">
+  <link rel="stylesheet" href="./garden-siege.css?v=20261107-special-craft-9">
   <script type="importmap">
     {
       "imports": {
@@ -13,7 +13,7 @@
       }
     }
   </script>
-  <script type="module" src="./garden-siege.js?v=20261107-garden-controls"></script>
+  <script type="module" src="./garden-siege.js?v=20261107-special-craft-9"></script>
 </head>
 <body>
   <main class="game-shell">
@@ -23,7 +23,9 @@
         <span id="phaseBadge" class="phase-badge">Waiting to join</span>
         <span id="dayClock">DAY 1 · —</span>
         <span id="coins">🪙 100</span>
+        <span id="farmBadge">🌾 Farm 1/8</span>
         <span id="landBadge">🏡 Common land · 1×</span>
+        <span id="gunSafety" class="safety-indicator">Gun safety · OFF</span>
         <span id="gardenHealth">🌿 Garden 100%</span>
         <span id="playerCount">0/8 players</span>
       </div>
@@ -35,13 +37,15 @@
 
     <section class="world-layout">
       <div class="world-wrap">
-        <canvas id="gardenCanvas" aria-label="Three-dimensional garden. Click plots to select and click zombies to shoot."></canvas>
+          <canvas id="gardenCanvas" aria-label="Large shared garden with eight personal farms. Click a plot to select it and click zombies to shoot."></canvas>
         <div class="weather-effects" id="weatherEffects" aria-hidden="true"></div>
-        <div class="world-tip">WASD move · Click once to look around · Esc releases mouse · Q plant on aimed/selected plot · R reload · E harvest or use a station · Click zombies or plots · F refill</div>
+        <div class="world-tip">WASD move · Space jump · E stand · T zipline · K controls</div>
         <div class="crosshair" aria-hidden="true">+</div>
         <div class="world-weather" id="weatherLabel">Weather · Clear</div>
+        <div class="interaction-prompt" id="interactionPrompt" role="status" aria-live="polite" hidden></div>
         <div class="weather-event" id="weatherEvent" role="status" aria-live="polite" hidden><strong id="weatherEventTitle"></strong><span id="weatherEventDescription"></span></div>
         <div class="target-callout" id="targetCallout" hidden></div>
+        <canvas id="farmMap" class="farm-map" width="240" height="240" role="img" aria-label="Bird's-eye map of all eight farms and the central market"></canvas>
         <section class="proximity-popup" id="shopPopup" aria-label="Market stall" hidden>
           <header><div><span class="eyebrow">MARKET STALL</span><strong id="shopPopupTitle">Seeds</strong></div><button id="closeShopPopup" type="button" aria-label="Close market stall">Done ✕</button></header>
           <section class="shop-section">
@@ -65,19 +69,18 @@
           <header><div><span class="eyebrow">GUN MAKING STATION</span><strong>Plant-powered workshop</strong></div><button id="closeWorkbenchPopup" type="button" aria-label="Close workbench">Done ✕</button></header>
           <div class="craft-actions">
             <strong>Build a custom garden gun</strong>
-            <span>Use an unlocked Pea Blaster or Rocket Corn as a base, then combine harvested plant parts with fertilizer.</span>
-            <span id="partsReadout">Bamboo 0 · Magazine Vine 0 · Blast Corn 0 · Fertilizer 0</span>
-            <label class="selection-label">Weapon base<select id="gunBaseSelect"><option value="peaBlaster">Pea Blaster</option><option value="cornZooka">Rocket Corn</option></select></label>
+            <span>Use one Plant Fertilizer and four harvested plant attachments. No weapon base is required.</span>
+            <span id="partsReadout">Plant attachments 0 · Fertilizer 0</span>
             <fieldset class="component-field"><legend>Custom gun parts</legend><div id="componentSelect" class="component-parts"></div></fieldset>
-            <span id="craftHelp" class="craft-help">Unlock a base weapon by harvesting a Pea Shooter or Rocket Corn. Harvest special plants for parts, then buy fertilizer in Gear.</span>
-            <button id="craftCustomButton" type="button" disabled>Craft custom gun from selected parts</button>
+            <span id="craftHelp" class="craft-help">Harvest four plant attachments and buy one Plant Fertilizer in Gear.</span>
+            <button id="craftCustomButton" type="button" disabled>Craft with four attachments</button>
           </div>
         </section>
         <section class="join-screen" id="joinScreen">
           <div class="join-card">
             <span class="eyebrow">GROW TOGETHER. SURVIVE THE NIGHT.</span>
             <h1>Build a garden.<br>Hold off the horde.</h1>
-            <p>Grow crops for coins, raise auto-firing plants, craft plant-powered weapons, and defend your garden when night falls.</p>
+            <p>Claim your own farm on the shared eight-farm map. Grow crops for coins, raise auto-firing plants, and defend the garden when night falls.</p>
             <label>Your name<input id="playerName" maxlength="20" autocomplete="nickname" placeholder="Garden Guardian"></label>
             <div class="join-actions">
               <button id="publicButton" class="primary" type="button">Join public garden</button>
@@ -113,6 +116,18 @@
         </section>
 
         <div class="how-to-play"><strong>Daylight is 20 minutes.</strong><span>Use the day to grow, harvest and prepare. Zombies attack for 2 minutes each night. Plants attack automatically; harvest them for ammo to shoot yourself.</span></div>
+        <details class="keybinds" id="keybinds">
+          <summary>Keyboard controls</summary>
+          <dl>
+            <dt>W A S D</dt><dd>Move</dd><dt>Space</dt><dd>Jump</dd><dt>Mouse click</dt><dd>Shoot or select a plot</dd>
+            <dt>G</dt><dd>Toggle gun safety</dd><dt>R</dt><dd>Reload</dd><dt>B</dt><dd>Cycle weapon</dd>
+            <dt>Q</dt><dd>Plant selected seed</dd><dt>1-9 / N</dt><dd>Select / cycle seed</dd>
+            <dt>H</dt><dd>Harvest nearby plant</dd><dt>U</dt><dd>Water selected plant</dd>
+            <dt>X</dt><dd>Remove plant</dd><dt>C</dt><dd>Place sprinkler</dd><dt>V</dt><dd>Move plant with trowel</dd>
+            <dt>F</dt><dd>Refill watering can</dd><dt>Y</dt><dd>Sell harvested goods</dd><dt>P</dt><dd>Craft at workbench</dd>
+            <dt>E</dt><dd>Open nearest stand</dd><dt>T</dt><dd>Ride zipline</dd>
+          </dl>
+        </details>
       </aside>
     </section>
     <footer><span>Private gardens save crops, inventory and offline growth on this server.</span><a href="./VUS-Servers.html">Back to Sektor</a></footer>

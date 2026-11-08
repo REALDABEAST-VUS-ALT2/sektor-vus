@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>if(new URLSearchParams(location.search).get('embed')==='computer')document.documentElement.dataset.embed='computer';</script>
   <title>Sektor · Nexus</title>
   <link rel="stylesheet" href="./style.css?v=20261107-sidebar-scroll">
 </head>
@@ -27,16 +28,18 @@
     <div class="phen228-wire-stage" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <aside class="server-rail">
       <div class="rail-logo" aria-label="Sektor"><span>S</span></div>
-      <div id="serverList" class="server-list"></div>
-      <button id="friendsBtn" class="server-button friends-server-btn" type="button" title="Friends &amp; DMs" aria-label="Friends and private messages">◎</button>
-      <div id="friendsList" class="friends-list"></div>
-      <a id="nexusPageLink" class="server-button blobtown-server-btn" href="./nexus.html" title="Open Nexus" aria-label="Open Nexus">🌐</a>
-      <a id="dropzonePageLink" class="server-button dropzone-server-btn" href="./dropzone.html" title="Open nexus:dropzone" aria-label="Open nexus:dropzone">⬇</a>
-      <a id="rallyPageLink" class="server-button rally-server-btn" href="./drifting-sim-multiplayer.html" title="Open Drifting Sim 6 Multiplayer" aria-label="Open Drifting Sim 6 Multiplayer">🏁</a>
-      <a id="cozyDormLink" class="server-button" href="./cozy-dorm.html" title="Open Cozy Dorm" aria-label="Open Cozy Dorm">🛋️</a>
-      <a id="gardenfallLink" class="server-button" href="./garden-siege.html" title="Open Gardenfall" aria-label="Open Gardenfall">🌱</a>
-      <a id="sketchPartyLink" class="server-button" href="./retro-sketch.html" title="Open Sektor Sketch Party" aria-label="Open Sektor Sketch Party">✎</a>
-      <a id="slidesPageLink" class="server-button" href="./sektor-slides.html" title="Open Sektor Slides" aria-label="Open Sektor Slides">▤</a>
+      <div class="rail-scroll">
+        <div id="serverList" class="server-list"></div>
+        <button id="friendsBtn" class="server-button friends-server-btn" type="button" title="Friends &amp; DMs" aria-label="Friends and private messages">◎</button>
+        <div id="friendsList" class="friends-list"></div>
+        <a id="nexusPageLink" class="server-button blobtown-server-btn" href="./nexus.html" title="Open Nexus" aria-label="Open Nexus">🌐</a>
+        <a id="dropzonePageLink" class="server-button dropzone-server-btn" href="./dropzone.html" title="Open nexus:dropzone" aria-label="Open nexus:dropzone">⬇</a>
+        <a id="rallyPageLink" class="server-button rally-server-btn" href="./drifting-sim-multiplayer.html" title="Open Drifting Sim 6 Multiplayer" aria-label="Open Drifting Sim 6 Multiplayer">🏁</a>
+        <a id="cozyDormLink" class="server-button" href="./cozy-dorm.html" title="Open Cozy Dorm" aria-label="Open Cozy Dorm">🛋️</a>
+        <a id="gardenfallLink" class="server-button" href="./garden-siege.html" title="Open Gardenfall" aria-label="Open Gardenfall">🌱</a>
+        <a id="sketchPartyLink" class="server-button" href="./retro-sketch.html" title="Open Sektor Sketch Party" aria-label="Open Sektor Sketch Party">✎</a>
+        <a id="slidesPageLink" class="server-button" href="./sektor-slides.html" title="Open Sektor Slides" aria-label="Open Sektor Slides">▤</a>
+      </div>
       <button id="newServerBtn" class="rail-add" title="Create server">+</button>
       <button id="joinServerBtn" class="rail-join" title="Join server">↗</button>
       <button id="logoutBtn" class="rail-user" type="button" title="Open profile" aria-label="Open profile"></button>

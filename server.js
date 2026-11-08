@@ -18,19 +18,22 @@ const gardenPlants = {
   starfruit:{cost:42,grow:38000,sell:78,kind:'crop',health:38,harvests:1},
   pumpkin:{cost:32,grow:33000,sell:52,kind:'crop',health:90,harvests:1},
   glowMushroom:{cost:28,grow:24000,sell:42,kind:'crop',health:28,harvests:999999,regrow:14000,reusable:true},
-  bamboo:{cost:30,grow:22000,sell:6,kind:'part',health:35,part:'bamboo',harvests:999999,regrow:14000,reusable:true},
-  reedTube:{cost:24,grow:18000,sell:4,kind:'part',health:28,part:'reed',harvests:999999,regrow:12000,reusable:true},
-  magazineVine:{cost:38,grow:25000,sell:8,kind:'part',health:35,part:'magazine',harvests:999999,regrow:15000,reusable:true},
-  pumpkinShell:{cost:31,grow:27000,sell:6,kind:'part',health:45,part:'shell',harvests:999999,regrow:16000,reusable:true},
-  blastCorn:{cost:45,grow:28000,sell:10,kind:'part',health:40,part:'blastCorn',harvests:999999,regrow:17000,reusable:true},
-  pollenPod:{cost:37,grow:26000,sell:6,kind:'part',health:32,part:'pollen',harvests:999999,regrow:15000,reusable:true},
-  triggerBloom:{cost:39,grow:25000,sell:7,kind:'part',health:34,part:'trigger',harvests:999999,regrow:15000,reusable:true},
-  thornVine:{cost:34,grow:23000,sell:7,kind:'part',health:65,part:'grip',harvests:999999,regrow:14000,reusable:true},
-  crystalBud:{cost:54,grow:36000,sell:12,kind:'part',health:35,part:'crystal',harvests:999999,regrow:20000,reusable:true},
+  clover:{cost:18,grow:16000,sell:25,kind:'crop',health:25,harvests:1},
+  lavender:{cost:36,grow:28000,sell:48,kind:'crop',health:32,harvests:1},
+  snowdrop:{cost:40,grow:30000,sell:54,kind:'crop',health:30,harvests:1},
+  bamboo:{cost:30,grow:22000,sell:6,kind:'part',health:35,part:'bamboo',harvests:1},
+  reedTube:{cost:24,grow:18000,sell:4,kind:'part',health:28,part:'reed',harvests:1},
+  magazineVine:{cost:38,grow:25000,sell:8,kind:'part',health:35,part:'magazine',harvests:1},
+  pumpkinShell:{cost:31,grow:27000,sell:6,kind:'part',health:45,part:'shell',harvests:1},
+  blastCorn:{cost:45,grow:28000,sell:10,kind:'part',health:40,part:'blastCorn',harvests:1},
+  pollenPod:{cost:37,grow:26000,sell:6,kind:'part',health:32,part:'pollen',harvests:1},
+  triggerBloom:{cost:39,grow:25000,sell:7,kind:'part',health:34,part:'trigger',harvests:1},
+  thornVine:{cost:34,grow:23000,sell:7,kind:'part',health:65,part:'grip',harvests:1},
+  crystalBud:{cost:54,grow:36000,sell:12,kind:'part',health:35,part:'crystal',harvests:1},
   epicSoil:{cost:75,grow:28000,kind:'soil',health:100,harvests:999999},
-  peashooter:{cost:55,grow:12000,kind:'defense',health:55,damage:8,range:7,rate:900,ammo:'peaBlaster',yield:10,harvests:999999,harvestCooldown:45000,reusable:true},
-  cornzooka:{cost:95,grow:18000,kind:'defense',health:75,damage:24,range:8,rate:2600,ammo:'cornZooka',yield:2,blast:2,harvests:999999,harvestCooldown:60000,reusable:true},
-  thornGuard:{cost:64,grow:26000,kind:'defense',health:220,damage:0,range:0,rate:0,harvests:999999},
+  peashooter:{cost:55,grow:12000,kind:'defense',health:55,damage:8,range:7,rate:900,ammo:'peaBlaster',yield:10,harvests:1},
+  cornzooka:{cost:95,grow:18000,kind:'defense',health:75,damage:24,range:8,rate:2600,ammo:'cornZooka',yield:2,blast:2,harvests:1},
+  thornGuard:{cost:64,grow:26000,kind:'defense',health:220,damage:0,range:0,rate:0,part:'grip',harvests:1},
 };
 const gardenGear={wateringCan:20,shovel:25,trowel:25,sprinkler:45,fertilizer:30};
 const gardenLands=[
@@ -40,15 +43,60 @@ const gardenLands=[
   {id:'epic',name:'Epic',cost:750,multiplier:2.1},
   {id:'legendary',name:'Legendary',cost:1600,multiplier:3},
 ];
-const gardenGrid={columns:6,rows:4};
+const gardenGrid={columns:6,rows:4,farmCount:8,farmRadius:70,mapRadius:95};
+const gardenWeatherTypes=['clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm'];
+const gardenWeatherPool=['clear','clear','clear','clear','clear','clear','clear','clear','rain','rain','aurora','solarFlare','fireworks','rainbow','snowstorm'];
+const gardenWeatherDurations={clear:10*60*1000,event:45*1000};
+const gardenSolidObjects=[
+  {x:0,z:-4.1,radius:1.35},{x:4.1,z:0,radius:1.35},{x:0,z:4.1,radius:1.35},
+  {x:-4.1,z:0,radius:1.35},{x:0,z:0,radius:1.5},
+];
 const gardenCycle={day:20*60*1000,night:2*60*1000};
 let nextPublicGarden=1;
 let gardenSaveBusy=false;
 let gardenSaveRequested=false;
 
+function gardenFarmOffset(farmIndex){
+  const angle=Math.PI/2-farmIndex*Math.PI*2/gardenGrid.farmCount;
+  const radialX=Math.cos(angle),radialZ=-Math.sin(angle),tangentX=Math.sin(angle),tangentZ=Math.cos(angle);
+  return {x:radialX*gardenGrid.farmRadius,z:radialZ*gardenGrid.farmRadius,angle,radialX,radialZ,tangentX,tangentZ};
+}
+
+function gardenFarmSpawn(farmIndex){
+  const offset=gardenFarmOffset(farmIndex);
+  return {x:offset.x-offset.radialX*5.7,z:offset.z-offset.radialZ*5.7};
+}
+
+function gardenPlotKey(tile){
+  return `${tile.farmIndex}:${tile.col}:${tile.row}`;
+}
+
+function gardenTileFromKey(value){
+  const parts=String(value||'').split(':').map(Number);
+  if(parts.length===2)parts.unshift(0);
+  return parts.length===3?gardenTile({farmIndex:parts[0],col:parts[1],row:parts[2]}):null;
+}
+
+function gardenPlotKeyFor(value){
+  const tile=typeof value==='string'?gardenTileFromKey(value):gardenTile(value);
+  return tile?gardenPlotKey(tile):'';
+}
+
+function assignGardenFarm(room,clientId,preferred){
+  const assigned=room.farmAssignments.get(clientId);
+  if(Number.isInteger(assigned)&&assigned>=0&&assigned<gardenGrid.farmCount)return assigned;
+  const occupied=new Set(Array.from(room.farmAssignments,([owner,index])=>owner!==clientId?index:-1).filter(index=>index>=0));
+  if(Number.isInteger(preferred)&&preferred>=0&&preferred<gardenGrid.farmCount&&!occupied.has(preferred)){
+    room.farmAssignments.set(clientId,preferred);return preferred;
+  }
+  for(let index=0;index<gardenGrid.farmCount;index++)if(!occupied.has(index)){room.farmAssignments.set(clientId,index);return index;}
+  return -1;
+}
+
 function gardenPlayerView(player) {
   return {
     id:player.id,clientId:player.clientId,name:player.name,color:player.color,x:player.x,z:player.z,
+    farmIndex:player.farmIndex,safetyOn:!!player.safetyOn,
     coins:player.coins,seeds:player.seeds,goods:player.goods,parts:player.parts,gear:player.gear,
     ammo:player.ammo,magazines:player.magazines,weapons:player.weapons,customGuns:player.customGuns,weapon:player.weapon,
     kills:player.kills,wateringCanCharges:player.wateringCanCharges,
@@ -85,10 +133,10 @@ function gardenBroadcast(room) {
 function createGardenRoom(id,mode) {
   const now=Date.now();
   return {
-    id,mode,players:new Map(),savedPlayers:new Map(),plants:new Map(),zombies:new Map(),
-    sprinklers:new Set(),soil:new Set(),ponds:[{x:-7,z:7},{x:7,z:7}],
+    id,mode,players:new Map(),savedPlayers:new Map(),farmAssignments:new Map(),plants:new Map(),zombies:new Map(),
+    sprinklers:new Set(),soil:new Set(),ponds:[{x:-8,z:4},{x:8,z:4}],
     createdAt:now,cycleStart:now,day:1,gardenHealth:100,lastSpawn:now,nextZombie:1,
-    weather:'clear',nextWeatherAt:now+45000,lastBroadcast:0,lastActivity:now,lastTick:now,
+    weather:'clear',nextWeatherAt:now+gardenWeatherDurations.clear,lastBroadcast:0,lastActivity:now,lastTick:now,
   };
 }
 
@@ -130,23 +178,33 @@ function restoreGardenRoom(record) {
   room.day=Math.max(1,Math.floor(Number(record.day)||1));
   room.gardenHealth=Math.max(0,Math.min(100,Number(record.gardenHealth)||100));
   room.nextZombie=Math.max(1,Math.floor(Number(record.nextZombie)||1));
-  room.weather=['clear','rain','aurora','solarFlare','fireworks'].includes(record.weather)?record.weather:'clear';
+    room.weather=gardenWeatherTypes.includes(record.weather)?record.weather:'clear';
   room.nextWeatherAt=Math.max(Date.now(),Number(record.nextWeatherAt)||room.nextWeatherAt);
+  const usedFarmIndices=new Set();
+  if(record.players&&typeof record.players==='object'&&!Array.isArray(record.players)){
+    for(const [clientId,player]of Object.entries(record.players)){
+      if(!/^[\w-]{8,64}$/.test(clientId)||!player||typeof player!=='object')continue;
+      let farmIndex=Number.isInteger(player.farmIndex)&&player.farmIndex>=0&&player.farmIndex<gardenGrid.farmCount&&!usedFarmIndices.has(player.farmIndex)?player.farmIndex:-1;
+      if(farmIndex<0)for(let index=0;index<gardenGrid.farmCount;index++)if(!usedFarmIndices.has(index)){farmIndex=index;break;}
+      if(farmIndex<0)continue;
+      const restoredPlayer={...player,farmIndex};
+      room.savedPlayers.set(clientId,restoredPlayer);room.farmAssignments.set(clientId,farmIndex);usedFarmIndices.add(farmIndex);
+    }
+  }
+  const ownerFarms=new Map(Array.from(room.savedPlayers.values(),player=>[player.id,player.farmIndex]));
   for(const plant of Array.isArray(record.plants)?record.plants:[]){
-    if(!gardenPlants[plant?.type]||!gardenTile({col:plant.col,row:plant.row}))continue;
-    room.plants.set(`${plant.col}:${plant.row}`,{
-      ...plant,health:Math.max(1,Number(plant.health)||1),harvestsLeft:Math.max(1,Number(plant.harvestsLeft)||1),
-      ownerId:String(plant.ownerId||''),reusable:!!gardenPlants[plant.type].reusable,
+    const farmIndex=Number.isInteger(plant?.farmIndex)?plant.farmIndex:ownerFarms.get(String(plant?.ownerId||''))??0;
+    const tile=gardenTile({farmIndex,col:plant?.col,row:plant?.row});
+    const definition=gardenPlants[plant?.type];
+    if(!definition||!tile)continue;
+    room.plants.set(gardenPlotKey(tile),{
+      ...plant,farmIndex:tile.farmIndex,x:tile.x,z:tile.z,health:Math.max(1,Number(plant.health)||1),harvestsLeft:Math.min(definition.harvests,Math.max(1,Number(plant.harvestsLeft)||1)),
+      ownerId:String(plant.ownerId||''),reusable:!!definition.reusable,
       fruitSize:Math.max(1,Number(plant.fruitSize)||1),
     });
   }
-  for(const key of Array.isArray(record.sprinklers)?record.sprinklers:[])if(/^[0-5]:[0-3]$/.test(key))room.sprinklers.add(key);
-  for(const key of Array.isArray(record.soil)?record.soil:[])if(/^[0-5]:[0-3]$/.test(key))room.soil.add(key);
-  if(record.players&&typeof record.players==='object'&&!Array.isArray(record.players)){
-    for(const [clientId,player]of Object.entries(record.players)){
-      if(/^[\w-]{8,64}$/.test(clientId)&&player&&typeof player==='object')room.savedPlayers.set(clientId,player);
-    }
-  }
+  for(const key of Array.isArray(record.sprinklers)?record.sprinklers:[]){const tile=gardenTileFromKey(key);if(tile)room.sprinklers.add(gardenPlotKey(tile));}
+  for(const key of Array.isArray(record.soil)?record.soil:[]){const tile=gardenTileFromKey(key);if(tile)room.soil.add(gardenPlotKey(tile));}
   room.lastActivity=Date.now();
   return room;
 }
@@ -193,8 +251,17 @@ function gardenRoomForSocket(socket) {
 }
 
 function gardenTile(value) {
-  if(!value||!Number.isInteger(value.col)||!Number.isInteger(value.row)||value.col<0||value.col>=gardenGrid.columns||value.row<0||value.row>=gardenGrid.rows)return null;
-  return {col:value.col,row:value.row,x:-4.5+value.col*1.8,z:-2.7+value.row*1.8};
+  const farmIndex=value?.farmIndex===undefined?0:value.farmIndex;
+  if(!Number.isInteger(farmIndex)||farmIndex<0||farmIndex>=gardenGrid.farmCount||!Number.isInteger(value.col)||!Number.isInteger(value.row)||value.col<0||value.col>=gardenGrid.columns||value.row<0||value.row>=gardenGrid.rows)return null;
+  const offset=gardenFarmOffset(farmIndex);
+  const radial=(value.col-2.5)*1.8,tangent=(value.row-1.5)*1.8;
+  return {farmIndex,col:value.col,row:value.row,x:offset.x+offset.radialX*radial+offset.tangentX*tangent,z:offset.z+offset.radialZ*radial+offset.tangentZ*tangent};
+}
+
+function gardenPositionBlocked(room,x,z){
+  if(Array.from(room.plants.values()).some(plant=>Math.hypot(x-plant.x,z-plant.z)<.82))return true;
+  if(gardenSolidObjects.some(object=>Math.hypot(x-object.x,z-object.z)<object.radius+.45))return true;
+  return room.ponds.some(pond=>Math.hypot(x-pond.x,z-pond.z)<1.9);
 }
 
 function gardenDamageZombie(room,zombie,damage,player) {
@@ -214,7 +281,7 @@ function handleGardenJoin(socket,message) {
   let roomId='';
   let mode=String(message.mode||'');
   if(mode==='public') {
-    room=Array.from(gardenRooms.values()).find(candidate=>candidate.mode==='public'&&candidate.players.size<8);
+    room=Array.from(gardenRooms.values()).find(candidate=>candidate.mode==='public'&&candidate.players.size<8&&(candidate.farmAssignments.has(clientId)||candidate.farmAssignments.size<gardenGrid.farmCount));
     if(!room){roomId='garden-public-'+nextPublicGarden++;room=createGardenRoom(roomId,'public');gardenRooms.set(roomId,room);}
   } else if(mode==='private-create') {
     for(let attempt=0;attempt<30;attempt++) {
@@ -231,11 +298,15 @@ function handleGardenJoin(socket,message) {
   } else {gardenSendError(socket,'Choose public matchmaking or a private garden.');return;}
   if(room.players.size>=8){gardenSendError(socket,'This garden is full (8 players maximum).');return;}
   const saved=room.mode==='private'?room.savedPlayers.get(clientId):null;
+  const farmIndex=assignGardenFarm(room,clientId,saved?.farmIndex);
+  if(farmIndex<0){gardenSendError(socket,'All eight farms are assigned in this garden.');return;}
+  const farmSpawn=gardenFarmSpawn(farmIndex),resumePosition=saved?.farmIndex===farmIndex;
   const id=saved?.id||randomUUID();
   room.savedPlayers.delete(clientId);
   const player={
     ...saved,id,clientId,name,color:typeof message.color==='string'&&/^#[0-9a-f]{6}$/i.test(message.color)?message.color:saved?.color||'#79d98a',
-    x:Number.isFinite(Number(saved?.x))?Number(saved.x):((room.players.size%4-1.5)*1.1),z:Number.isFinite(Number(saved?.z))?Number(saved.z):4.7,
+    farmIndex,
+    x:resumePosition&&Number.isFinite(Number(saved?.x))?Number(saved.x):farmSpawn.x,z:resumePosition&&Number.isFinite(Number(saved?.z))?Number(saved.z):farmSpawn.z,
     coins:Math.max(0,Number.isFinite(Number(saved?.coins))?Number(saved.coins):100),seeds:saved?.seeds&&typeof saved.seeds==='object'?saved.seeds:{},
     goods:saved?.goods&&typeof saved.goods==='object'?saved.goods:{},
     parts:saved?.parts&&typeof saved.parts==='object'?saved.parts:{},
@@ -246,7 +317,7 @@ function handleGardenJoin(socket,message) {
     landTier:gardenLands.some(land=>land.id===saved?.landTier)?saved.landTier:'common',
     wateringCanCharges:Math.max(0,Math.min(5,Number(saved?.wateringCanCharges)||((saved?.gear?.wateringCan)?5:0))),
     kills:Math.max(0,Number(saved?.kills)||0),socket,lastActions:Object.create(null),lastMove:0,lastShot:0,
-    weapon:saved?.weapon||'peaBlaster',
+    weapon:saved?.weapon||'peaBlaster',safetyOn:saved?.safetyOn===true,
   };
   player.magazines={peaBlaster:0,cornZooka:0};
   for(const gun of player.customGuns)player.magazines[gun.id]=0;
@@ -274,7 +345,7 @@ function handleGardenAction(socket,message) {
   if(action==='move') {
     if(now-player.lastMove<45)return;
     const x=Number(message.x),z=Number(message.z);
-    if(!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>9||z<-9||z>9)return;
+    if(!Number.isFinite(x)||!Number.isFinite(z)||Math.hypot(x,z)>gardenGrid.mapRadius||gardenPositionBlocked(room,x,z))return;
     player.x=x;player.z=z;player.lastMove=now;return;
   }
   if(action==='buy-seed') {
@@ -314,58 +385,60 @@ function handleGardenAction(socket,message) {
     player.coins-=next.cost;player.landTier=next.id;
   } else if(action==='plant') {
     const type=String(message.item||''),definition=Object.prototype.hasOwnProperty.call(gardenPlants,type)?gardenPlants[type]:null,tile=gardenTile(message.tile);
-    if(!definition||!tile||room.plants.has(`${tile.col}:${tile.row}`)){gardenSendError(socket,'Choose an empty garden plot and a valid seed.');return;}
+    if(!definition||!tile||tile.farmIndex!==player.farmIndex||room.plants.has(gardenPlotKey(tile))||room.sprinklers.has(gardenPlotKey(tile))){gardenSendError(socket,'Choose an empty plot on your farm and a valid seed.');return;}
     if(!(player.seeds[type]>0)){gardenSendError(socket,'Buy that seed before planting it.');return;}
     player.seeds[type]--;
     const soil=definition.kind==='soil';
     const boosted=Array.from(room.soil).some(key=>{
-      const [col,row]=key.split(':').map(Number);
-      return Math.abs(col-tile.col)<=1&&Math.abs(row-tile.row)<=1;
+      const soilTile=gardenTileFromKey(key);
+      return soilTile?.farmIndex===tile.farmIndex&&Math.abs(soilTile.col-tile.col)<=1&&Math.abs(soilTile.row-tile.row)<=1;
     });
     const land=gardenLands.find(item=>item.id===player.landTier)||gardenLands[0];
-    const plant={id:randomUUID(),type,col:tile.col,row:tile.row,x:tile.x,z:tile.z,ownerId:player.id,plantedAt:now,matureAt:now+definition.grow*(boosted?.7:1),health:definition.health,lastAttack:0,harvestsLeft:definition.harvests,regrow:definition.regrow||0,reusable:!!definition.reusable,fruitSize:definition.kind==='crop'?land.multiplier:1,mutation:'',lastHarvest:0};
-    room.plants.set(`${tile.col}:${tile.row}`,plant);
-    if(soil)room.soil.add(`${tile.col}:${tile.row}`);
+    const key=gardenPlotKey(tile);
+    const plant={id:randomUUID(),type,farmIndex:tile.farmIndex,col:tile.col,row:tile.row,x:tile.x,z:tile.z,ownerId:player.id,plantedAt:now,matureAt:now+definition.grow*(boosted?.7:1),health:definition.health,lastAttack:0,harvestsLeft:definition.harvests,regrow:definition.regrow||0,reusable:!!definition.reusable,fruitSize:definition.kind==='crop'?land.multiplier:1,mutation:'',lastHarvest:0};
+    room.plants.set(key,plant);
+    if(soil)room.soil.add(key);
   } else if(action==='harvest') {
-    const plant=room.plants.get(String(message.tile||''));
+    const key=gardenPlotKeyFor(message.tile),plant=room.plants.get(key);
     if(!plant||plant.ownerId!==player.id){gardenSendError(socket,'You can harvest your own plants.');return;}
     if(now<plant.matureAt){gardenSendError(socket,'That plant is still growing.');return;}
     const definition=gardenPlants[plant.type];
     if(definition.kind==='crop'){
-      const mutationMultiplier=plant.mutation==='aurora'?3:plant.mutation==='solarFlare'||plant.mutation==='fireworks'?2:1;
+      const mutationMultiplier=plant.mutation==='rainbow'?4:plant.mutation==='aurora'?3:plant.mutation==='solarFlare'||plant.mutation==='fireworks'?2:1;
       player.goods[plant.type]=(player.goods[plant.type]||0)+Math.max(1,Math.floor(mutationMultiplier));
     }else if(definition.kind==='part'){
       player.parts[definition.part]=(player.parts[definition.part]||0)+1;
       player.goods[plant.type]=(player.goods[plant.type]||0)+1;
     }else if(definition.kind==='defense'){
-      if(now-(plant.lastHarvest||0)<definition.harvestCooldown){gardenSendError(socket,'That defender needs time to regrow its ammo.');return;}
+      if(definition.part){player.parts[definition.part]=(player.parts[definition.part]||0)+1;room.plants.delete(key);gardenBroadcast(room);return;}
+      if(!definition.ammo||!definition.yield){gardenSendError(socket,'This defensive plant cannot be harvested. Use a shovel to remove it.');return;}
       player.ammo[definition.ammo]=Math.min(100,(player.ammo[definition.ammo]||0)+definition.yield);
       player.weapons[definition.ammo]=true;
-      plant.lastHarvest=now;plant.matureAt=now+definition.harvestCooldown;
+      room.plants.delete(key);
       gardenBroadcast(room);return;
     }else {gardenSendError(socket,'Epic soil cannot be harvested. Use your shovel to remove it.');return;}
     plant.harvestsLeft--;
     if(definition.reusable){plant.matureAt=now+(plant.regrow||definition.harvestCooldown||definition.grow);plant.plantedAt=now;plant.mutation='';}
     else if(plant.harvestsLeft>0){plant.matureAt=now+(plant.regrow||definition.grow);plant.plantedAt=now;plant.mutation='';}
-    else {room.plants.delete(`${plant.col}:${plant.row}`);if(definition.kind==='soil')room.soil.delete(`${plant.col}:${plant.row}`);}
+    else {room.plants.delete(key);if(definition.kind==='soil')room.soil.delete(key);}
   } else if(action==='water') {
-    const key=String(message.tile||''),plant=room.plants.get(key);
+    const key=gardenPlotKeyFor(message.tile),plant=room.plants.get(key);
     if(!player.gear.wateringCan){gardenSendError(socket,'Buy a watering can from Gear first.');return;}
     if(!plant||plant.ownerId!==player.id){gardenSendError(socket,'Select one of your plants to water.');return;}
     if(!(player.wateringCanCharges>0)){gardenSendError(socket,'Your watering can is empty. Refill it at a pond or in the rain.');return;}
     player.wateringCanCharges--;
     plant.matureAt=Math.max(now,plant.matureAt-12000);
   } else if(action==='shovel') {
-    const key=String(message.tile||''),plant=room.plants.get(key);
+    const key=gardenPlotKeyFor(message.tile),plant=room.plants.get(key);
     if(!player.gear.shovel){gardenSendError(socket,'Buy a shovel from Gear first.');return;}
     if(!plant||plant.ownerId!==player.id){gardenSendError(socket,'Select one of your plants to remove.');return;}
     room.plants.delete(key);
     room.soil.delete(key);
   } else if(action==='sprinkler') {
-    const tile=gardenTile(message.tile);
-    if(!tile||room.sprinklers.has(`${tile.col}:${tile.row}`)){gardenSendError(socket,'Choose an empty tile for the sprinkler.');return;}
+    const tile=gardenTile(message.tile),key=tile&&gardenPlotKey(tile);
+    if(!tile||tile.farmIndex!==player.farmIndex||room.plants.has(key)||room.sprinklers.has(key)){gardenSendError(socket,'Choose an empty plot on your farm for the sprinkler.');return;}
     if(!(player.gear.sprinkler>0)){gardenSendError(socket,'Buy a sprinkler from Gear first.');return;}
-    room.sprinklers.add(`${tile.col}:${tile.row}`);player.gear.sprinkler--;
+    room.sprinklers.add(key);player.gear.sprinkler--;
   } else if(action==='refill-water') {
     if(!player.gear.wateringCan){gardenSendError(socket,'Buy a watering can from Gear first.');return;}
     const atPond=room.ponds.some(pond=>Math.hypot(pond.x-player.x,pond.z-player.z)<=2.5);
@@ -374,12 +447,12 @@ function handleGardenAction(socket,message) {
   } else if(action==='move-plant') {
     const from=gardenTile(message.from),to=gardenTile(message.to);
     if(!player.gear.trowel){gardenSendError(socket,'Buy a trowel from Gear first.');return;}
-    if(!from||!to||room.plants.has(`${to.col}:${to.row}`)){gardenSendError(socket,'Choose an empty destination plot.');return;}
-    const plant=room.plants.get(`${from.col}:${from.row}`);
+    if(!from||!to||from.farmIndex!==player.farmIndex||to.farmIndex!==player.farmIndex||room.plants.has(gardenPlotKey(to))||room.sprinklers.has(gardenPlotKey(to))){gardenSendError(socket,'Choose an empty destination plot on your farm.');return;}
+    const fromKey=gardenPlotKey(from),toKey=gardenPlotKey(to),plant=room.plants.get(fromKey);
     if(!plant||plant.ownerId!==player.id){gardenSendError(socket,'You can move your own plants.');return;}
-    room.plants.delete(`${from.col}:${from.row}`);
-    room.plants.set(`${to.col}:${to.row}`,{...plant,col:to.col,row:to.row,x:to.x,z:to.z});
-    if(room.soil.delete(`${from.col}:${from.row}`))room.soil.add(`${to.col}:${to.row}`);
+    room.plants.delete(fromKey);
+    room.plants.set(toKey,{...plant,farmIndex:to.farmIndex,col:to.col,row:to.row,x:to.x,z:to.z});
+    if(room.soil.delete(fromKey))room.soil.add(toKey);
   } else if(action==='sell') {
     const item=String(message.item||'');
     let earned=0;
@@ -401,6 +474,8 @@ function handleGardenAction(socket,message) {
     const weapon=String(message.item||'');
     if(!player.weapons[weapon]&&!player.customGuns.some(gun=>gun.id===weapon)){gardenSendError(socket,'You have not crafted that weapon yet.');return;}
     player.weapon=weapon;
+  } else if(action==='safety') {
+    player.safetyOn=message.enabled===true;
   } else if(action==='reload') {
     const weapon=player.weapon,custom=player.customGuns.find(gun=>gun.id===weapon);
     if(!player.weapons[weapon]&&!custom){gardenSendError(socket,'Unlock or craft a weapon before reloading.');return;}
@@ -411,36 +486,46 @@ function handleGardenAction(socket,message) {
     const amount=Math.min(capacity-loaded,reserve);
     player.magazines[weapon]=loaded+amount;player.ammo[weapon]=reserve-amount;
   } else if(action==='shoot') {
+    if(player.safetyOn){gardenSendError(socket,'Safety is on. Press G to switch it off before firing.');return;}
     if(now-player.lastShot<450)return;
     const weapon=player.weapon,custom=player.customGuns.find(gun=>gun.id===weapon);
     if(!player.weapons[weapon]&&!custom){gardenSendError(socket,'Unlock or craft a weapon before firing.');return;}
-    const zombie=room.zombies.get(String(message.target||''));
     const range=custom?.range||(weapon==='cornZooka'?16:13);
-    if(!zombie||Math.hypot(zombie.x-player.x,zombie.z-player.z)>range){gardenSendError(socket,'That zombie is out of range.');return;}
+    let zombie=room.zombies.get(String(message.target||''));
+    if(!zombie){
+      const direction=message.direction||{},length=Math.hypot(Number(direction.x),Number(direction.z));
+      if(!Number.isFinite(length)||length<.5){gardenSendError(socket,'Aim your shot in a valid direction.');return;}
+      const dx=Number(direction.x)/length,dz=Number(direction.z)/length;
+      zombie=Array.from(room.zombies.values()).map(candidate=>{
+        const offsetX=candidate.x-player.x,offsetZ=candidate.z-player.z;
+        return {candidate,distance:offsetX*dx+offsetZ*dz,side:Math.abs(offsetX*dz-offsetZ*dx)};
+      }).filter(hit=>hit.distance>0&&hit.distance<=range&&hit.side<=1.1).sort((a,b)=>a.distance-b.distance)[0]?.candidate||null;
+    }
+    if(zombie&&Math.hypot(zombie.x-player.x,zombie.z-player.z)>range){gardenSendError(socket,'That zombie is out of range.');return;}
     if(!(player.magazines[weapon]>0)){gardenSendError(socket,'Your magazine is empty. Press R to reload.');return;}
     const damage=custom?.damage||(weapon==='cornZooka'?55:18);
     player.magazines[weapon]--;player.lastShot=now;
-    if(custom?.blast||weapon==='cornZooka'){
+    if(zombie&&(custom?.blast||weapon==='cornZooka')){
       for(const nearby of Array.from(room.zombies.values())){
         if(Math.hypot(nearby.x-zombie.x,nearby.z-zombie.z)<(custom?.blast||2))gardenDamageZombie(room,nearby,damage,player);
       }
-    }else gardenDamageZombie(room,zombie,damage,player);
+    }else if(zombie)gardenDamageZombie(room,zombie,damage,player);
   } else if(action==='craft') {
     const recipe=String(message.item||'');
     if(recipe==='customGun'){
       const requested=message.components;
-      const base=String(message.base||'');
+      const base=String(message.base||'peaBlaster');
       const partIds=['bamboo','reed','magazine','blastCorn','shell','pollen','trigger','grip','crystal'];
-      if(!['peaBlaster','cornZooka'].includes(base)||!player.weapons[base]){
-        gardenSendError(socket,'Harvest a Pea Shooter or Rocket Corn plant to unlock its weapon as a crafting base.');return;
+      if(!['peaBlaster','cornZooka'].includes(base)){
+        gardenSendError(socket,'Choose a valid custom gun receiver.');return;
       }
-      if(!Array.isArray(requested)||requested.length<1||requested.length>4||requested.some(part=>!partIds.includes(part))){
-        gardenSendError(socket,'Choose one to four valid plant components for your custom gun.');return;
+      if(!Array.isArray(requested)||requested.length!==4||requested.some(part=>!partIds.includes(part))){
+        gardenSendError(socket,'Choose exactly four plant attachments for your custom gun.');return;
       }
       const counts=Object.create(null);
       for(const part of requested)counts[part]=(counts[part]||0)+1;
       if((player.gear.fertilizer||0)<1||Object.entries(counts).some(([part,count])=>(player.parts[part]||0)<count)){
-        gardenSendError(socket,'You need all selected plant parts and one fertilizer.');return;
+        gardenSendError(socket,'You need one fertilizer and all four selected plant attachments.');return;
       }
       for(const [part,count]of Object.entries(counts)){
         player.parts[part]-=count;
@@ -457,7 +542,7 @@ function handleGardenAction(socket,message) {
       player.customGuns.push(gun);player.magazines[gun.id]=gun.capacity;player.ammo[gun.id]=0;player.weapon=gun.id;
       gardenBroadcast(room);return;
     }
-    gardenSendError(socket,'Harvest a Pea Shooter or Rocket Corn plant to unlock that weapon. Use its weapon as the base for custom crafting.');
+    gardenSendError(socket,'Choose four plant attachments and one fertilizer at the workbench.');
     return;
   } else {gardenSendError(socket,'Unknown garden action.');return;}
   gardenBroadcast(room);
@@ -479,9 +564,10 @@ function tickGardenRooms() {
     room.lastTick=now;
     if(now>=room.nextWeatherAt) {
       const previous=room.weather;
-      room.weather=['clear','rain','aurora','solarFlare','fireworks'][Math.floor(Math.random()*5)];
-      room.nextWeatherAt=now+45000;
-      if(room.weather!==previous&&['aurora','solarFlare','fireworks'].includes(room.weather)) {
+      const availableWeather=gardenWeatherPool.filter(weather=>weather!==previous);
+      room.weather=availableWeather[Math.floor(Math.random()*availableWeather.length)];
+      room.nextWeatherAt=now+(room.weather==='clear'?gardenWeatherDurations.clear:gardenWeatherDurations.event);
+      if(room.weather!==previous&&['aurora','solarFlare','fireworks','rainbow'].includes(room.weather)) {
         const candidates=Array.from(room.plants.values()).filter(plant=>plant.matureAt>now&&plant.mutation==='');
         for(const plant of candidates)if(Math.random()<.45)plant.mutation=room.weather;
       }
@@ -493,14 +579,19 @@ function tickGardenRooms() {
       continue;
     }
     if(isNight&&now-room.lastSpawn>=7000&&room.zombies.size<24) {
-      room.zombies.set(`z${room.nextZombie++}`,{id:`z${room.nextZombie-1}`,x:(Math.random()-.5)*8,z:-6.3,health:40,speed:.28+Math.random()*.12});
+      const guardian=Array.from(room.players.values())[Math.floor(Math.random()*room.players.size)];
+      const angle=Math.random()*Math.PI*2;
+      const spawnX=guardian.x+Math.cos(angle)*8,spawnZ=guardian.z+Math.sin(angle)*8;
+      const spawnScale=Math.min(1,(gardenGrid.mapRadius-2)/(Math.hypot(spawnX,spawnZ)||1));
+      room.zombies.set(`z${room.nextZombie++}`,{id:`z${room.nextZombie-1}`,x:spawnX*spawnScale,z:spawnZ*spawnScale,health:40,speed:.28+Math.random()*.12});
       room.lastSpawn=now;
     }
     for(const plant of room.plants.values()) {
       if(now<plant.matureAt&&room.weather==='rain')plant.matureAt-=delta*.5;
+      if(now<plant.matureAt&&room.weather==='snowstorm')plant.matureAt+=delta*.25;
       if(now<plant.matureAt&&Array.from(room.sprinklers).some(key=>{
-        const [col,row]=key.split(':').map(Number);
-        return Math.abs(col-plant.col)<=1&&Math.abs(row-plant.row)<=1;
+        const tile=gardenTileFromKey(key);
+        return tile?.farmIndex===plant.farmIndex&&Math.abs(tile.col-plant.col)<=1&&Math.abs(tile.row-plant.row)<=1;
       }))plant.matureAt-=delta;
       const definition=gardenPlants[plant.type];
       if(definition.kind!=='defense'||!isNight||now-plant.lastAttack<definition.rate)continue;
@@ -511,7 +602,7 @@ function tickGardenRooms() {
       const target=Array.from(room.plants.values()).sort((a,b)=>Math.hypot(zombie.x-a.x,zombie.z-a.z)-Math.hypot(zombie.x-b.x,zombie.z-b.z))[0];
       if(target&&Math.hypot(zombie.x-target.x,zombie.z-target.z)<.65) {
         target.health-=delta*.006;
-        if(target.health<=0){const key=`${target.col}:${target.row}`;room.plants.delete(key);room.soil.delete(key);}
+        if(target.health<=0){const key=gardenPlotKey(target);room.plants.delete(key);room.soil.delete(key);}
       } else if(target) {
         const distance=Math.hypot(target.x-zombie.x,target.z-zombie.z)||1;
         zombie.x+=(target.x-zombie.x)/distance*zombie.speed*delta/1000;

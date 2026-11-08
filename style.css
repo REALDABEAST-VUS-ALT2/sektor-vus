@@ -552,8 +552,25 @@ body { background-image:radial-gradient(circle at 18% 0%,rgba(101,230,173,.08),t
 .friend-home-empty { padding:24px 10px; color:#718b8e; text-align:center; }
 @media(max-width:800px) { .app-view { grid-template-columns:64px 214px minmax(0,1fr); } }
 
-.server-list { flex:0 0 auto; max-height:107px; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
-.server-list > .server-button { flex:0 0 48px; }
+.rail-scroll { display:flex; flex:1 1 auto; flex-direction:column; align-items:center; gap:12px; width:100%; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.rail-scroll::-webkit-scrollbar { width:5px; }.rail-scroll::-webkit-scrollbar-thumb { border-radius:5px; background:rgba(143,154,170,.45); }
+.server-list { flex:0 0 auto; max-height:none; overflow:visible; }
+.rail-scroll > .server-button,.server-list > .server-button { flex:0 0 48px; min-height:48px; }
+.server-rail > .rail-logo,.server-rail > .rail-add,.server-rail > .rail-join,.server-rail > .rail-user { flex:0 0 48px; }
+:root[data-embed="computer"] .app-view { grid-template-columns:42px minmax(0,1fr); }
+:root[data-embed="computer"] .channel-sidebar,:root[data-embed="computer"] .members-sidebar,:root[data-embed="computer"] .youtube-player { display:none !important; }
+:root[data-embed="computer"] .server-rail { gap:6px; padding:7px 0; }
+:root[data-embed="computer"] .rail-logo,:root[data-embed="computer"] .rail-add,:root[data-embed="computer"] .rail-join,:root[data-embed="computer"] .rail-user { width:34px; height:34px; flex-basis:34px; border-radius:11px; }
+:root[data-embed="computer"] .rail-scroll { gap:6px; }
+:root[data-embed="computer"] .rail-scroll > .server-button,:root[data-embed="computer"] .server-list > .server-button { width:34px; height:34px; min-height:34px; flex-basis:34px; border-radius:11px; }
+:root[data-embed="computer"] .chat-header { min-height:44px; padding:0 12px; }
+:root[data-embed="computer"] .chat-header #channelTopic,:root[data-embed="computer"] .chat-header #channelPermission { display:none; }
+:root[data-embed="computer"] .messages { padding:8px 12px; }
+:root[data-embed="computer"] .message { gap:8px; padding:5px 0; }
+:root[data-embed="computer"] .message-avatar { width:28px; height:28px; flex-basis:28px; }
+:root[data-embed="computer"] .message-form { gap:5px; padding:7px; }
+:root[data-embed="computer"] .message-form #messageInput { min-height:34px; max-height:72px; padding:7px 9px; font-size:12px; }
+:root[data-embed="computer"] .message-form button { min-width:34px; height:34px; padding:0 8px; }
 .app-view.friends-view { grid-template-columns:84px minmax(0,1fr); }
 .app-view.friends-view .channel-sidebar { display:none; }
 .app-view.friends-view .youtube-player { display:none; }

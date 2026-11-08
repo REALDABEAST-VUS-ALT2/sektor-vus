@@ -393,11 +393,12 @@ function furnitureGroupFromObject(object) {
   return null;
 }
 function openComputerApp(appId) {
-  const path=appId==='sektor'?'./VUS-Servers.html':'./retro-sketch.html';
+  const path=appId==='sektor'?'./VUS-Servers.html?embed=computer':'./retro-sketch.html';
   computerAppWindow.hidden=false;
   computerAppWindow.setAttribute('aria-hidden','false');
   state.computerScreen.visible=false;
   if(computerAppFrame.getAttribute('src')!==path)computerAppFrame.src=path;
+  positionComputerApp();
 }
 function closeComputerApp() {
   computerAppWindow.hidden=true;
@@ -596,6 +597,10 @@ function renderRadioPlaylist(){
 }
 function positionComputerApp(){
   if(computerAppWindow.hidden||!state.usingComputer)return;
+  camera.position.set(localAvatar.position.x,1.62,localAvatar.position.z);
+  camera.rotation.order='YXZ';
+  camera.rotation.set(state.pitch,state.yaw,0);
+  camera.updateMatrixWorld();
   const bounds=canvas.getBoundingClientRect();
   const worldBounds=canvas.parentElement.getBoundingClientRect();
   const halfWidth=.74,halfHeight=.41;
