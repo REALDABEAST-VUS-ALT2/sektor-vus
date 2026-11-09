@@ -1,9 +1,9 @@
-const CACHE_NAME='gardenfall-offline-v20261109-stale-cache-fix-1';
+const CACHE_NAME='gardenfall-offline-v20261109-upgrade-visual-fix-1';
 const APP_FILES=[
-  './garden-siege.html?v=20261109-stale-cache-fix-1',
-  './garden-siege.css?v=20261109-stale-cache-fix-1',
-  './garden-siege.js?v=20261109-stale-cache-fix-1',
-  './garden-auth.js?v=20261109-stale-cache-fix-1',
+  './garden-siege.html?v=20261109-upgrade-visual-fix-1',
+  './garden-siege.css?v=20261109-upgrade-visual-fix-1',
+  './garden-siege.js?v=20261109-upgrade-visual-fix-1',
+  './garden-auth.js?v=20261109-upgrade-visual-fix-1',
   './vendor/three.core.js',
   './vendor/three.module.js',
 ];
@@ -48,7 +48,7 @@ self.addEventListener('fetch',event=>{
         const network=await fetch(request,{cache:'no-store'});
         return network;
       }catch(error){
-        return caches.match('./garden-siege.html?v=20261109-stale-cache-fix-1') || caches.match('./garden-siege.html') || Response.error();
+        return caches.match('./garden-siege.html?v=20261109-upgrade-visual-fix-1') || caches.match('./garden-siege.html') || Response.error();
       }
     }
     const cached=await caches.match(request,{ignoreSearch:false});

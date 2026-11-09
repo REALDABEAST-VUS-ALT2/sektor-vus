@@ -39,12 +39,12 @@ const nightLanterns=[
 const GARDEN_COIN_CAP = 1_000_000_000;
 const state={
   socket:null,roomId:'',playerId:'',roomMode:'',gardenAccount:null,offline:false,day:1,phase:'day',phaseRemaining:0,phaseDeadline:0,weatherDeadline:0,gardenHealth:100,
-  players:new Map(),plants:new Map(),seedDrops:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),seedDropMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),
+  players:new Map(),plants:new Map(),seedDrops:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),seedDropMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),droneMeshes:new Map(),
   selectedTile:null,selectedSeed:'',selectedShop:'seeds',seedCategory:'all',keys:new Set(),x:0,z:4.7,lastMove:0,
   yaw:0,pitch:-.28,velocity:new THREE.Vector2(),targetX:0,targetZ:4.7,weather:'clear',ponds:[],jumpHeight:0,jumpVelocity:0,
   weatherRemaining:0,weatherKnown:false,clientId:'',trowelFrom:null,nearbyStation:'',ziplineTarget:'',ziplineRide:null,pendingPlantKey:'',cheatBuffer:'',devMenuOpen:false,
   dismissedStation:'',sprinklerExpiry:new Map(),shopStock:{seeds:{},gear:{},weapons:{}},shopRestockAt:0,shopRestockNotified:false,restockBannerTimer:0,lanterns:new Map(),lanternMeshes:new Map(),
-  seedSignature:null,shopSignature:null,partsSignature:null,weaponSignature:'',weaponClock:0,weaponKick:0,mapDrawElapsed:0,disposed:false,
+  seedSignature:null,shopSignature:null,partsSignature:null,weaponSignature:'',weaponClock:0,weaponKick:0,mapDrawElapsed:0,weatherFrameDisabled:false,mutationFramesDisabled:false,offlineFrameWarned:false,disposed:false,
 };
 const seeds=[
   {id:'clover',name:'Clover Patch',cost:22,kind:'crop',description:'Quick-growing lucky crop · sell for 25'},
@@ -130,7 +130,7 @@ let offlineWorldElapsed=0;
 let offlineSaveElapsed=0;
 let gardenAuthMode='login';
 
-const farmGrid={count:8,radius:70,mapRadius:95};
+const farmGrid={count:8,rows:4,maxLayers:10,radius:70,mapRadius:95};
 function farmOffset(farmIndex){
   const angle=Math.PI/2-farmIndex*Math.PI*2/farmGrid.count;
   const radialX=Math.cos(angle),radialZ=-Math.sin(angle),tangentX=Math.sin(angle),tangentZ=Math.cos(angle);
@@ -141,7 +141,7 @@ function gardenPlotKey(tile){return`${tile.farmIndex}:${tile.col}:${tile.row}`;}
 function gardenTileFromKey(value){
   const parts=String(value||'').split(':').map(Number);
   if(parts.length===2)parts.unshift(0);
-  if(parts.length!==3||!parts.every(Number.isInteger)||parts[0]<0||parts[0]>=farmGrid.count||parts[1]<0||parts[1]>=6||parts[2]<0||parts[2]>=4)return null;
+  if(parts.length!==3||!parts.every(Number.isInteger)||parts[0]<0||parts[0]>=farmGrid.count||parts[1]<0||parts[1]>=6||parts[2]<0||parts[2]>=farmGrid.rows+farmGrid.maxLayers)return null;
   const offset=farmOffset(parts[0]),radial=(parts[1]-2.5)*1.8,tangent=(parts[2]-1.5)*1.8;
   const position=farmLocalPosition(offset,radial,tangent);
   return {farmIndex:parts[0],col:parts[1],row:parts[2],...position};
@@ -180,6 +180,8 @@ const garden=new THREE.Group();scene.add(garden);
 const plotMaterial=new THREE.MeshStandardMaterial({color:0x704b31,roughness:1});
 const plotEdgeMaterial=new THREE.MeshStandardMaterial({color:0x9a7045,roughness:1});
 const plotMeshes=[];
+const farmLayerRows=new Map();
+const farmLayerFences=new Map();
 const farmGroundMaterials=[0x658449,0x71884b,0x5e7d49,0x74884e].map(color=>new THREE.MeshStandardMaterial({color,roughness:1}));
 const farmFenceMaterial=new THREE.MeshStandardMaterial({color:0x805b3d,roughness:1});
 for(let farmIndex=0;farmIndex<farmGrid.count;farmIndex++){
@@ -193,7 +195,7 @@ for(let farmIndex=0;farmIndex<farmGrid.count;farmIndex++){
     {w:.18,h:.22,d:3.1,x:-6.8,z:3.55},
     {w:.18,h:.22,d:10.4,x:6.8,z:0},
   ];
-  for(const piece of borderPieces){const fence=new THREE.Mesh(new THREE.BoxGeometry(piece.w,piece.h,piece.d),farmFenceMaterial);const position=farmLocalPosition(offset,piece.x,piece.z);fence.position.set(position.x,-.04,position.z);fence.rotation.y=offset.angle;garden.add(fence);}
+  for(const piece of borderPieces){const fence=new THREE.Mesh(new THREE.BoxGeometry(piece.w,piece.h,piece.d),farmFenceMaterial);const position=farmLocalPosition(offset,piece.x,piece.z);fence.position.set(position.x,-.04,position.z);fence.rotation.y=offset.angle;garden.add(fence);if(piece.x===0&&piece.z>0)farmLayerFences.set(farmIndex,fence);}
   const signCanvas=document.createElement('canvas');signCanvas.width=256;signCanvas.height=64;
   const signContext=signCanvas.getContext('2d');signContext.fillStyle='#19251e';signContext.fillRect(0,0,256,64);
   signContext.strokeStyle='#c9d995';signContext.lineWidth=4;signContext.strokeRect(3,3,250,58);
@@ -210,6 +212,37 @@ for(let farmIndex=0;farmIndex<farmGrid.count;farmIndex++){
 }
 const selectionHighlight=new THREE.Mesh(new THREE.BoxGeometry(1.82,.045,1.82),new THREE.MeshBasicMaterial({color:0xf2d56c,transparent:true,opacity:.65}));
 selectionHighlight.visible=false;garden.add(selectionHighlight);
+function syncFarmLayers(players=state.players.values()){
+  for(const player of players){
+    const farmIndex=Number(player.farmIndex);
+    if(!Number.isInteger(farmIndex)||farmIndex<0||farmIndex>=farmGrid.count)continue;
+    const count=Math.max(0,Math.min(farmGrid.maxLayers,Math.floor(Number(player.farmLayers)||0)));
+    const rows=farmLayerRows.get(farmIndex)||new Set(),offset=farmOffset(farmIndex);
+    farmLayerFences.get(farmIndex).visible=count===0;
+    for(let layer=0;layer<count;layer++){
+      const row=farmGrid.rows+layer;
+      if(rows.has(row))continue;
+      const groundCenter=5.1+(layer+.5)*1.8,groundPosition=farmLocalPosition(offset,0,groundCenter);
+      const ground=new THREE.Mesh(new THREE.BoxGeometry(13.4,.04,1.8),farmGroundMaterials[farmIndex%farmGroundMaterials.length]);
+      ground.position.set(groundPosition.x,-.135,groundPosition.z);ground.rotation.y=offset.angle;ground.receiveShadow=true;garden.add(ground);
+      for(let col=0;col<6;col++){
+        const radial=(col-2.5)*1.8,tangent=(row-1.5)*1.8,position=farmLocalPosition(offset,radial,tangent);
+        const tile=new THREE.Mesh(new THREE.BoxGeometry(1.7,.12,1.7),plotMaterial.clone());
+        tile.position.set(position.x,-.04,position.z);tile.rotation.y=offset.angle;tile.receiveShadow=true;tile.userData={farmIndex,col,row};garden.add(tile);plotMeshes.push(tile);
+        const edge=new THREE.Mesh(new THREE.BoxGeometry(1.78,.06,1.78),plotEdgeMaterial);
+        edge.position.set(position.x,-.12,position.z);edge.rotation.y=offset.angle;garden.add(edge);
+      }
+      for(const side of [-1,1]){
+        const sidePosition=farmLocalPosition(offset,side*6.8,groundCenter),sideFence=new THREE.Mesh(new THREE.BoxGeometry(.18,.22,1.8),farmFenceMaterial);
+        sideFence.position.set(sidePosition.x,-.04,sidePosition.z);sideFence.rotation.y=offset.angle;garden.add(sideFence);
+      }
+      const fencePosition=farmLocalPosition(offset,0,5.1+(layer+1)*1.8),outerFence=new THREE.Mesh(new THREE.BoxGeometry(13.6,.22,.18),farmFenceMaterial);
+      outerFence.position.set(fencePosition.x,-.04,fencePosition.z);outerFence.rotation.y=offset.angle;garden.add(outerFence);
+      rows.add(row);
+    }
+    farmLayerRows.set(farmIndex,rows);
+  }
+}
 function marketStall(x,z,title,primaryColor,rotation=0,secondaryColor=0xffffff){
   const stall=new THREE.Group();
   const wood=new THREE.MeshStandardMaterial({color:0x7d5636,roughness:.92});
@@ -449,39 +482,32 @@ function addSpecialPlantSignature(group,type){
 function addHarvestableFruit(group,type,count,mutation=''){
   const total=Math.max(0,Number(count)||0);
   if(total===0)return;
-  const fruitMount=new THREE.Group();
-  const mountY=type==='apple'?2.2:type==='berry'?0.85:type==='starfruit'?2.3:type==='nightshade'?2.0:type==='dragonfruit'?2.55:1.1;
-  fruitMount.position.set(0,mountY,0);
-  group.add(fruitMount);
-
-  const fruitAnchor=new THREE.Group();
-  fruitAnchor.position.set(0,0,0);
-  fruitMount.add(fruitAnchor);
-
-  const stemBridge=new THREE.Mesh(
-    new THREE.CylinderGeometry(.028,.032,.6,8),
-    new THREE.MeshStandardMaterial({color:0x5b3d2d,roughness:.75})
-  );
-  stemBridge.position.set(0,.12,0);
-  fruitAnchor.add(stemBridge);
-
-  const clusterRadius=type==='apple'?0.68:type==='berry'?0.28:type==='starfruit'?0.56:type==='nightshade'?0.62:type==='dragonfruit'?0.46:0.62;
+  const fruitPositions={
+    apple:[[0,2.75,.78],[-.61,2.48,.54],[.62,2.58,-.52],[-.24,3.3,-.55],[.83,2.32,.06]],
+    berry:[[.08,.72,.28],[-.25,.61,.18],[.2,.46,-.27],[-.12,.78,-.22],[.31,.57,-.04]],
+    starfruit:[[.31,1.86,.34],[-.38,1.98,.25],[.34,1.62,-.3],[-.3,1.72,-.35]],
+    nightshade:[[.08,2.28,.6],[-.49,2.26,.33],[.48,2.34,-.32],[-.08,2.78,-.37]],
+    dragonfruit:[[.2,.82,.03],[-.2,1.38,.03],[.2,1.92,.03],[-.2,2.47,.03]],
+  };
+  const positions=fruitPositions[type]||[[0,1.1,.35],[.3,1.2,-.2],[-.3,1.2,-.2]];
   const mutationPalette={aurora:0x5ff2d1,solarFlare:0xff9b45,fireworks:0xff67bf,rainbow:0xc98cff};
   const mutationColor=mutation&&mutationPalette[mutation]?new THREE.Color(mutationPalette[mutation]):null;
   for(let index=0;index<total;index++){
-    const angle=index*(Math.PI*2/Math.max(2,total)),ring=(index%2===0?0.72:1.02)+(index%3)*0.12;
-    const y=type==='apple'?0.04+(index%3)*.12:type==='berry'?-0.02+(index%3)*.08:type==='starfruit'?0.08+(index%2)*.12:type==='nightshade'?0.06+(index%3)*.14:type==='dragonfruit'?-0.02+(index%2)*.08:0.08+(index%2)*.12;
-    const x=Math.cos(angle)*ring*clusterRadius,z=Math.sin(angle)*ring*clusterRadius;
+    const [x,y,z]=positions[index%positions.length];
+    const angle=index*(Math.PI*2/Math.max(2,total));
     const tint=(baseColor)=>mutationColor?new THREE.Color(baseColor).lerp(mutationColor,0.55):new THREE.Color(baseColor);
     if(type==='apple'){
       const apple=new THREE.Mesh(new THREE.SphereGeometry(.18,14,12),new THREE.MeshStandardMaterial({color:tint(index%2?0xd94335:0xe9873c).getHex(),roughness:.36,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
-      apple.scale.set(1.25,1.45,1.25);apple.position.set(x,y,z);fruitAnchor.add(apple);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.02,.025,.14,6),new THREE.MeshStandardMaterial({color:0x60452b}));stem.position.set(x,y+.12,z);fruitAnchor.add(stem);
-      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),new THREE.MeshStandardMaterial({color:0x73ad4e}));leaf.scale.set(1.25,.35,.75);leaf.position.set(x+.08,y+.18,z);fruitAnchor.add(leaf);
+      apple.scale.set(1.1,1.2,1.1);apple.position.set(x,y,z);group.add(apple);
+      const twigStart=new THREE.Vector3(x,y-.1,z),twigEnd=new THREE.Vector3(x*.58,y-.16,z*.58),twigVector=twigEnd.clone().sub(twigStart);
+      const twig=new THREE.Mesh(new THREE.CylinderGeometry(.018,.026,twigVector.length(),6),new THREE.MeshStandardMaterial({color:0x60452b}));
+      twig.position.copy(twigStart).add(twigEnd).multiplyScalar(.5);twig.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),twigVector.normalize());group.add(twig);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.016,.022,.1,6),new THREE.MeshStandardMaterial({color:0x60452b}));stem.position.set(x,y+.1,z);group.add(stem);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),new THREE.MeshStandardMaterial({color:0x73ad4e}));leaf.scale.set(1.25,.35,.75);leaf.position.set(x+.07,y+.15,z);group.add(leaf);
     }else if(type==='berry'){
       const berry=new THREE.Mesh(new THREE.SphereGeometry(.085,10,8),new THREE.MeshStandardMaterial({color:tint(index%2?0xb52a67:0x8f1f4f).getHex(),roughness:.28,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.42:0}));
-      berry.position.set(x,y,z);fruitAnchor.add(berry);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.014,.12,6),new THREE.MeshStandardMaterial({color:0x4c7c45}));stem.position.set(x,y+.08,z);fruitAnchor.add(stem);
+      berry.position.set(x,y,z);group.add(berry);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.014,.09,6),new THREE.MeshStandardMaterial({color:0x4c7c45}));stem.position.set(x,y+.07,z);group.add(stem);
     }else if(type==='starfruit'){
       const starShape=new THREE.Shape();
       for(let point=0;point<10;point++){
@@ -489,20 +515,24 @@ function addHarvestableFruit(group,type,count,mutation=''){
       }
       starShape.closePath();
       const star=new THREE.Mesh(new THREE.ExtrudeGeometry(starShape,{depth:.08,bevelEnabled:true,bevelSegments:1,steps:1,bevelSize:.012,bevelThickness:.012}),new THREE.MeshStandardMaterial({color:tint(index%2?0xf4d049:0xf0a82f).getHex(),roughness:.35,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.46:0}));
-      star.position.set(x,y,z);star.rotation.x=Math.PI/2;star.rotation.z=angle;fruitAnchor.add(star);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.016,.12,6),new THREE.MeshStandardMaterial({color:0x5b3c20}));stem.position.set(x,y+.06,z);fruitAnchor.add(stem);
+      star.position.set(x,y,z);star.rotation.x=Math.PI/2;star.rotation.z=angle;group.add(star);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.016,.12,6),new THREE.MeshStandardMaterial({color:0x5b3c20}));stem.position.set(x,y+.06,z);group.add(stem);
     }else if(type==='nightshade'){
       const berry=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:tint(index%2?0x5a3a88:0x7e56c9).getHex(),roughness:.32,metalness:.15,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
-      berry.scale.set(1,.9,1.05);berry.position.set(x,y,z);fruitAnchor.add(berry);
-      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),new THREE.MeshStandardMaterial({color:0x4d7f50}));leaf.scale.set(1.2,.3,.8);leaf.position.set(x+.1,y+.12,z);fruitAnchor.add(leaf);
+      berry.scale.set(1,.9,1.05);berry.position.set(x,y,z);group.add(berry);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),new THREE.MeshStandardMaterial({color:0x4d7f50}));leaf.scale.set(1.2,.3,.8);leaf.position.set(x+.1,y+.12,z);group.add(leaf);
     }else if(type==='dragonfruit'){
       const fruit=new THREE.Mesh(new THREE.CapsuleGeometry(.16,.24,7,10),new THREE.MeshStandardMaterial({color:tint(index%2?0xefd3d7:0xd55f88).getHex(),roughness:.28,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
-      fruit.rotation.z=Math.PI/2;fruit.position.set(x,y,z);fruitAnchor.add(fruit);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.016,.12,6),new THREE.MeshStandardMaterial({color:0x4b693c}));stem.position.set(x,y+.1,z);fruitAnchor.add(stem);
+      fruit.rotation.z=Math.PI/2;fruit.position.set(x,y,z);group.add(fruit);
+      const branch=new THREE.Mesh(new THREE.CylinderGeometry(.025,.035,.2,6),new THREE.MeshStandardMaterial({color:0x4b8c4b}));branch.position.set(x*.42,y,z);branch.rotation.z=x>0?-.75:.75;group.add(branch);
+      for(let bract=0;bract<4;bract++){
+        const a=bract*Math.PI/2,leaf=new THREE.Mesh(new THREE.ConeGeometry(.045,.15,5),new THREE.MeshStandardMaterial({color:0x66ae57}));
+        leaf.position.set(x+Math.cos(a)*.16,y+.04,z+Math.sin(a)*.16);leaf.rotation.z=Math.cos(a)*-.8;leaf.rotation.x=Math.sin(a)*.8;group.add(leaf);
+      }
     }else{
       const fruit=new THREE.Mesh(new THREE.SphereGeometry(.2,14,12),new THREE.MeshStandardMaterial({color:tint(index%2?0xed5598:0xc93382).getHex(),roughness:.3,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.44:0}));
-      fruit.scale.set(.9,1.4,.9);fruit.position.set(x,y,z);fruitAnchor.add(fruit);
-      for(let bract=0;bract<4;bract++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.06,.2,6),new THREE.MeshStandardMaterial({color:0x71b44b}));leaf.position.set(x+Math.cos(bract*Math.PI/2)*.18,y+.12,z+Math.sin(bract*Math.PI/2)*.18);leaf.rotation.z=Math.cos(bract*Math.PI/2)*-.9;leaf.rotation.x=Math.sin(bract*Math.PI/2)*.9;fruitAnchor.add(leaf);}
+      fruit.scale.set(.9,1.4,.9);fruit.position.set(x,y,z);group.add(fruit);
+      for(let bract=0;bract<4;bract++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.06,.2,6),new THREE.MeshStandardMaterial({color:0x71b44b}));leaf.position.set(x+Math.cos(bract*Math.PI/2)*.18,y+.12,z+Math.sin(bract*Math.PI/2)*.18);leaf.rotation.z=Math.cos(bract*Math.PI/2)*-.9;leaf.rotation.x=Math.sin(bract*Math.PI/2)*.9;group.add(leaf);}
     }
   }
 }
@@ -881,6 +911,39 @@ function makeLantern(){
   group.userData.lantern={glow};
   return group;
 }
+function makeScoutDrone(){
+  const group=new THREE.Group(),shell=new THREE.MeshStandardMaterial({color:0x9bc8b1,metalness:.45,roughness:.3}),dark=new THREE.MeshStandardMaterial({color:0x344c46,metalness:.55,roughness:.32});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(.24,12,8),shell);body.scale.set(1.35,.72,1);group.add(body);
+  const lens=new THREE.Mesh(new THREE.SphereGeometry(.085,10,8),new THREE.MeshBasicMaterial({color:0x8cfff0}));lens.position.set(0,-.015,-.27);group.add(lens);
+  const rotors=[];
+  for(const x of [-.34,.34])for(const z of [-.32,.32]){
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(.46,.045,.055),dark);arm.position.set(x*.48,.035,z*.48);arm.rotation.y=Math.atan2(z,x);group.add(arm);
+    const rotor=new THREE.Group();rotor.position.set(x,.07,z);group.add(rotor);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.08,8),shell);rotor.add(hub);
+    const blade=new THREE.Mesh(new THREE.BoxGeometry(.42,.025,.055),dark);rotor.add(blade);
+    const cross=blade.clone();cross.rotation.y=Math.PI/2;rotor.add(cross);rotors.push(rotor);
+  }
+  group.userData.rotors=rotors;return group;
+}
+function syncScoutDrones(){
+  const expected=new Set(),time=performance.now()*.001;
+  for(const player of state.players.values()){
+    const count=Math.max(0,Math.min(2,Math.floor(Number(player.gear?.drone)||0)));
+    const isLocal=player.id===state.playerId,baseX=isLocal?state.x:player.x,baseZ=isLocal?state.z:player.z;
+    for(let index=0;index<count;index++){
+      const id=`${player.id}:${index}`;expected.add(id);
+      let drone=state.droneMeshes.get(id);
+      if(!drone){drone=makeScoutDrone();state.droneMeshes.set(id,drone);scene.add(drone);}
+      const angle=time*.72+index*Math.PI,orbit=1.05+index*.32;
+      drone.position.set(baseX+Math.cos(angle)*orbit,3.8+Math.sin(time*1.6+index)*.16+index*.28,baseZ+Math.sin(angle)*orbit);
+      drone.rotation.y=-angle+Math.PI/2;
+    }
+  }
+  for(const [id,drone]of state.droneMeshes)if(!expected.has(id)){disposeGroup(drone);state.droneMeshes.delete(id);}
+}
+function animateScoutDrones(delta){
+  for(const drone of state.droneMeshes.values())for(const rotor of drone.userData.rotors)rotor.rotation.y+=delta*22;
+}
 function animateSprinklers(delta){
   for(const mesh of state.sprinklerMeshes?.values()||[]){
     const sprinkler=mesh.userData.sprinkler;if(!sprinkler)continue;
@@ -900,20 +963,27 @@ function animateLanterns(){
 }
 
 function updateWorld(){
+  syncFarmLayers(state.players.values());
+  syncScoutDrones();
+  const visibleMutations=new Map(Array.from(state.plants.values())
+    .filter(plant=>plant.mutation)
+    .sort((a,b)=>String(a.id).localeCompare(String(b.id)))
+    .slice(0,6)
+    .map(plant=>[plant.id,plant.mutation]));
   for(const plant of state.plants.values()){
     const mesh=state.plantMeshes.get(plant.id);
+    const visualMutation=visibleMutations.get(plant.id)||'';
     const fruitsAvailable=Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0;
-    if(mesh&&(mesh.userData.mutation!==(plant.mutation||'')||mesh.userData.fruitsAvailable!==fruitsAvailable)){disposeGroup(mesh);state.plantMeshes.delete(plant.id);}
+    if(mesh&&(mesh.userData.mutation!==visualMutation||mesh.userData.fruitsAvailable!==fruitsAvailable)){disposeGroup(mesh);state.plantMeshes.delete(plant.id);}
   }
   updateObjects(state.plants.values(),state.plantMeshes,
-    plant=>makeFlower(plant.type,plant.mutation||'',Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0,Date.now()<plant.matureAt,Date.now()<plant.matureAt),(mesh,plant)=>{
+    plant=>makeFlower(plant.type,visibleMutations.get(plant.id)||'',Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0,Date.now()<plant.matureAt,Date.now()<plant.matureAt),(mesh,plant)=>{
       mesh.userData.plantData=plant;
       mesh.userData.fruitsAvailable=Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0;
       mesh.position.set(plant.x,0,plant.z);
       const grow=Math.min(1,Math.max(.62,(Date.now()-plant.plantedAt)/Math.max(1,plant.matureAt-plant.plantedAt)));
       const fruitScale=1+Math.min(.25,Math.max(0,(plant.fruitSize||1)-1)*.125);
-      const size=plant.type==='apple'?{x:1.55,y:2.1,z:1.55}:plant.type==='dragonfruit'?{x:1.55,y:2.2,z:1.55}:{x:1,y:1,z:1};
-      mesh.scale.set(grow*fruitScale*size.x,grow*fruitScale*size.y,grow*fruitScale*size.z);
+      mesh.scale.setScalar(grow*fruitScale);
       mesh.rotation.y=(plant.col*1.71+plant.row*.83)%6.28;
     });
   updateObjects(state.seedDrops.values(),state.seedDropMeshes,drop=>makeSeedPacket(drop.type),
@@ -1003,6 +1073,7 @@ function buildDevMenu(){
   menu.hidden=true;
   menu.setAttribute('aria-live','polite');
   menu.style.position='fixed';menu.style.right='18px';menu.style.top='78px';menu.style.zIndex='50';menu.style.width='320px';menu.style.maxWidth='calc(100vw - 24px)';menu.style.padding='12px';menu.style.border='1px solid rgba(177,224,188,.45)';menu.style.borderRadius='14px';menu.style.background='rgba(10,15,14,.95)';menu.style.boxShadow='0 20px 50px rgba(0,0,0,.45)';menu.style.color='#edf5ec';menu.style.fontFamily='Arial, sans-serif';
+  menu.addEventListener('click',event=>event.stopPropagation());
   const seedOptions=allSeeds.map(seedId=>`<option value="${seedId}">${seedId}</option>`).join('');
   const eventOptions=allEvents.map(eventName=>`<option value="${eventName}">${eventName}</option>`).join('');
   menu.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;"><strong style="font-size:14px;letter-spacing:.08em;text-transform:uppercase;">Dev menu</strong><button type="button" data-dev-close="true" style="padding:4px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.45);background:#1d3029;color:#edf5ec;cursor:pointer;">Close</button></div><div style="display:grid;gap:9px;"> <label style="font-size:12px;">Event<select id="devEventSelect" style="width:100%;margin-top:4px;padding:6px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.25);background:#14241e;color:#edf5ec;">${eventOptions}</select></label> <button type="button" data-dev-action="weather" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#35261a;color:#f8d7a6;cursor:pointer;">Trigger selected event</button> <label style="font-size:12px;">Spawn seed<select id="devSeedSelect" style="width:100%;margin-top:4px;padding:6px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.25);background:#14241e;color:#edf5ec;">${seedOptions}</select></label> <button type="button" data-dev-action="seed" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1c2a28;color:#edf5ec;cursor:pointer;">Spawn selected seed</button> <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;"> <button type="button" data-dev-action="gear" data-dev-value="backpack" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1d2d28;color:#edf5ec;cursor:pointer;">+ Backpack</button> <button type="button" data-dev-action="gear" data-dev-value="wateringCan" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1d2d28;color:#edf5ec;cursor:pointer;">+ Water</button> <button type="button" data-dev-action="coins" data-dev-value="10000" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#31251f;color:#fbe0a2;cursor:pointer;">+10k coins</button> <button type="button" data-dev-action="zombie" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#2e2418;color:#f4d2a0;cursor:pointer;">Spawn zombie</button> <button type="button" data-dev-action="restock" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1c2d2d;color:#d9f9ee;cursor:pointer;">Restock</button> <button type="button" data-dev-action="toggle-phase" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1f1d2d;color:#d7d0ff;cursor:pointer;">Night toggle</button></div></div>`;
@@ -1025,6 +1096,8 @@ function buildDevMenu(){
   return menu;
 }
 function openDevMenu(){
+  if(document.pointerLockElement===canvas)document.exitPointerLock();
+  state.keys.clear();state.velocity.set(0,0);
   const menu=buildDevMenu();
   menu.hidden=false;state.devMenuOpen=true;status.textContent='Dev menu active';
 }
@@ -1087,13 +1160,47 @@ function offlineRefresh(){
   const player=state.players.get(state.playerId);
   renderSeedSelect(player);updateWorld();updateHud(player);updateActions(player);saveOfflineGarden();
 }
+function offlineSeedCount(player){
+  return Object.values(player.seeds||{}).reduce((total,amount)=>total+Math.max(0,Math.floor(Number(amount)||0)),0);
+}
+function offlineCreateSeedDrops(player,type,count=1){
+  for(let index=0;index<count;index++){
+    const angle=Math.random()*Math.PI*2,radius=1.05+Math.floor(index/8)*.2,id=`offline-seed-${Date.now()}-${Math.random()}`;
+    state.seedDrops.set(id,{id,type,x:state.x+Math.cos(angle)*radius,z:state.z+Math.sin(angle)*radius,ownerId:player.id});
+  }
+}
+function offlineEnforceSeedCapacity(player){
+  let overflow=Math.max(0,offlineSeedCount(player)-(player.gear.backpack?10:1));
+  for(const type of Object.keys(player.seeds||{}).sort()){
+    if(!overflow)break;
+    const amount=Math.max(0,Math.floor(Number(player.seeds[type])||0)),dropped=Math.min(amount,overflow);
+    if(!dropped)continue;
+    const remaining=amount-dropped;
+    if(remaining)player.seeds[type]=remaining;else delete player.seeds[type];
+    offlineCreateSeedDrops(player,type,dropped);overflow-=dropped;
+  }
+}
+function offlineGrantSeed(player,type){
+  offlineEnforceSeedCapacity(player);
+  if(offlineSeedCount(player)>=(player.gear.backpack?10:1)){
+    offlineCreateSeedDrops(player,type);return false;
+  }
+  player.seeds[type]=(Number(player.seeds[type])||0)+1;return true;
+}
+function offlineDropSeed(player,type){
+  offlineEnforceSeedCapacity(player);
+  const amount=Math.max(0,Math.floor(Number(player.seeds?.[type])||0));
+  if(!amount)return false;
+  if(amount===1)delete player.seeds[type];else player.seeds[type]=amount-1;
+  offlineCreateSeedDrops(player,type);return true;
+}
 function startOfflineGarden(guestMode=false){
   const account=updateAccountGate();
   if(!account&&!guestMode){$('accountStatus').textContent='Sign in to Gardenfall or choose local guest play.';return;}
   let saved=null;
   try{saved=JSON.parse(localStorage.getItem('gardenfallOfflineSave')||'null');}catch(error){localStorage.removeItem('gardenfallOfflineSave');}
   const player=saved?.player&&typeof saved.player==='object'?saved.player:{
-    id:'offline-player',clientId:'offline',name:($('playerName').value.trim()||$('accountUsername').value.trim()).slice(0,20)||'Garden Guest',color:'#79d98a',farmIndex:0,
+    id:'offline-player',clientId:'offline',name:($('playerName').value.trim()||$('accountUsername').value.trim()).slice(0,20)||'Garden Guest',color:'#79d98a',farmIndex:0,farmLayers:0,
     coins:100,seeds:{},goods:{},parts:{},gear:{wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false},
     ammo:{peaBlaster:20,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0},magazines:{peaBlaster:10,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0},weapons:{peaBlaster:true,cornZooka:false,brambleRifle:false,bloomShotgun:false,sunseedRepeater:false},customGuns:[],weapon:'peaBlaster',
     kills:0,landTier:'common',safetyOn:false,wateringCanCharges:0,x:0,z:-64.3,
@@ -1103,26 +1210,30 @@ function startOfflineGarden(guestMode=false){
   player.ammo={peaBlaster:20,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.ammo};
   player.magazines={peaBlaster:10,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.magazines};
   player.gear={wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false,lights:false,...player.gear};
+  player.gear.drone=Math.max(0,Math.min(2,Math.floor(Number(player.gear.drone)||0)));
+  player.farmLayers=Math.max(0,Math.min(farmGrid.maxLayers,Math.floor(Number(player.farmLayers)||0)));
   state.offline=true;state.socket=null;state.roomId='offline-garden';state.roomMode='offline';state.playerId=player.id;state.clientId='offline';state.players=new Map([[player.id,player]]);
   state.plants=new Map((Array.isArray(saved?.plants)?saved.plants:[]).map(plant=>[gardenPlotKey(plant),plant]));
   state.seedDrops=new Map((Array.isArray(saved?.seedDrops)?saved.seedDrops:[]).map(drop=>[drop.id,drop]));
   state.lanterns=new Map((Array.isArray(saved?.lanterns)?saved.lanterns:[]).map(lantern=>[gardenPlotKey(lantern),lantern]));
   state.sprinklers=new Set(saved?.sprinklers||[]);state.soil=new Set(saved?.soil||[]);state.zombies.clear();state.gardenHealth=Number(saved?.gardenHealth)||100;state.day=Math.max(1,Number(saved?.day)||1);
   state.weather='clear';state.weatherKnown=true;state.x=Number.isFinite(Number(player.x))?Number(player.x):0;state.z=Number.isFinite(Number(player.z))?Number(player.z):-64.3;
+  offlineEnforceSeedCapacity(player);
   state.targetX=state.x;state.targetZ=state.z;state.joinedPosition=true;state.selectedTile=null;state.phase='day';state.phaseRemaining=90000;state.phaseDeadline=performance.now()+90000;state.offlineNextZombieAt=0;state.offlineLastWeatherAt=performance.now()+45000;
   updateWeather('clear');$('status').textContent='Offline solo garden';joinStatus.textContent='Playing offline. Progress saves in this browser.';joinScreen.hidden=true;$('leaveButton').hidden=false;
+  canvas.focus({preventScroll:true});
   $('roomTitle').textContent='Offline Garden';$('copyCode').disabled=true;$('playerCount').textContent='1/1 player';
   state.seedSignature=null;offlineRefresh();
 }
-function offlineTile(value){
-  if(typeof value==='string')return gardenTileFromKey(value);
-  if(!value||!Number.isInteger(value.farmIndex)||!Number.isInteger(value.col)||!Number.isInteger(value.row))return null;
-  return gardenTileFromKey(`${value.farmIndex}:${value.col}:${value.row}`);
+function offlineTile(value,player=null){
+  const tile=typeof value==='string'?gardenTileFromKey(value):value&&Number.isInteger(value.farmIndex)&&Number.isInteger(value.col)&&Number.isInteger(value.row)?gardenTileFromKey(`${value.farmIndex}:${value.col}:${value.row}`):null;
+  if(tile&&player&&tile.farmIndex===player.farmIndex&&tile.row>=farmGrid.rows+Math.max(0,Math.min(farmGrid.maxLayers,Number(player.farmLayers)||0)))return null;
+  return tile;
 }
 function handleOfflineAction(action,data={}){
   const player=state.players.get(state.playerId);if(!player)return;
   const fail=message=>{status.textContent=message;};
-  const tile=offlineTile(data.tile),key=tile&&gardenPlotKey(tile),plant=key&&state.plants.get(key),now=Date.now();
+  const tile=offlineTile(data.tile,player),key=tile&&gardenPlotKey(tile),plant=key&&state.plants.get(key),now=Date.now();
   if(action==='move'){player.x=state.x=Number(data.x)||0;player.z=state.z=Number(data.z)||0;return;}
   if(action==='cheat'){
     if(String(data.code||'').toLowerCase()!=='theyseeyou'){fail('Unknown cheat code.');return;}
@@ -1131,25 +1242,31 @@ function handleOfflineAction(action,data={}){
     if(state.offline)saveOfflineGarden();
     return;
   }
-  if(action==='buy-seed'){
+  if(action==='drop-seed'){
+    const type=String(data.item||'');if(!offlineDropSeed(player,type)){fail('You do not have that seed to drop.');return;}
+    if(state.selectedSeed===type)state.selectedSeed='';
+  }else if(action==='buy-seed'){
     const seed=seeds.find(item=>item.id===data.item);if(!seed||player.coins<seed.cost){fail('Not enough coins for those seeds.');return;}player.coins-=seed.cost;
-    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
-    if(carried<capacity){player.seeds[seed.id]=(player.seeds[seed.id]||0)+1;state.selectedSeed=seed.id;}
-    else{
-      const angle=Math.random()*Math.PI*2,id=`offline-seed-${now}-${Math.random()}`;
-      state.seedDrops.set(id,{id,type:seed.id,x:state.x+Math.cos(angle)*1.1,z:state.z+Math.sin(angle)*1.1,ownerId:player.id});
-      if(state.selectedSeed){status.textContent=`${seed.name} dropped on the ground because your seed pack is full.`;}
-    }
+    if(offlineGrantSeed(player,seed.id))state.selectedSeed=seed.id;
+    else status.textContent=`${seed.name} dropped beside you because your seed pack is full.`;
   }else if(action==='pickup-seed'){
     const drop=state.seedDrops.get(String(data.id||''));if(!drop){fail('That seed is no longer on the ground.');return;}
-    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
-    if(carried>=capacity){fail(player.gear.backpack?'Your backpack is full.':'You are already carrying a seed. Buy a backpack to carry more.');return;}
-    player.seeds[drop.type]=(player.seeds[drop.type]||0)+1;state.seedDrops.delete(drop.id);
+    offlineEnforceSeedCapacity(player);
+    if(offlineSeedCount(player)>=(player.gear.backpack?10:1)){fail(player.gear.backpack?'Your backpack is full. Drop a seed to make room.':'You are already carrying a seed. Drop it or buy a backpack.');return;}
+    offlineGrantSeed(player,drop.type);state.seedDrops.delete(drop.id);
   }else if(action==='buy-gear'){
-    const item=gear.find(entry=>entry.id===data.item);if(!item||player.coins<item.cost){fail('Not enough coins for that gear.');return;}player.coins-=item.cost;
-    if(item.id==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}else if(item.id==='shovel'||item.id==='trowel'||item.id==='backpack')player.gear[item.id]=true;else if(item.id==='lights')player.gear.lights=(Number(player.gear.lights)||0)+1;else player.gear[item.id]=(player.gear[item.id]||0)+1;
+    const item=gear.find(entry=>entry.id===data.item);if(!item||player.coins<item.cost){fail('Not enough coins for that gear.');return;}
+    if(item.id==='drone'&&player.gear.drone>=2){fail('You already own the maximum of 2 scout drones.');return;}
+    if(item.id==='farmLayer'&&player.farmLayers>=farmGrid.maxLayers){fail('Your farm already has the maximum of 10 layers.');return;}
+    player.coins-=item.cost;
+    if(item.id==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}
+    else if(item.id==='shovel'||item.id==='trowel'||item.id==='backpack')player.gear[item.id]=true;
+    else if(item.id==='lights')player.gear.lights=(Number(player.gear.lights)||0)+1;
+    else if(item.id==='drone')player.gear.drone=Math.min(2,player.gear.drone+1);
+    else if(item.id==='farmLayer')player.farmLayers=Math.min(farmGrid.maxLayers,player.farmLayers+1);
+    else player.gear[item.id]=(player.gear[item.id]||0)+1;
   }else if(action==='place-lantern'){
-    const tile=offlineTile(data.tile),key=tile&&gardenPlotKey(tile);if(!tile||tile.farmIndex!==player.farmIndex||!(Number(player.gear.lights||0)>0)){fail('Select a valid plot on your farm and own Garden Lights.');return;}if(state.plants.has(key)||state.sprinklers.has(key)||state.lanterns.has(key)){fail('That plot is occupied.');return;}
+    const key=tile&&gardenPlotKey(tile);if(!tile||tile.farmIndex!==player.farmIndex||!(Number(player.gear.lights||0)>0)){fail('Select a valid plot on your farm and own Garden Lights.');return;}if(state.plants.has(key)||state.sprinklers.has(key)||state.lanterns.has(key)){fail('That plot is occupied.');return;}
     player.gear.lights=Math.max(0,(Number(player.gear.lights)||0)-1);state.lanterns.set(key,{id:`lantern-${Date.now()}-${Math.random()}`,farmIndex:tile.farmIndex,col:tile.col,row:tile.row,x:tile.x,z:tile.z,ownerId:player.id});
   }else if(action==='buy-weapon'){
     const item=purchasableWeapons.find(weapon=>weapon.id===data.item),specification=item&&weaponSpecs[item.id];
@@ -1186,7 +1303,7 @@ function handleOfflineAction(action,data={}){
   }else if(action==='refill-water'){
     if(!player.gear.wateringCan){fail('Buy a watering can from Gear first.');return;}if(Math.hypot(state.x,state.z)>12&&state.weather!=='rain'){fail('Stand by the market pond or wait for rain to refill your can.');return;}player.wateringCanCharges=5;
   }else if(action==='move-plant'){
-    const from=offlineTile(data.from),to=offlineTile(data.to),fromKey=from&&gardenPlotKey(from),toKey=to&&gardenPlotKey(to),moving=fromKey&&state.plants.get(fromKey);if(!player.gear.trowel||!moving||moving.ownerId!==player.id||!to||to.farmIndex!==player.farmIndex||state.plants.has(toKey)||state.sprinklers.has(toKey)){fail('Buy a trowel and select an empty plot on your farm.');return;}state.plants.delete(fromKey);state.plants.set(toKey,{...moving,...to});player.gear.trowel=false;
+    const from=offlineTile(data.from,player),to=offlineTile(data.to,player),fromKey=from&&gardenPlotKey(from),toKey=to&&gardenPlotKey(to),moving=fromKey&&state.plants.get(fromKey);if(!player.gear.trowel||!moving||moving.ownerId!==player.id||!to||to.farmIndex!==player.farmIndex||state.plants.has(toKey)||state.sprinklers.has(toKey)){fail('Buy a trowel and select an empty plot on your farm.');return;}state.plants.delete(fromKey);state.plants.set(toKey,{...moving,...to});player.gear.trowel=false;
   }else if(action==='sell'){
     let earned=0;for(const [type,quantity]of Object.entries(player.goods)){if(data.item!=='all'&&data.item!==type)continue;const value=offlineSellValues[type]||0;earned+=value*Math.max(0,Number(quantity)||0);delete player.goods[type];}if(!earned){fail('You have no harvested goods to sell.');return;}player.coins+=earned;
   }else if(action==='equip'){
@@ -1219,7 +1336,12 @@ function updateOfflineSimulation(delta){
     const weatherPool=['clear','clear','clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm'];
     const next=state.weather==='aurora'?'clear':weatherPool[Math.floor(Math.random()*weatherPool.length)];
     state.weather=next;state.weatherRemaining=45000;state.weatherDeadline=now+45000;updateWeather(next,true);
-    if(['aurora','solarFlare','fireworks','rainbow'].includes(next))for(const plant of state.plants.values())if(seeds.find(seed=>seed.id===plant.type)?.kind==='crop'&&!plant.mutation&&((plant.matureAt>time)||Number(plant.fruitsAvailable)>0)&&Math.random()<.45)plant.mutation=next;
+    if(['aurora','solarFlare','fireworks','rainbow'].includes(next)){
+      const candidates=Array.from(state.plants.values()).filter(plant=>seeds.find(seed=>seed.id===plant.type)?.kind==='crop'&&!plant.mutation&&((plant.matureAt>time)||Number(plant.fruitsAvailable)>0));
+      for(let index=candidates.length-1;index>0;index--){const swap=Math.floor(Math.random()*(index+1));[candidates[index],candidates[swap]]=[candidates[swap],candidates[index]];}
+      let mutations=0;
+      for(const plant of candidates){if(mutations>=6)break;if(Math.random()<.45){plant.mutation=next;mutations++;}}
+    }
     state.offlineLastWeatherAt=now+45000;
   }
   if(state.phase==='night'&&now>=state.offlineNextZombieAt&&state.zombies.size<12){
@@ -1366,7 +1488,7 @@ function connect(mode,roomId=''){
       }
       state.targetX=local.x;state.targetZ=local.z;
     }
-    joinScreen.hidden=true;$('leaveButton').hidden=false;$('copyCode').disabled=message.mode!=='private';
+    joinScreen.hidden=true;$('leaveButton').hidden=false;$('copyCode').disabled=message.mode!=='private';canvas.focus({preventScroll:true});
     $('roomTitle').textContent=message.mode==='public'?'Public Garden':'Private · '+message.roomId;
     status.textContent=message.mode==='public'?'Public lobby · connected':'Private garden · connected';
     updateHud(local);updateWorld();renderSeedSelect(local);updateActions(local);
@@ -1408,6 +1530,8 @@ function updateHud(player){
   $('gardenHealth').textContent=`🌿 Garden ${Math.ceil(state.gardenHealth)}%`;
   $('playerCount').textContent=`${state.players.size}/8 players`;
   $('farmBadge').textContent=`🌾 Farm ${(player?.farmIndex??0)+1}/8`;
+  $('droneBadge').textContent=`🚁 Drones ${Math.min(2,Number(player?.gear?.drone)||0)}/2`;
+  $('farmLayerBadge').textContent=`▤ Layers ${Math.min(farmGrid.maxLayers,Number(player?.farmLayers)||0)}/${farmGrid.maxLayers}`;
 }
 function clampGardenCoins(value){
   const numeric=Number(value)||0;
@@ -1528,6 +1652,7 @@ function updateWeatherInWorld(delta){
 function getShopStock(category,id){
   const stock=state.shopStock?.[category]?.[id];
   if(Number.isFinite(Number(stock)))return Math.max(0,Number(stock));
+  if(!state.offline&&state.roomId)return null;
   if(category==='seeds'&&seeds.some(item=>item.id===id))return 3;
   if(category==='gear'&&gear.some(item=>item.id===id))return 2;
   if(category==='weapons'&&purchasableWeapons.some(item=>item.id===id))return 1;
@@ -1536,7 +1661,7 @@ function getShopStock(category,id){
 function renderShop(){
   const listings=state.selectedShop==='seeds'?seeds:state.selectedShop==='gear'?gear:[];
   const player=state.players.get(state.playerId);
-  const signature=JSON.stringify([state.selectedShop,state.seedCategory,player?.landTier,player?.coins,player?.seeds,player?.gear,player?.weapons,player?.ammo,player?.customGuns,player?.goods,state.shopStock]);
+  const signature=JSON.stringify([state.selectedShop,state.seedCategory,player?.landTier,player?.farmLayers,player?.coins,player?.seeds,player?.gear,player?.weapons,player?.ammo,player?.customGuns,player?.goods,state.shopStock,state.shopRestockAt]);
   if(signature===state.shopSignature)return;
   state.shopSignature=signature;
   document.querySelector('.seed-filters').hidden=state.selectedShop!=='seeds';
@@ -1548,11 +1673,19 @@ function renderShop(){
     const title=document.createElement('strong');title.textContent=name;
     const detail=document.createElement('span');
     const isInStock=stockCount===null||stockCount>0;
-    const stockText=stockCount===null?'':(stockCount>0?` · In stock: ${stockCount}`:' · Not in stock');
-    detail.textContent=`${description}${stockText}`;
-    if(stockCount!==null){detail.style.color=isInStock?'#dfeec5':'#ff7a7a';detail.style.fontWeight='600';}
+    detail.textContent=description;
     copy.append(title,detail);
-    const buy=document.createElement('button');buy.type='button';buy.textContent=label;buy.disabled=disabled||stockCount===0;buy.addEventListener('click',onBuy);
+    const stockBadge=document.createElement('span');
+    if(stockCount===null){
+      stockBadge.className='stock-badge syncing';
+      stockBadge.textContent='Checking stock';
+    }else{
+      stockBadge.className=`stock-badge ${isInStock?'available':'sold-out'}`;
+      stockBadge.textContent=stockCount>0?`${stockCount} in stock`:'Out of stock';
+      stockBadge.setAttribute('aria-label',stockCount>0?`${stockCount} in stock`:'Out of stock');
+    }
+    copy.append(stockBadge);
+    const buy=document.createElement('button');buy.type='button';buy.textContent=label;buy.disabled=disabled||stockCount===0||stockCount===null;buy.addEventListener('click',onBuy);
     row.append(copy,buy);shopItems.append(row);
   };
   if(state.selectedShop==='sell'){
@@ -1590,8 +1723,13 @@ function renderShop(){
   for(const item of listings){
     if(state.selectedShop==='seeds'&&state.seedCategory!=='all'&&item.kind!==state.seedCategory)continue;
     const inStock=getShopStock(state.selectedShop==='seeds'?'seeds':'gear',item.id);
-    addRow(item.name,item.description,`Buy · ${item.cost} 🪙`,
-      ()=>{if(state.selectedShop==='seeds'){state.selectedSeed=item.id;send('buy-seed',{item:item.id});} else send('buy-gear',{item:item.id});},false,state.selectedShop==='seeds'?seedIcons[item.id]||'🌱':'',inStock);
+    const upgradeCount=item.id==='drone'?Math.min(2,Number(player?.gear?.drone)||0):item.id==='farmLayer'?Math.min(farmGrid.maxLayers,Number(player?.farmLayers)||0):null;
+    const upgradeLimit=item.id==='drone'?2:item.id==='farmLayer'?farmGrid.maxLayers:null;
+    const upgradeMaxed=upgradeLimit!==null&&upgradeCount>=upgradeLimit;
+    const description=upgradeLimit===null?item.description:`${item.description} · ${upgradeCount}/${upgradeLimit} owned`;
+    const label=upgradeMaxed?'Max owned':`Buy · ${item.cost} 🪙`;
+    addRow(item.name,description,label,
+      ()=>{if(state.selectedShop==='seeds'){state.selectedSeed=item.id;send('buy-seed',{item:item.id});} else send('buy-gear',{item:item.id});},upgradeMaxed||Number(player?.coins||0)<item.cost,state.selectedShop==='seeds'?seedIcons[item.id]||'🌱':'',inStock);
   }
   if(state.selectedShop==='gear'){
     const player=state.players.get(state.playerId);
@@ -1683,6 +1821,7 @@ function renderSeedSelect(player){
   if(!player)return;
   const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds||{}).reduce((total,amount)=>total+Math.max(0,Number(amount)||0),0);
   $('seedCapacity').textContent=`Seed pack ${carried} / ${capacity}${player.gear.backpack?' · Backpack':''}`;
+  $('dropSeedButton').disabled=!(Number(player.seeds?.[state.selectedSeed])>0);
   const signature=JSON.stringify([player.seeds,player.gear.backpack]);
   if(signature===state.seedSignature)return;
   state.seedSignature=signature;
@@ -1935,7 +2074,8 @@ $('trowelButton').addEventListener('click',()=>{
   updateWorld();updateActions(state.players.get(state.playerId));
 });
 $('refillButton').addEventListener('click',()=>send('refill-water'));
-seedSelect.addEventListener('change',()=>{state.selectedSeed=seedSelect.value;updateActions(state.players.get(state.playerId));});
+seedSelect.addEventListener('change',()=>{state.selectedSeed=seedSelect.value;const player=state.players.get(state.playerId);renderSeedSelect(player);updateActions(player);});
+$('dropSeedButton').addEventListener('click',()=>{if(state.selectedSeed)send('drop-seed',{item:state.selectedSeed});});
 weaponSelect.addEventListener('change',()=>send('equip',{item:weaponSelect.value}));
 document.querySelectorAll('[data-shop-tab]').forEach(button=>button.addEventListener('click',()=>{
   state.selectedShop=button.dataset.shopTab;
@@ -2022,6 +2162,7 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyL'){placeLanternAt(state.selectedTile);return;}
   if(event.code==='KeyB'){cycleWeapon();return;}
   if(event.code==='KeyN'){cycleSeed(1);return;}
+  if(event.code==='KeyJ'){if(state.selectedSeed)send('drop-seed',{item:state.selectedSeed});return;}
   if(event.code==='KeyF'){send('refill-water');return;}
   if(event.code==='KeyE'){if(harvestNearbyPlant())status.textContent=nearestSeedDrop()?'Picked up a seed.':'Harvested the nearest ripe plant.';return;}
   if(event.code==='KeyH'){if(state.nearbyStation)openStationPopup(state.nearbyStation);return;}
@@ -2034,6 +2175,7 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyT'){startZipline();return;}
   if(event.code==='KeyK')$('keybinds').open=!$('keybinds').open;
 });
+canvas.addEventListener('pointerdown',()=>canvas.focus({preventScroll:true}));
 $('closeShopPopup').addEventListener('click',()=>{
   state.dismissedStation=state.nearbyStation;
   $('shopPopup').hidden=true;
@@ -2069,12 +2211,25 @@ function animateMarketStalls(delta){
 
 function animate(){
   if(state.disposed)return;
+  requestAnimationFrame(animate);
   const delta=Math.min(clock.getDelta(),.05);
   state.mapDrawElapsed+=delta;
   if(state.mapDrawElapsed>=.12){state.mapDrawElapsed=0;drawFarmMap();}
   animateMarketStalls(delta);
-  updateWeatherInWorld(delta);
-  if(state.offline)updateOfflineSimulation(delta);
+  if(state.offline){
+    try{updateOfflineSimulation(delta);}
+    catch(error){
+      state.offlineLastWeatherAt=performance.now()+45000;
+      if(!state.offlineFrameWarned){console.error('Gardenfall recovered from an offline simulation error.',error);state.offlineFrameWarned=true;}
+    }
+  }
+  if(!state.weatherFrameDisabled){
+    try{updateWeatherInWorld(delta);}
+    catch(error){
+      state.weatherFrameDisabled=true;rainLines.visible=false;snowflakes.visible=false;rainbowGroup.visible=false;
+      console.error('Gardenfall disabled a failing weather animation.',error);
+    }
+  }
   if(state.roomId&&(state.offline||state.socket?.readyState===WebSocket.OPEN)){
     const interactionOpen=!$('shopPopup').hidden||!$('workbenchPopup').hidden;
     let cameraY=1.65;
@@ -2121,9 +2276,12 @@ function animate(){
       camera.lookAt(state.x+Math.sin(state.yaw)*cosPitch,1.65+Math.sin(state.pitch),state.z-Math.cos(state.yaw)*cosPitch);
     }
   }
-  animateMutationEffects(delta);animateSprinklers(delta);animateHeldWeapon(delta);animateProjectiles();
+  if(!state.mutationFramesDisabled){
+    try{animateMutationEffects(delta);}
+    catch(error){state.mutationFramesDisabled=true;console.error('Gardenfall disabled a failing crop mutation animation.',error);}
+  }
+  animateScoutDrones(delta);animateSprinklers(delta);animateHeldWeapon(delta);animateProjectiles();
   renderer.render(scene,camera);
-  requestAnimationFrame(animate);
 }
 const clock=new THREE.Clock();
 function uiTick(){
@@ -2158,6 +2316,6 @@ if('serviceWorker' in navigator){
       console.info('Gardenfall local development mode: bypassing cached service worker assets.');
       return;
     }
-    return navigator.serviceWorker.register('./garden-siege-sw.js?v=20261109-stale-cache-fix-1').catch(error => console.warn('Could not cache Gardenfall for offline play.', error));
+    return navigator.serviceWorker.register('./garden-siege-sw.js?v=20261109-upgrade-visual-fix-1').catch(error => console.warn('Could not cache Gardenfall for offline play.', error));
   }).catch(error => console.warn('Could not clear old Gardenfall service workers.', error));
 }

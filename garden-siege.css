@@ -11,6 +11,7 @@ button{color:inherit}
 .game-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
 .game-stats>span,.phase-badge{padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:#1d2b24;color:#cfdfd5;font-size:11px}
 .game-stats>.safety-indicator.safety-on{border-color:rgba(255,207,112,.55);color:#ffe2a0}
+.game-stats>#droneBadge,.game-stats>#farmLayerBadge{border-color:rgba(101,230,173,.34);color:#bff4d7}
 .phase-badge.night{border-color:rgba(255,127,115,.45);background:#382221;color:#ffb1a6}
 .top-actions{display:flex;align-items:center;gap:8px}
 .top-actions span{color:var(--muted);font-size:10px}
@@ -97,9 +98,14 @@ button{color:inherit}
 .shop-item{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:7px 8px;border:1px solid rgba(175,223,194,.1);border-radius:7px;background:#192720}
 .shop-item .seed-icon{flex:0 0 34px;width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(175,223,194,.16);background:#24342a;font-size:21px}
 .seed-capacity{margin-top:5px;color:#a6baa9;font-size:9px}
+.drop-seed-button{width:100%;margin-top:5px;padding:7px 9px;border:1px solid rgba(255,127,115,.32);border-radius:6px;background:#392724;color:#ffc1a8;font-size:9px;cursor:pointer}
 .shop-item-copy{display:grid;min-width:0}
 .shop-item-copy strong{font-size:10px}
 .shop-item-copy span{color:var(--muted);font-size:9px}
+.shop-item-copy .stock-badge{width:max-content;margin-top:3px;padding:2px 5px;border-radius:3px;font-size:8px;font-weight:800;line-height:1.2;text-transform:uppercase;letter-spacing:.04em}
+.shop-item-copy .stock-badge.available{background:rgba(101,230,173,.14);color:#9df2c7}
+.shop-item-copy .stock-badge.sold-out{background:rgba(255,127,115,.14);color:#ff9d93}
+.shop-item-copy .stock-badge.syncing{background:rgba(255,207,112,.12);color:#ffe0a2}
 .shop-item button,.action-grid button,.craft-actions button,.private-form button{padding:7px 9px;border:1px solid rgba(101,230,173,.25);border-radius:6px;background:#243b2e;color:#bff4d7;font-size:9px;white-space:nowrap;cursor:pointer}
 .sell-actions{display:grid;gap:7px;margin-top:8px;color:var(--muted);font-size:9px}
 .sell-actions button{padding:7px;border:1px solid rgba(255,207,112,.3);border-radius:6px;background:#3a3121;color:#ffe0a2;font-size:10px;cursor:pointer}
