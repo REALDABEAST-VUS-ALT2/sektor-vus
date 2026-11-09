@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const host = '0.0.0.0';
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 3001);
 const root = __dirname;
 const dataFile = path.join(root, '.sektor-lan-data.json');
 const mimeTypes = {

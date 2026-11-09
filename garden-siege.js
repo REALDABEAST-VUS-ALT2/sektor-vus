@@ -25,50 +25,68 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.outputCo
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const heldWeapon=new THREE.Group();camera.add(heldWeapon);heldWeapon.visible=false;
 
+const nightLanterns=[
+  {x:-18,z:18,color:0xfff1b8,intensity:1.1},
+  {x:18,z:18,color:0xfff1b8,intensity:1.1},
+  {x:-18,z:-18,color:0xfff1b8,intensity:1.1},
+  {x:18,z:-18,color:0xfff1b8,intensity:1.1},
+].map(config=>{
+  const light=new THREE.PointLight(config.color,0,38,2);
+  light.position.set(config.x,3.4,config.z);
+  scene.add(light);
+  return light;
+});
+const GARDEN_COIN_CAP = 1_000_000_000;
 const state={
   socket:null,roomId:'',playerId:'',roomMode:'',gardenAccount:null,offline:false,day:1,phase:'day',phaseRemaining:0,phaseDeadline:0,weatherDeadline:0,gardenHealth:100,
   players:new Map(),plants:new Map(),seedDrops:new Map(),zombies:new Map(),sprinklers:new Set(),plantMeshes:new Map(),seedDropMeshes:new Map(),zombieMeshes:new Map(),playerMeshes:new Map(),projectileMeshes:new Map(),
   selectedTile:null,selectedSeed:'',selectedShop:'seeds',seedCategory:'all',keys:new Set(),x:0,z:4.7,lastMove:0,
   yaw:0,pitch:-.28,velocity:new THREE.Vector2(),targetX:0,targetZ:4.7,weather:'clear',ponds:[],jumpHeight:0,jumpVelocity:0,
-  weatherRemaining:0,weatherKnown:false,clientId:'',trowelFrom:null,nearbyStation:'',ziplineTarget:'',ziplineRide:null,pendingPlantKey:'',
-  dismissedStation:'',
+  weatherRemaining:0,weatherKnown:false,clientId:'',trowelFrom:null,nearbyStation:'',ziplineTarget:'',ziplineRide:null,pendingPlantKey:'',cheatBuffer:'',devMenuOpen:false,
+  dismissedStation:'',sprinklerExpiry:new Map(),shopStock:{seeds:{},gear:{},weapons:{}},shopRestockAt:0,shopRestockNotified:false,restockBannerTimer:0,lanterns:new Map(),lanternMeshes:new Map(),
   seedSignature:null,shopSignature:null,partsSignature:null,weaponSignature:'',weaponClock:0,weaponKick:0,mapDrawElapsed:0,disposed:false,
 };
 const seeds=[
-  {id:'sunflower',name:'Sunflower',cost:20,kind:'crop',description:'Grows into a coin crop · sell for 38'},
-  {id:'berry',name:'Berry Bush',cost:15,kind:'crop',description:'Fast crop · sell for 27'},
-  {id:'moonberry',name:'Moonberry',cost:34,kind:'crop',description:'Four harvests · aurora mutations are especially valuable'},
-  {id:'starfruit',name:'Starfruit',cost:42,kind:'crop',description:'Rare, valuable single-harvest crop'},
-  {id:'pumpkin',name:'Pumpkin',cost:32,kind:'crop',description:'Hardy crop · sell for 52'},
-  {id:'glowMushroom',name:'Glow Mushroom',cost:28,kind:'crop',description:'Two harvests · sells for 42 each'},
-  {id:'clover',name:'Clover Patch',cost:18,kind:'crop',description:'Quick-growing lucky crop · sell for 25'},
-  {id:'lavender',name:'Lavender',cost:36,kind:'crop',description:'Aromatic purple crop · sell for 48'},
-  {id:'snowdrop',name:'Snowdrop',cost:40,kind:'crop',description:'Cold-hardy flower · sell for 54'},
-  {id:'apple',name:'Apple Tree',cost:29,kind:'crop',description:'A sturdy orchard crop · sell for 43'},
-  {id:'dragonfruit',name:'Dragon Fruit',cost:58,kind:'crop',description:'Rare, high-value fruit · sell for 92'},
-  {id:'bluebell',name:'Bluebell',cost:25,kind:'crop',description:'Quick-growing spring flower · sell for 35'},
-  {id:'marigold',name:'Marigold',cost:33,kind:'crop',description:'Bright garden bloom · sell for 46'},
-  {id:'nightshade',name:'Nightshade',cost:47,kind:'crop',description:'Unusual dusk fruit · sell for 72'},
-  {id:'peashooter',name:'Pea Shooter',cost:55,kind:'attack',description:'Auto-attacks zombies · harvest to unlock the Pea Blaster + 10 ammo'},
-  {id:'cornzooka',name:'Rocket Corn',cost:95,kind:'attack',description:'Splash-damage defender · harvest to unlock Rocket Corn + 2 ammo'},
-  {id:'snapdragon',name:'Snapdragon',cost:78,kind:'attack',description:'Fast close-range fire bursts · harvest for Pea Blaster ammo'},
-  {id:'frostFern',name:'Frost Fern',cost:82,kind:'attack',description:'Long-range frost volleys · harvest for Pea Blaster ammo'},
-  {id:'melonMortar',name:'Melon Mortar',cost:118,kind:'attack',description:'Heavy splash-damage shots · harvest for Rocket Corn ammo'},
-  {id:'roseTurret',name:'Rose Turret',cost:72,kind:'attack',description:'Rapid thorn shots · harvest for Pea Blaster ammo'},
-  {id:'thornGuard',name:'Thorn Guard',cost:64,kind:'attack',description:'Very tough defensive plant'},
-  {id:'bamboo',name:'Bamboo Stalk',cost:30,kind:'special',description:'Sell for 6 coins or craft a gun barrel'},
-  {id:'reedTube',name:'Reed Tube',cost:24,kind:'special',description:'Long-range custom gun barrel'},
-  {id:'magazineVine',name:'Magazine Vine',cost:38,kind:'special',description:'Adds capacity to your crafted gun'},
-  {id:'pumpkinShell',name:'Pumpkin Shell',cost:31,kind:'special',description:'Adds extra capacity and protection'},
-  {id:'blastCorn',name:'Blast Corn',cost:45,kind:'special',description:'Adds splash damage to custom guns'},
-  {id:'pollenPod',name:'Pollen Pod',cost:37,kind:'special',description:'Adds power to a custom gun'},
-  {id:'triggerBloom',name:'Trigger Bloom',cost:39,kind:'special',description:'Increases custom gun damage'},
-  {id:'thornVine',name:'Thorn Vine',cost:34,kind:'special',description:'Craft a sturdy custom gun grip'},
-  {id:'crystalBud',name:'Crystal Bud',cost:54,kind:'special',description:'Adds range and damage to custom guns'},
-  {id:'epicSoil',name:'Epic Soil',cost:75,kind:'special',description:'Makes neighboring crops grow 30% faster'},
+  {id:'clover',name:'Clover Patch',cost:22,kind:'crop',description:'Quick-growing lucky crop · sell for 25'},
+  {id:'berry',name:'Berry Bush',cost:28,kind:'crop',description:'Fast crop · sell for 27'},
+  {id:'reedTube',name:'Reed Tube',cost:30,kind:'special',description:'Long-range custom gun barrel'},
+  {id:'sunflower',name:'Sunflower',cost:35,kind:'crop',description:'Grows into a coin crop · sell for 38'},
+  {id:'bamboo',name:'Bamboo Stalk',cost:38,kind:'special',description:'Sell for 6 coins or craft a gun barrel'},
+  {id:'bluebell',name:'Bluebell',cost:42,kind:'crop',description:'Quick-growing spring flower · sell for 35'},
+  {id:'magazineVine',name:'Magazine Vine',cost:42,kind:'special',description:'Adds capacity to your crafted gun'},
+  {id:'iris',name:'Iris Bloom',cost:48,kind:'crop',description:'A vibrant flower with high-value petals · sell for 32'},
+  {id:'glowMushroom',name:'Glow Mushroom',cost:54,kind:'crop',description:'Two harvests · sells for 42 each'},
+  {id:'apple',name:'Apple Tree',cost:58,kind:'crop',description:'A sturdy orchard crop · sell for 43'},
+  {id:'pumpkin',name:'Pumpkin',cost:64,kind:'crop',description:'Hardy crop · sell for 52'},
+  {id:'pumpkinShell',name:'Pumpkin Shell',cost:52,kind:'special',description:'Adds extra capacity and protection'},
+  {id:'pollenPod',name:'Pollen Pod',cost:66,kind:'special',description:'Adds power to a custom gun'},
+  {id:'thornVine',name:'Thorn Vine',cost:68,kind:'special',description:'Craft a sturdy custom gun grip'},
+  {id:'sunpetal',name:'Sunpetal',cost:70,kind:'crop',description:'Bright golden petals · sell for 46'},
+  {id:'marigold',name:'Marigold',cost:72,kind:'crop',description:'Bright garden bloom · sell for 46'},
+  {id:'peashooter',name:'Pea Shooter',cost:78,kind:'attack',description:'Auto-attacks zombies · harvest to unlock the Pea Blaster + 10 ammo'},
+  {id:'roseTurret',name:'Rose Turret',cost:84,kind:'attack',description:'Rapid thorn shots · harvest for Pea Blaster ammo'},
+  {id:'lavender',name:'Lavender',cost:88,kind:'crop',description:'Aromatic purple crop · sell for 48'},
+  {id:'frostPetal',name:'Frost Petal',cost:92,kind:'crop',description:'Cool-toned bloom with very slow growth · sell for 57'},
+  {id:'snowdrop',name:'Snowdrop',cost:96,kind:'crop',description:'Cold-hardy flower · sell for 54'},
+  {id:'crystalBud',name:'Crystal Bud',cost:96,kind:'special',description:'Adds range and damage to custom guns'},
+  {id:'snapdragon',name:'Snapdragon',cost:100,kind:'attack',description:'Fast close-range fire bursts · harvest for Pea Blaster ammo'},
+  {id:'moonberry',name:'Moonberry',cost:110,kind:'crop',description:'Four harvests · aurora mutations are especially valuable'},
+  {id:'fireBloom',name:'Firebloom',cost:115,kind:'crop',description:'Hot crimson bloom with long growth time · sell for 66'},
+  {id:'frostFern',name:'Frost Fern',cost:118,kind:'attack',description:'Long-range frost volleys · harvest for Pea Blaster ammo'},
+  {id:'epicSoil',name:'Epic Soil',cost:120,kind:'special',description:'Makes neighboring crops grow 30% faster'},
+  {id:'moonLotus',name:'Moon Lotus',cost:126,kind:'crop',description:'A slow rare lotus with a luminous bloom · sell for 74'},
+  {id:'starfruit',name:'Starfruit',cost:130,kind:'crop',description:'Rare, valuable single-harvest crop'},
+  {id:'cornzooka',name:'Rocket Corn',cost:140,kind:'attack',description:'Splash-damage defender · harvest to unlock Rocket Corn + 2 ammo'},
+  {id:'nightshade',name:'Nightshade',cost:150,kind:'crop',description:'Unusual dusk fruit · sell for 72'},
+  {id:'thornGuard',name:'Thorn Guard',cost:160,kind:'attack',description:'Very tough defensive plant'},
+  {id:'melonMortar',name:'Melon Mortar',cost:165,kind:'attack',description:'Heavy splash-damage shots · harvest for Rocket Corn ammo'},
+  {id:'dragonfruit',name:'Dragon Fruit',cost:175,kind:'crop',description:'Rare, high-value fruit · sell for 92'},
+  {id:'blastCorn',name:'Blast Corn',cost:60,kind:'special',description:'Adds splash damage to custom guns'},
+  {id:'triggerBloom',name:'Trigger Bloom',cost:76,kind:'special',description:'Increases custom gun damage'},
 ];
-const seedIcons={sunflower:'🌻',berry:'🫐',moonberry:'🌙',starfruit:'⭐',pumpkin:'🎃',glowMushroom:'🍄',clover:'🍀',lavender:'💜',snowdrop:'❄️',apple:'🍎',dragonfruit:'🐉',bluebell:'🔔',marigold:'🌼',nightshade:'🌑',peashooter:'🟢',cornzooka:'🌽',snapdragon:'🌺',frostFern:'❄️',melonMortar:'🍈',roseTurret:'🌹',thornGuard:'🌵',bamboo:'🎋',reedTube:'🌾',magazineVine:'🍃',pumpkinShell:'🎃',blastCorn:'🌽',pollenPod:'🌼',triggerBloom:'🌸',thornVine:'🌿',crystalBud:'💎',epicSoil:'🪴'};
-const fruitPlantSpecs={apple:{count:5,regrow:18000},dragonfruit:{count:4,regrow:22000}};
+seeds.sort((a,b)=>a.cost-b.cost);
+const seedIcons={sunflower:'🌻',berry:'🫐',moonberry:'🌙',starfruit:'⭐',pumpkin:'🎃',glowMushroom:'🍄',clover:'🍀',lavender:'💜',snowdrop:'❄️',apple:'🍎',dragonfruit:'🐉',bluebell:'🔔',marigold:'🌼',nightshade:'🌑',peashooter:'🟢',cornzooka:'🌽',snapdragon:'🌺',frostFern:'❄️',melonMortar:'🍈',roseTurret:'🌹',thornGuard:'🌵',bamboo:'🎋',reedTube:'🌾',magazineVine:'🍃',pumpkinShell:'🎃',blastCorn:'🌽',pollenPod:'🌼',triggerBloom:'🌸',thornVine:'🌿',crystalBud:'💎',epicSoil:'🪴',iris:'🦋',sunpetal:'🌞',frostPetal:'❄️',fireBloom:'🔥',moonLotus:'🌙'};
+const fruitPlantSpecs={berry:{count:5,regrow:15000},apple:{count:5,regrow:18000},starfruit:{count:4,regrow:20000},dragonfruit:{count:4,regrow:22000},nightshade:{count:4,regrow:18000}};
 const gear=[
   {id:'wateringCan',name:'Watering Can',cost:20,description:'Water your own plant for a growth boost'},
   {id:'shovel',name:'Garden Shovel',cost:25,description:'Remove your own plant and free its plot'},
@@ -76,6 +94,9 @@ const gear=[
   {id:'sprinkler',name:'Sprinkler',cost:45,description:'Auto-waters plants in nearby plots'},
   {id:'fertilizer',name:'Plant Fertilizer',cost:30,description:'Required to craft a garden gun'},
   {id:'backpack',name:'Seed Backpack',cost:125,description:'Carry up to 10 seeds instead of one'},
+  {id:'lights',name:'Garden Lights',cost:120,description:'Brightens night lanterns so the farm stays usable after dark'},
+  {id:'drone',name:'Scout Drone',cost:10000,description:'Auto-buys seed or tool drops for you · max 2'},
+  {id:'farmLayer',name:'Extra Farm Layer',cost:50000,description:'Adds a second connected farm layer · max 10'},
 ];
 const ammoListings=[
   {id:'peaBlaster',name:'Pea Blaster ammo',cost:18,amount:10},
@@ -189,24 +210,56 @@ for(let farmIndex=0;farmIndex<farmGrid.count;farmIndex++){
 }
 const selectionHighlight=new THREE.Mesh(new THREE.BoxGeometry(1.82,.045,1.82),new THREE.MeshBasicMaterial({color:0xf2d56c,transparent:true,opacity:.65}));
 selectionHighlight.visible=false;garden.add(selectionHighlight);
-function marketStall(x,z,title,color,rotation=0){
+function marketStall(x,z,title,primaryColor,rotation=0,secondaryColor=0xffffff){
   const stall=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.BoxGeometry(1.7,1.15,.85),new THREE.MeshStandardMaterial({color:0x795b3f}));
-  body.position.y=.62;stall.add(body);
-  const roof=new THREE.Mesh(new THREE.BoxGeometry(2,.2,1.1),new THREE.MeshStandardMaterial({color}));
-  roof.position.y=1.35;stall.add(roof);
+  const wood=new THREE.MeshStandardMaterial({color:0x7d5636,roughness:.92});
+  const darkWood=new THREE.MeshStandardMaterial({color:0x5a3b25,roughness:.9});
+  const awningCanvas=document.createElement('canvas');awningCanvas.width=512;awningCanvas.height=256;
+  const awningCtx=awningCanvas.getContext('2d');
+  const stripeA=primaryColor.toString(16).padStart(6,'0');
+  const stripeB=secondaryColor.toString(16).padStart(6,'0');
+  for(let stripe=0;stripe<18;stripe++){
+    awningCtx.fillStyle=stripe%2===0?`#${stripeA}`:`#${stripeB}`;
+    awningCtx.fillRect(0,stripe*16,512,16);
+  }
+  awningCtx.strokeStyle='#b16236';awningCtx.lineWidth=6;awningCtx.strokeRect(6,6,500,244);
+  const awningTexture=new THREE.CanvasTexture(awningCanvas);awningTexture.colorSpace=THREE.SRGBColorSpace;
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.9,.95,.14,18),new THREE.MeshStandardMaterial({color:0xd7c1a1,roughness:.9}));
+  base.position.y=.06;stall.add(base);
+  for(const [offsetX,offsetZ] of [[-.72,-.42],[.72,-.42],[-.72,.42],[.72,.42]]){
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(.14,1.32,.14),darkWood);leg.position.set(offsetX,.66,offsetZ);stall.add(leg);
+  }
+  const stand=new THREE.Mesh(new THREE.BoxGeometry(2.0,1.08,.94),wood);stand.position.y=.62;stall.add(stand);
+  const counter=new THREE.Mesh(new THREE.BoxGeometry(2.05,.18,1.05),darkWood);counter.position.y=1.14;stall.add(counter);
+  const roofFrame=new THREE.Mesh(new THREE.BoxGeometry(2.44,.14,1.44),new THREE.MeshStandardMaterial({color:0x7a4a2f}));roofFrame.position.y=1.72;stall.add(roofFrame);
+  const awning=new THREE.Mesh(new THREE.BoxGeometry(2.55,.18,1.58),new THREE.MeshStandardMaterial({map:awningTexture,roughness:.9}));awning.position.y=1.95;awning.rotation.x=-.12;stall.add(awning);
+  const braceLeft=new THREE.Mesh(new THREE.BoxGeometry(.14,1.3,.14),new THREE.MeshStandardMaterial({color:0x70472e}));braceLeft.position.set(-.9,1.4,-.45);braceLeft.rotation.z=.45;stall.add(braceLeft);
+  const braceRight=braceLeft.clone();braceRight.position.x=.9;braceRight.rotation.z=-.45;stall.add(braceRight);
+  const crate1=new THREE.Mesh(new THREE.BoxGeometry(.44,.42,.42),new THREE.MeshStandardMaterial({color:0x9d6e49,roughness:.9}));crate1.position.set(-.68,1.35,-.2);stall.add(crate1);
+  const crate2=crate1.clone();crate2.position.set(.68,1.35,-.2);stall.add(crate2);
+  const vendor=new THREE.Group();
+  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.22,.42,4,8),new THREE.MeshStandardMaterial({color:0xf0c39b}));torso.position.y=1.12;vendor.add(torso);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.18,12,8),new THREE.MeshStandardMaterial({color:0xf3d0ae}));head.position.y=1.62;vendor.add(head);
+  const hat=new THREE.Mesh(new THREE.CylinderGeometry(.21,.24,.18,10),new THREE.MeshStandardMaterial({color:0x3a2d21}));hat.position.y=1.84;vendor.add(hat);
+  const armLeft=new THREE.Mesh(new THREE.BoxGeometry(.11,.42,.11),new THREE.MeshStandardMaterial({color:0xf0c39b}));armLeft.position.set(-.26,1.2,0);armLeft.rotation.z=.9;vendor.add(armLeft);
+  const armRight=armLeft.clone();armRight.position.x=.26;armRight.rotation.z=-.9;vendor.add(armRight);
+  const legLeft=new THREE.Mesh(new THREE.BoxGeometry(.14,.5,.14),new THREE.MeshStandardMaterial({color:0x534538}));legLeft.position.set(-.11,.52,0);vendor.add(legLeft);
+  const legRight=legLeft.clone();legRight.position.x=.11;vendor.add(legRight);
+  vendor.position.z=.18;vendor.position.x=.05;stall.add(vendor);
   const sign=document.createElement('canvas');sign.width=256;sign.height=64;
-  const context=sign.getContext('2d');context.fillStyle='#19251e';context.fillRect(0,0,256,64);
-  context.fillStyle='#f4f4dc';context.font='bold 30px sans-serif';context.textAlign='center';context.fillText(title,128,42);
-  const texture=new THREE.CanvasTexture(sign);
-  const plate=new THREE.Mesh(new THREE.PlaneGeometry(1.4,.36),new THREE.MeshBasicMaterial({map:texture}));
-  plate.position.set(0,1.05,-.44);stall.add(plate);stall.position.set(x,0,z);stall.rotation.y=rotation;scene.add(stall);
+  const context=sign.getContext('2d');context.fillStyle='#1b2b1f';context.fillRect(0,0,256,64);
+  context.strokeStyle='#d7d9a8';context.lineWidth=4;context.strokeRect(4,4,248,56);
+  context.fillStyle='#f4f4dc';context.font='bold 26px sans-serif';context.textAlign='center';context.textBaseline='middle';context.fillText(title,128,32);
+  const texture=new THREE.CanvasTexture(sign);texture.colorSpace=THREE.SRGBColorSpace;
+  const plate=new THREE.Mesh(new THREE.PlaneGeometry(1.65,.38),new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide}));plate.position.set(0,1.2,-.9);stall.add(plate);
+  stall.userData={id:title.toLowerCase().replace(/[^a-z]+/g,'-').replace(/^-|-$/g,'')||'stall',title,vendor,awning,armLeft,armRight};
+  stall.position.set(x,0,z);stall.rotation.y=rotation;scene.add(stall);
 }
-marketStall(0,-4.1,'SEEDS',0x69a953,Math.PI);
-marketStall(4.1,0,'GEAR',0x5489a0,Math.PI/2);
-marketStall(0,4.1,'SELL',0xb8834d);
-marketStall(-4.1,0,'LANDS',0x9b69a9,-Math.PI/2);
-marketStall(0,0,'GUN CRAFT',0x8c65be);
+marketStall(0,-4.1,'SEEDS',0xe13f3f,Math.PI,0xffffff);
+marketStall(4.1,0,'GEAR',0xf4f3ef,Math.PI/2,0x5ea9c8);
+marketStall(0,4.1,'SELL',0xf4f3ef,0,0xd1a16f);
+marketStall(-4.1,0,'LANDS',0xf4f3ef,-Math.PI/2,0xb381d9);
+marketStall(0,0,'GUN CRAFT',0xf4f3ef,0,0xb97bbb);
 const workbenchMetal=new THREE.MeshStandardMaterial({color:0x70858a,metalness:.65,roughness:.3});
 const barrelMesh=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,.8,12),workbenchMetal);
 barrelMesh.rotation.z=Math.PI/2;barrelMesh.position.set(0,1.55,.85);scene.add(barrelMesh);
@@ -311,13 +364,12 @@ function drawFarmMap(){
 function addMutationFruitVisual(group,mutation){
   const colors={aurora:0x5ff2d1,solarFlare:0xff9b45,fireworks:0xff67bf,rainbow:0xb978ff};
   const color=colors[mutation];if(!color)return;
-  const fruitMaterial=new THREE.MeshStandardMaterial({color,roughness:.24,metalness:.12,emissive:color,emissiveIntensity:.42});
-  const leafMaterial=new THREE.MeshStandardMaterial({color:0xb4e76e,roughness:.65});
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(.28,.03,12,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.84}));
+  halo.rotation.x=Math.PI/2;halo.position.y=.18;group.add(halo);
   for(let index=0;index<3;index++){
     const angle=index*Math.PI*2/3;
-    const fruit=new THREE.Mesh(mutation==='aurora'?new THREE.OctahedronGeometry(.15):new THREE.IcosahedronGeometry(.15,1),fruitMaterial);
-    fruit.position.set(Math.cos(angle)*.29,.34+(index%2)*.11,Math.sin(angle)*.29);fruit.scale.set(.9,1.15,.9);group.add(fruit);
-    const leaf=new THREE.Mesh(new THREE.ConeGeometry(.045,.15,5),leafMaterial);leaf.position.copy(fruit.position).add(new THREE.Vector3(0,.15,0));leaf.rotation.z=-.35;group.add(leaf);
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(.05,8,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.7}));
+    dot.position.set(Math.cos(angle)*.18,.14+(index%2)*.06,Math.sin(angle)*.18);group.add(dot);
   }
 }
 function addMutationVisual(group,mutation){
@@ -355,10 +407,10 @@ function addPlantLabel(group,type){
   const labelCanvas=document.createElement('canvas');labelCanvas.width=384;labelCanvas.height=72;
   const context=labelCanvas.getContext('2d');
   const special=plant.kind==='special';
-  context.fillStyle='rgba(12,24,18,.94)';context.beginPath();context.roundRect(2,2,380,68,18);context.fill();
+  context.fillStyle='rgba(12,24,18,.7)';context.beginPath();context.roundRect(2,2,380,68,18);context.fill();
   context.strokeStyle=special?'#c8e585':'#f0d788';context.lineWidth=3;context.stroke();
   const texture=new THREE.CanvasTexture(labelCanvas);texture.colorSpace=THREE.SRGBColorSpace;
-  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthTest:false}));
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,opacity:.72,depthTest:false}));
   sprite.position.y=2;sprite.scale.set(2.15,.4,1);sprite.renderOrder=10;group.add(sprite);
   group.userData.plantLabel={name:plant.name,canvas:labelCanvas,context,texture,sprite,text:''};
 }
@@ -367,13 +419,16 @@ function updatePlantLabels(){
   for(const mesh of state.plantMeshes.values()){
     const plant=mesh.userData.plantData,label=mesh.userData.plantLabel;
     if(!plant||!label)continue;
+    const isReady=now>=plant.matureAt;
+    label.sprite.visible=!isReady;
+    if(isReady)continue;
     const seconds=Math.max(0,Math.ceil((plant.matureAt-now)/1000));
     const timer=seconds?`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:'READY';
     const fruitSpec=fruitPlantSpecs[plant.type],fruitText=fruitSpec?` · ${Number(plant.fruitsAvailable)||0}/${fruitSpec.count} FRUIT`:'';
     const text=`${label.name.toUpperCase()} · ${timer}${fruitText}`;
     if(text===label.text)continue;
     label.text=text;label.context.clearRect(0,0,label.canvas.width,label.canvas.height);
-    label.context.fillStyle='rgba(12,24,18,.94)';label.context.beginPath();label.context.roundRect(2,2,380,68,18);label.context.fill();
+    label.context.fillStyle='rgba(12,24,18,.7)';label.context.beginPath();label.context.roundRect(2,2,380,68,18);label.context.fill();
     label.context.strokeStyle=seeds.find(item=>item.name===label.name)?.kind==='special'?'#c8e585':'#f0d788';label.context.lineWidth=3;label.context.stroke();
     label.context.fillStyle='#f4f4dc';label.context.font='bold 20px system-ui';label.context.textAlign='center';label.context.textBaseline='middle';label.context.fillText(text,192,36);
     label.texture.needsUpdate=true;
@@ -391,23 +446,67 @@ function addSpecialPlantSignature(group,type){
   }
 }
 
-function addHarvestableFruit(group,type,count){
-  for(let index=0;index<count;index++){
-    const angle=index*2.399963,ring=index%2?.42:.28,y=type==='apple'?1.65+(index%3)*.22:1.55+(index%2)*.34;
-    const x=Math.cos(angle)*ring,z=Math.sin(angle)*ring;
+function addHarvestableFruit(group,type,count,mutation=''){
+  const total=Math.max(0,Number(count)||0);
+  if(total===0)return;
+  const fruitMount=new THREE.Group();
+  const mountY=type==='apple'?2.2:type==='berry'?0.85:type==='starfruit'?2.3:type==='nightshade'?2.0:type==='dragonfruit'?2.55:1.1;
+  fruitMount.position.set(0,mountY,0);
+  group.add(fruitMount);
+
+  const fruitAnchor=new THREE.Group();
+  fruitAnchor.position.set(0,0,0);
+  fruitMount.add(fruitAnchor);
+
+  const stemBridge=new THREE.Mesh(
+    new THREE.CylinderGeometry(.028,.032,.6,8),
+    new THREE.MeshStandardMaterial({color:0x5b3d2d,roughness:.75})
+  );
+  stemBridge.position.set(0,.12,0);
+  fruitAnchor.add(stemBridge);
+
+  const clusterRadius=type==='apple'?0.68:type==='berry'?0.28:type==='starfruit'?0.56:type==='nightshade'?0.62:type==='dragonfruit'?0.46:0.62;
+  const mutationPalette={aurora:0x5ff2d1,solarFlare:0xff9b45,fireworks:0xff67bf,rainbow:0xc98cff};
+  const mutationColor=mutation&&mutationPalette[mutation]?new THREE.Color(mutationPalette[mutation]):null;
+  for(let index=0;index<total;index++){
+    const angle=index*(Math.PI*2/Math.max(2,total)),ring=(index%2===0?0.72:1.02)+(index%3)*0.12;
+    const y=type==='apple'?0.04+(index%3)*.12:type==='berry'?-0.02+(index%3)*.08:type==='starfruit'?0.08+(index%2)*.12:type==='nightshade'?0.06+(index%3)*.14:type==='dragonfruit'?-0.02+(index%2)*.08:0.08+(index%2)*.12;
+    const x=Math.cos(angle)*ring*clusterRadius,z=Math.sin(angle)*ring*clusterRadius;
+    const tint=(baseColor)=>mutationColor?new THREE.Color(baseColor).lerp(mutationColor,0.55):new THREE.Color(baseColor);
     if(type==='apple'){
-      const apple=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:index%2?0xd94335:0xe9873c,roughness:.36}));
-      apple.position.set(x,y,z);group.add(apple);
-      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.018,.022,.1,6),new THREE.MeshStandardMaterial({color:0x60452b}));stem.position.set(x,y+.13,z);group.add(stem);
-      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),new THREE.MeshStandardMaterial({color:0x73ad4e}));leaf.scale.set(1,.35,.55);leaf.position.set(x+.045,y+.17,z);group.add(leaf);
+      const apple=new THREE.Mesh(new THREE.SphereGeometry(.18,14,12),new THREE.MeshStandardMaterial({color:tint(index%2?0xd94335:0xe9873c).getHex(),roughness:.36,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
+      apple.scale.set(1.25,1.45,1.25);apple.position.set(x,y,z);fruitAnchor.add(apple);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.02,.025,.14,6),new THREE.MeshStandardMaterial({color:0x60452b}));stem.position.set(x,y+.12,z);fruitAnchor.add(stem);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),new THREE.MeshStandardMaterial({color:0x73ad4e}));leaf.scale.set(1.25,.35,.75);leaf.position.set(x+.08,y+.18,z);fruitAnchor.add(leaf);
+    }else if(type==='berry'){
+      const berry=new THREE.Mesh(new THREE.SphereGeometry(.085,10,8),new THREE.MeshStandardMaterial({color:tint(index%2?0xb52a67:0x8f1f4f).getHex(),roughness:.28,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.42:0}));
+      berry.position.set(x,y,z);fruitAnchor.add(berry);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.014,.12,6),new THREE.MeshStandardMaterial({color:0x4c7c45}));stem.position.set(x,y+.08,z);fruitAnchor.add(stem);
+    }else if(type==='starfruit'){
+      const starShape=new THREE.Shape();
+      for(let point=0;point<10;point++){
+        const theta=-Math.PI/2+point*(Math.PI/5); const radius=point%2===0?0.14:0.05; const sx=Math.cos(theta)*radius, sy=Math.sin(theta)*radius; if(point===0)starShape.moveTo(sx,sy); else starShape.lineTo(sx,sy);
+      }
+      starShape.closePath();
+      const star=new THREE.Mesh(new THREE.ExtrudeGeometry(starShape,{depth:.08,bevelEnabled:true,bevelSegments:1,steps:1,bevelSize:.012,bevelThickness:.012}),new THREE.MeshStandardMaterial({color:tint(index%2?0xf4d049:0xf0a82f).getHex(),roughness:.35,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.46:0}));
+      star.position.set(x,y,z);star.rotation.x=Math.PI/2;star.rotation.z=angle;fruitAnchor.add(star);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.016,.12,6),new THREE.MeshStandardMaterial({color:0x5b3c20}));stem.position.set(x,y+.06,z);fruitAnchor.add(stem);
+    }else if(type==='nightshade'){
+      const berry=new THREE.Mesh(new THREE.SphereGeometry(.14,12,10),new THREE.MeshStandardMaterial({color:tint(index%2?0x5a3a88:0x7e56c9).getHex(),roughness:.32,metalness:.15,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
+      berry.scale.set(1,.9,1.05);berry.position.set(x,y,z);fruitAnchor.add(berry);
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.08,8,6),new THREE.MeshStandardMaterial({color:0x4d7f50}));leaf.scale.set(1.2,.3,.8);leaf.position.set(x+.1,y+.12,z);fruitAnchor.add(leaf);
+    }else if(type==='dragonfruit'){
+      const fruit=new THREE.Mesh(new THREE.CapsuleGeometry(.16,.24,7,10),new THREE.MeshStandardMaterial({color:tint(index%2?0xefd3d7:0xd55f88).getHex(),roughness:.28,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.38:0}));
+      fruit.rotation.z=Math.PI/2;fruit.position.set(x,y,z);fruitAnchor.add(fruit);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.016,.12,6),new THREE.MeshStandardMaterial({color:0x4b693c}));stem.position.set(x,y+.1,z);fruitAnchor.add(stem);
     }else{
-      const fruit=new THREE.Mesh(new THREE.SphereGeometry(.17,12,10),new THREE.MeshStandardMaterial({color:index%2?0xed5598:0xc93382,roughness:.3}));
-      fruit.scale.set(.82,1.25,.82);fruit.position.set(x,y,z);group.add(fruit);
-      for(let bract=0;bract<4;bract++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.045,.17,5),new THREE.MeshStandardMaterial({color:0x71b44b}));leaf.position.set(x+Math.cos(bract*Math.PI/2)*.13,y+.1,z+Math.sin(bract*Math.PI/2)*.13);leaf.rotation.z=Math.cos(bract*Math.PI/2)*-.75;leaf.rotation.x=Math.sin(bract*Math.PI/2)*.75;group.add(leaf);}
+      const fruit=new THREE.Mesh(new THREE.SphereGeometry(.2,14,12),new THREE.MeshStandardMaterial({color:tint(index%2?0xed5598:0xc93382).getHex(),roughness:.3,emissive:mutationColor?mutationColor.getHex():0x000000,emissiveIntensity:mutation?0.44:0}));
+      fruit.scale.set(.9,1.4,.9);fruit.position.set(x,y,z);fruitAnchor.add(fruit);
+      for(let bract=0;bract<4;bract++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.06,.2,6),new THREE.MeshStandardMaterial({color:0x71b44b}));leaf.position.set(x+Math.cos(bract*Math.PI/2)*.18,y+.12,z+Math.sin(bract*Math.PI/2)*.18);leaf.rotation.z=Math.cos(bract*Math.PI/2)*-.9;leaf.rotation.x=Math.sin(bract*Math.PI/2)*.9;fruitAnchor.add(leaf);}
     }
   }
 }
-function makeFlower(type,mutation='',fruitsAvailable=0){
+function makeFlower(type,mutation='',fruitsAvailable=0,showLabel=true,showSignature=true){
   const group=new THREE.Group();
   group.userData.mutation=mutation||'';
   const material=(color,roughness=.72,emissive=0)=>new THREE.MeshStandardMaterial({color,roughness,emissive,emissiveIntensity:emissive?1.4:0});
@@ -447,9 +546,7 @@ function makeFlower(type,mutation='',fruitsAvailable=0){
     }
   }else if(type==='berry'){
     const bush=new THREE.Mesh(new THREE.SphereGeometry(.35,12,9),new THREE.MeshStandardMaterial({color:0x3f8e4b}));bush.position.y=.52;group.add(bush);
-    for(let i=0;i<5;i++){
-      const berry=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),new THREE.MeshStandardMaterial({color:0xa73363}));berry.position.set(Math.sin(i*4)*.26,.45+(i%2)*.22,Math.cos(i*4)*.25);group.add(berry);
-    }
+    addHarvestableFruit(group,type,fruitsAvailable,mutation);
   }else if(type==='snapdragon'){
     createStem(.78,0x498b48,.09);leaf(-.16,.35,0,.6);leaf(.16,.48,.02,-.6);
     const bloom=new THREE.Mesh(new THREE.SphereGeometry(.27,12,8),material(0xe35748));bloom.position.set(0,.82,-.06);bloom.scale.set(1,.75,1.15);group.add(bloom);
@@ -467,12 +564,15 @@ function makeFlower(type,mutation='',fruitsAvailable=0){
     petalRing(.88,.16,8,0xd94157,.13);bud(0,.88,0,.14,0xff8b72);
     for(let index=0;index<5;index++){const thorn=new THREE.Mesh(new THREE.ConeGeometry(.045,.15,5),material(0xe2d58d));thorn.position.set(Math.sin(index*2)*.07,.25+index*.12,.04);group.add(thorn);}
   }else if(type==='peashooter'){
-    const head=new THREE.Mesh(new THREE.SphereGeometry(.27,12,9),new THREE.MeshStandardMaterial({color:0x55b85c}));head.position.set(0,.8,-.05);head.scale.set(1,1,.82);group.add(head);
-    const snout=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.38,12),new THREE.MeshStandardMaterial({color:0x387e42}));snout.rotation.x=Math.PI/2;snout.position.set(0,.77,-.32);group.add(snout);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.27,12,9),new THREE.MeshStandardMaterial({color:0x63d26d,emissive:0x1f4d2c,emissiveIntensity:.22}));head.position.set(0,.8,-.05);head.scale.set(1,1,.82);group.add(head);
+    const snout=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,.42,12),new THREE.MeshStandardMaterial({color:0x3c7c42,metalness:.18,roughness:.55}));snout.rotation.x=Math.PI/2;snout.position.set(0,.77,-.34);group.add(snout);
     const eye=new THREE.Mesh(new THREE.SphereGeometry(.055,8,6),new THREE.MeshBasicMaterial({color:0xffffff}));eye.position.set(.13,.89,-.24);group.add(eye);
+    const eye2=eye.clone();eye2.position.x=-.13;group.add(eye2);
+    const glow=new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),new THREE.MeshBasicMaterial({color:0xc8ff8c,transparent:true,opacity:.7}));glow.position.set(0,.76,-.46);group.add(glow);
   }else if(type==='cornzooka'){
-    const cob=new THREE.Mesh(new THREE.CapsuleGeometry(.18,.48,5,8),new THREE.MeshStandardMaterial({color:0xffcf48}));cob.position.set(0,.79,0);group.add(cob);
-    const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.18,.23,.5,10),new THREE.MeshStandardMaterial({color:0x98733b}));barrel.rotation.x=Math.PI/2;barrel.position.set(0,.8,-.32);group.add(barrel);
+    const cob=new THREE.Mesh(new THREE.CapsuleGeometry(.18,.48,5,8),new THREE.MeshStandardMaterial({color:0xffd75c,emissive:0x94540c,emissiveIntensity:.18}));cob.position.set(0,.79,0);group.add(cob);
+    const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.18,.23,.54,10),new THREE.MeshStandardMaterial({color:0x9b733c,metalness:.3,roughness:.4}));barrel.rotation.x=Math.PI/2;barrel.position.set(0,.8,-.34);group.add(barrel);
+    const nozzle=new THREE.Mesh(new THREE.CylinderGeometry(.05,.09,.18,8),new THREE.MeshStandardMaterial({color:0xe9b74a}));nozzle.rotation.x=Math.PI/2;nozzle.position.set(0,.8,-.62);group.add(nozzle);
     for(const side of [-1,1])leaf(side*.2,.36,0,side*.4,0x4d983f,1.2);
   }else if(type==='moonberry'){
     const bush=new THREE.Mesh(new THREE.IcosahedronGeometry(.42,1),material(0x356b4b));bush.position.y=.43;group.add(bush);
@@ -482,16 +582,10 @@ function makeFlower(type,mutation='',fruitsAvailable=0){
     }
     leaf(-.25,.62,.08,-.55,0x7dcb68,.9);leaf(.25,.55,-.08,.55,0x7dcb68,.9);
   }else if(type==='starfruit'){
-    stem(.53,0x4a8543,.055);leaf(-.16,.33,0,.7);leaf(.17,.43,.04,-.7);
-    const shape=new THREE.Shape();
-    for(let i=0;i<10;i++){
-      const angle=-Math.PI/2+i*Math.PI/5,r=i%2?.13:.3,x=Math.cos(angle)*r,y=Math.sin(angle)*r;
-      if(i===0)shape.moveTo(x,y);else shape.lineTo(x,y);
-    }
-    shape.closePath();
-    const star=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.13,bevelEnabled:true,bevelSegments:2,steps:1,bevelSize:.035,bevelThickness:.03}),material(0xffc928));
-    star.position.set(-.16,.7,0);star.rotation.y=-.2;group.add(star);
-    const second=star.clone();second.position.set(.19,.62,.12);second.rotation.y=.35;second.scale.setScalar(.68);group.add(second);
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12,.18,2.1,10),material(0x764a2a));trunk.position.y=1.05;group.add(trunk);
+    for(const side of [-1,1]){const branch=new THREE.Mesh(new THREE.CylinderGeometry(.06,.1,1.15,7),material(0x764a2a));branch.position.set(side*.24,1.5,0);branch.rotation.z=side*-.8;group.add(branch);}
+    for(const side of [-1,1]){const leafMesh=new THREE.Mesh(new THREE.SphereGeometry(.2,10,8),material(0x54a757));leafMesh.scale.set(1.25,.3,1.25);leafMesh.position.set(side*.32,1.75,0);leafMesh.rotation.z=side*.4;group.add(leafMesh);}
+    addHarvestableFruit(group,type,fruitsAvailable,mutation);
   }else if(type==='pumpkin'||type==='pumpkinShell'){
     const color=type==='pumpkin'?0xf47d28:0xd9a34b;
     const center=new THREE.Mesh(new THREE.SphereGeometry(.37,16,12),material(color));center.position.y=.43;center.scale.set(1,.83,1);group.add(center);
@@ -522,19 +616,32 @@ function makeFlower(type,mutation='',fruitsAvailable=0){
     bud(0,.71,0,.07,0x9bbd70);
   }else if(type==='apple'||type==='dragonfruit'||type==='bluebell'||type==='marigold'||type==='nightshade'){
     if(type==='apple'){
-      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.11,.18,1.55,9),material(0x795335));trunk.position.y=.78;group.add(trunk);
-      for(const side of [-1,1]){const branch=new THREE.Mesh(new THREE.CylinderGeometry(.06,.095,.85,7),material(0x795335));branch.position.set(side*.27,1.38,0);branch.rotation.z=side*-.58;group.add(branch);}
-      for(const [x,y,z,radius]of [[0,1.85,0,.5],[-.34,1.67,.04,.36],[.34,1.7,-.02,.37],[0,2.1,-.12,.34]]){const crown=new THREE.Mesh(new THREE.SphereGeometry(radius,11,8),material(0x5d9147));crown.position.set(x,y,z);crown.scale.set(1,.82,1);group.add(crown);}
-      addHarvestableFruit(group,type,fruitsAvailable);
+      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.22,3.3,10),material(0x795335));trunk.position.y=1.65;group.add(trunk);
+      for(const side of [-1,1]){const branch=new THREE.Mesh(new THREE.CylinderGeometry(.08,.12,1.3,7),material(0x795335));branch.position.set(side*.42,2.4,0);branch.rotation.z=side*-.72;group.add(branch);}
+      for(const [x,y,z,radius]of [[0,2.7,0,.88],[-.48,2.45,.08,.62],[.52,2.52,-.02,.7],[0,3.0,-.18,.74],[-.82,2.25,.05,.48],[.82,2.3,-.04,.46]]){const crown=new THREE.Mesh(new THREE.SphereGeometry(radius,12,9),material(0x5d9147));crown.position.set(x,y,z);crown.scale.set(1,.82,1);group.add(crown);}
+      addHarvestableFruit(group,type,fruitsAvailable,mutation);
     }else if(type==='dragonfruit'){
-      const cactus=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,1.9,10),material(0x42945a));cactus.position.y=.95;group.add(cactus);
-      for(const side of [-1,1]){const arm=new THREE.Mesh(new THREE.CylinderGeometry(.1,.13,.86,9),material(0x4da765));arm.position.set(side*.35,1.2,0);arm.rotation.z=side*-.62;group.add(arm);const upright=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.7,9),material(0x4da765));upright.position.set(side*.62,1.45,0);group.add(upright);}
-      for(let thorn=0;thorn<8;thorn++){const angle=thorn*Math.PI/4,spike=new THREE.Mesh(new THREE.ConeGeometry(.025,.12,4),material(0xd5dda2));spike.position.set(Math.cos(angle)*.15,.42+thorn*.19,Math.sin(angle)*.15);spike.rotation.z=Math.cos(angle)*.9;spike.rotation.x=Math.sin(angle)*.9;group.add(spike);}
-      addHarvestableFruit(group,type,fruitsAvailable);
+      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.17,.24,3.1,12),material(0x3e8749));trunk.position.y=1.55;group.add(trunk);
+      const upperStem=new THREE.Mesh(new THREE.CylinderGeometry(.08,.14,1.2,8),material(0x4fa95d));upperStem.position.set(0,2.5,0);upperStem.rotation.z=.1;group.add(upperStem);
+      for(const side of [-1,1]){
+        const arm=new THREE.Mesh(new THREE.CylinderGeometry(.07,.11,1.1,8),material(0x4da765));arm.position.set(side*.38,2.15,0);arm.rotation.z=side*-.82;group.add(arm);
+        const leafMesh=new THREE.Mesh(new THREE.SphereGeometry(.18,10,8),material(0x63b96c));leafMesh.scale.set(1.6,.32,1.1);leafMesh.position.set(side*.56,2.7,0);leafMesh.rotation.z=side*.6;group.add(leafMesh);
+      }
+      for(let thorn=0;thorn<9;thorn++){
+        const angle=thorn*Math.PI/4.5;
+        const spike=new THREE.Mesh(new THREE.ConeGeometry(.035,.16,5),material(0xd5dda2));
+        spike.position.set(Math.cos(angle)*.16,1.0+thorn*.19,Math.sin(angle)*.16);spike.rotation.z=Math.cos(angle)*1.1;spike.rotation.x=Math.sin(angle)*1.1;group.add(spike);
+      }
+      addHarvestableFruit(group,type,fruitsAvailable,mutation);
     }else if(type==='bluebell'){
       for(let index=0;index<5;index++){const x=(index-2)*.12;createStem(.64+(index%2)*.12,0x54884d,.035);const bell=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),material(0x718de0));bell.scale.set(.8,1.25,.8);bell.position.set(x,.72+(index%2)*.12,0);group.add(bell);}
     }else if(type==='marigold'){
       createStem(.62,0x4e8a45,.05);petalRing(.72,.18,10,0xf28d25,.12);bud(0,.72,0,.11,0x70421d);
+    }else if(type==='nightshade'){
+      const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.22,2.8,10),material(0x4d3a54));trunk.position.y=1.4;group.add(trunk);
+      for(const side of [-1,1]){const branch=new THREE.Mesh(new THREE.CylinderGeometry(.08,.12,1.2,7),material(0x4d3a54));branch.position.set(side*.34,2.1,0);branch.rotation.z=side*-.9;group.add(branch);}
+      for(const [x,y,z,radius]of [[0,2.2,0,.7],[-.4,2.05,.1,.52],[.4,2.08,-.05,.56],[-.18,2.7,.12,.44],[.18,2.7,-.08,.44]]){const crown=new THREE.Mesh(new THREE.SphereGeometry(radius,12,8),material(0x4f6e46));crown.position.set(x,y,z);crown.scale.set(1,.8,1);group.add(crown);}
+      addHarvestableFruit(group,type,fruitsAvailable,mutation);
     }else{
       createStem(.65,0x514b69,.05);leaf(-.16,.35,0,.7,0x53694d);leaf(.16,.48,.02,-.7,0x53694d);
       for(let index=0;index<5;index++){const angle=index*Math.PI*2/5;bud(Math.cos(angle)*.18,.58+(index%2)*.12,Math.sin(angle)*.18,.085,0x7355a6,true);}
@@ -608,16 +715,21 @@ function makeFlower(type,mutation='',fruitsAvailable=0){
     }
     for(const side of [-1,1])leaf(side*.27,.2,0,side*.5,0x527b46,.75);
   }else if(type==='thornGuard'){
-    const bulb=new THREE.Mesh(new THREE.IcosahedronGeometry(.34,1),material(0x4f893f));bulb.position.y=.42;group.add(bulb);
+    const bulb=new THREE.Mesh(new THREE.IcosahedronGeometry(.34,1),new THREE.MeshStandardMaterial({color:0x5e9d4d,emissive:0x2c5d2e,emissiveIntensity:.18}));bulb.position.y=.42;group.add(bulb);
     for(let i=0;i<10;i++){
       const a=i*Math.PI*2/10,spike=new THREE.Mesh(new THREE.ConeGeometry(.07,.27,6),material(0xc8d58a));
       spike.position.set(Math.cos(a)*.29,.43+(i%2)*.17,Math.sin(a)*.29);spike.rotation.z=Math.cos(a)*.85;spike.rotation.x=Math.sin(a)*.85;group.add(spike);
     }
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.46,.035,10,28),new THREE.MeshBasicMaterial({color:0x8ecf72,transparent:true,opacity:.7}));ring.rotation.x=Math.PI/2;ring.position.y=.08;group.add(ring);
   }else{
     const height=.7;const stalk=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,height,8),material(0x45874a));stalk.position.y=height/2;group.add(stalk);
     for(let i=0;i<4;i++){const kernel=new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),material(0xffb52d));kernel.position.set(Math.sin(i*1.6)*.17,.48+(i%2)*.2,Math.cos(i*1.6)*.17);group.add(kernel);}
   }
-  addSpecialPlantSignature(group,type);addPlantLabel(group,type);
+  if(showSignature)addSpecialPlantSignature(group,type);
+  if(showLabel)addPlantLabel(group,type);
+  if(type==='apple'||type==='berry'||type==='starfruit'||type==='nightshade'||type==='dragonfruit'){
+    addHarvestableFruit(group,type,fruitsAvailable,mutation);
+  }
   if(mutation){addMutationFruitVisual(group,mutation);addMutationVisual(group,mutation);}
   group.traverse(object=>{if(object.isMesh)object.castShadow=true;});
   return group;
@@ -656,8 +768,12 @@ function updateHeldWeapon(player){
   for(const child of [...heldWeapon.children])disposeGroup(child);
   if(seedType){
     heldWeapon.position.set(.34,-.29,-.46);heldWeapon.rotation.set(-.04,.08,.02);heldWeapon.scale.setScalar(1);
-    const packet=makeSeedPacket(seedType);packet.position.set(-.05,-.1,-.18);packet.scale.setScalar(.82);heldWeapon.add(packet);
-    const plant=makeFlower(seedType);plant.scale.setScalar(.29);plant.position.set(.1,-.02,-.38);heldWeapon.add(plant);
+    const packet=makeSeedPacket(seedType);packet.position.set(-.05,-.1,-.18);packet.scale.setScalar(.82);
+    packet.traverse(object=>{if(object.isMesh&&object.material){object.material.transparent=true;object.material.opacity=.92;}});
+    heldWeapon.add(packet);
+    const plant=makeFlower(seedType,'',0,false,false);plant.scale.setScalar(.29);plant.position.set(.1,-.02,-.38);
+    plant.traverse(object=>{if(object.isMesh&&object.material){const materials=Array.isArray(object.material)?object.material:[object.material];for(const material of materials){material.transparent=true;material.opacity=.68;}}});
+    heldWeapon.add(plant);
     heldWeapon.userData.baseY=-.29;return;
   }
   const launcher=weapon==='cornZooka'||custom?.base==='cornZooka';
@@ -754,6 +870,17 @@ function makeSprinkler(){
   group.userData.sprinkler={rotor,droplets,time:0};
   return group;
 }
+function makeLantern(){
+  const group=new THREE.Group();
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(.06,.08,.8,8),new THREE.MeshStandardMaterial({color:0x74614e,roughness:.7}));
+  post.position.y=.4;group.add(post);
+  const lantern=new THREE.Mesh(new THREE.CylinderGeometry(.17,.19,.2,12),new THREE.MeshStandardMaterial({color:0xf4d894,emissive:0xffc95e,emissiveIntensity:.35,roughness:.5}));
+  lantern.position.y=.9;group.add(lantern);
+  const glow=new THREE.PointLight(0xffd995,0.9,12,2.2);
+  glow.position.y=.9;group.add(glow);
+  group.userData.lantern={glow};
+  return group;
+}
 function animateSprinklers(delta){
   for(const mesh of state.sprinklerMeshes?.values()||[]){
     const sprinkler=mesh.userData.sprinkler;if(!sprinkler)continue;
@@ -764,6 +891,13 @@ function animateSprinklers(delta){
     });
   }
 }
+function animateLanterns(){
+  const night=state.phase==='night';
+  for(const mesh of state.lanternMeshes.values()){
+    const glow=mesh.userData.lantern?.glow;if(!glow)continue;
+    glow.intensity=night?2.1:0;
+  }
+}
 
 function updateWorld(){
   for(const plant of state.plants.values()){
@@ -772,7 +906,7 @@ function updateWorld(){
     if(mesh&&(mesh.userData.mutation!==(plant.mutation||'')||mesh.userData.fruitsAvailable!==fruitsAvailable)){disposeGroup(mesh);state.plantMeshes.delete(plant.id);}
   }
   updateObjects(state.plants.values(),state.plantMeshes,
-    plant=>makeFlower(plant.type,plant.mutation||'',Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0),(mesh,plant)=>{
+    plant=>makeFlower(plant.type,plant.mutation||'',Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0,Date.now()<plant.matureAt,Date.now()<plant.matureAt),(mesh,plant)=>{
       mesh.userData.plantData=plant;
       mesh.userData.fruitsAvailable=Date.now()>=plant.matureAt?Number(plant.fruitsAvailable)||0:0;
       mesh.position.set(plant.x,0,plant.z);
@@ -785,14 +919,22 @@ function updateWorld(){
   updateObjects(state.seedDrops.values(),state.seedDropMeshes,drop=>makeSeedPacket(drop.type),
     (mesh,drop)=>{mesh.position.set(drop.x,.28,drop.z);mesh.rotation.y=Math.sin(performance.now()*.001+drop.id.length)*.08;});
   updateObjects(state.zombies.values(),state.zombieMeshes,
-    zombie=>{const mesh=makeZombie();mesh.userData.zombieId=zombie.id;return mesh;},
-    (mesh,zombie)=>{mesh.position.set(zombie.x,0,zombie.z);mesh.rotation.y=Math.PI;});
+    zombie=>{const mesh=makeZombie();mesh.userData.zombieId=zombie.id;mesh.userData.lastX=zombie.x;mesh.userData.lastZ=zombie.z;return mesh;},
+    (mesh,zombie)=>{
+        const moveX=zombie.x - (mesh.userData.lastX ?? zombie.x),moveZ=zombie.z - (mesh.userData.lastZ ?? zombie.z);
+      const heading=Math.atan2(moveZ,moveX) + Math.PI / 2;
+      mesh.position.set(zombie.x,0,zombie.z);
+      mesh.rotation.y=heading;
+      mesh.userData.lastX=zombie.x;mesh.userData.lastZ=zombie.z;
+    });
   updateObjects(state.players.values(),state.playerMeshes,
     player=>makePlayer(player.color),(mesh,player)=>{mesh.visible=player.id!==state.playerId;mesh.position.set(player.x,0,player.z);mesh.rotation.y=Math.PI;});
   updateObjects(Array.from(state.sprinklers,key=>{
     const tile=gardenTileFromKey(key);return tile?{id:key,...tile}:null;
   }).filter(Boolean),state.sprinklerMeshes||=new Map(),makeSprinkler,
   (mesh,item)=>mesh.position.set(item.x,.12,item.z));
+  updateObjects(Array.from(state.lanterns.values()),state.lanternMeshes,makeLantern,
+    (mesh,item)=>mesh.position.set(item.x,0,item.z));
   if(state.selectedTile){
     const tile=plotMeshes.find(mesh=>mesh.userData.farmIndex===state.selectedTile.farmIndex&&mesh.userData.col===state.selectedTile.col&&mesh.userData.row===state.selectedTile.row);
     if(tile){
@@ -852,6 +994,83 @@ function send(action,data={}){
   if(!state.socket||state.socket.readyState!==WebSocket.OPEN){status.textContent='Join a garden before using its shops and tools.';return;}
   state.socket.send(JSON.stringify({type:'garden:action',action,...data}));
 }
+function buildDevMenu(){
+  if($('gardenDevMenu'))return $('gardenDevMenu');
+  const allSeeds=[...seeds].sort((a,b)=>a.cost-b.cost).map(seed=>seed.id);
+  const allEvents=['clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm','bloodMoon'];
+  const menu=document.createElement('div');
+  menu.id='gardenDevMenu';
+  menu.hidden=true;
+  menu.setAttribute('aria-live','polite');
+  menu.style.position='fixed';menu.style.right='18px';menu.style.top='78px';menu.style.zIndex='50';menu.style.width='320px';menu.style.maxWidth='calc(100vw - 24px)';menu.style.padding='12px';menu.style.border='1px solid rgba(177,224,188,.45)';menu.style.borderRadius='14px';menu.style.background='rgba(10,15,14,.95)';menu.style.boxShadow='0 20px 50px rgba(0,0,0,.45)';menu.style.color='#edf5ec';menu.style.fontFamily='Arial, sans-serif';
+  const seedOptions=allSeeds.map(seedId=>`<option value="${seedId}">${seedId}</option>`).join('');
+  const eventOptions=allEvents.map(eventName=>`<option value="${eventName}">${eventName}</option>`).join('');
+  menu.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;"><strong style="font-size:14px;letter-spacing:.08em;text-transform:uppercase;">Dev menu</strong><button type="button" data-dev-close="true" style="padding:4px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.45);background:#1d3029;color:#edf5ec;cursor:pointer;">Close</button></div><div style="display:grid;gap:9px;"> <label style="font-size:12px;">Event<select id="devEventSelect" style="width:100%;margin-top:4px;padding:6px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.25);background:#14241e;color:#edf5ec;">${eventOptions}</select></label> <button type="button" data-dev-action="weather" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#35261a;color:#f8d7a6;cursor:pointer;">Trigger selected event</button> <label style="font-size:12px;">Spawn seed<select id="devSeedSelect" style="width:100%;margin-top:4px;padding:6px 8px;border-radius:7px;border:1px solid rgba(177,224,188,.25);background:#14241e;color:#edf5ec;">${seedOptions}</select></label> <button type="button" data-dev-action="seed" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1c2a28;color:#edf5ec;cursor:pointer;">Spawn selected seed</button> <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;"> <button type="button" data-dev-action="gear" data-dev-value="backpack" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1d2d28;color:#edf5ec;cursor:pointer;">+ Backpack</button> <button type="button" data-dev-action="gear" data-dev-value="wateringCan" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1d2d28;color:#edf5ec;cursor:pointer;">+ Water</button> <button type="button" data-dev-action="coins" data-dev-value="10000" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#31251f;color:#fbe0a2;cursor:pointer;">+10k coins</button> <button type="button" data-dev-action="zombie" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#2e2418;color:#f4d2a0;cursor:pointer;">Spawn zombie</button> <button type="button" data-dev-action="restock" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1c2d2d;color:#d9f9ee;cursor:pointer;">Restock</button> <button type="button" data-dev-action="toggle-phase" style="padding:8px 10px;border-radius:8px;border:1px solid rgba(177,224,188,.25);background:#1f1d2d;color:#d7d0ff;cursor:pointer;">Night toggle</button></div></div>`;
+  const eventSelect=menu.querySelector('#devEventSelect');
+  const seedSelect=menu.querySelector('#devSeedSelect');
+  if(eventSelect){eventSelect.value=allEvents[0];}
+  if(seedSelect){seedSelect.value=allSeeds[0];}
+  const chooseSelectedValue=button=>{
+    if(button.dataset.devAction==='weather')return menu.querySelector('#devEventSelect')?.value||'';
+    if(button.dataset.devAction==='seed')return menu.querySelector('#devSeedSelect')?.value||'';
+    return button.dataset.devValue||'';
+  };
+  menu.querySelectorAll('[data-dev-action]').forEach(button=>button.addEventListener('click',event=>{
+    event.preventDefault();
+    event.stopPropagation();
+    handleDevAction(button.dataset.devAction, chooseSelectedValue(button));
+  }));
+  menu.querySelector('[data-dev-close]').addEventListener('click',()=>{menu.hidden=true;state.devMenuOpen=false;});
+  document.body.appendChild(menu);
+  return menu;
+}
+function openDevMenu(){
+  const menu=buildDevMenu();
+  menu.hidden=false;state.devMenuOpen=true;status.textContent='Dev menu active';
+}
+function closeDevMenu(){const menu=$('gardenDevMenu');if(menu){menu.hidden=true;state.devMenuOpen=false;}}
+function handleDevAction(action,value=''){
+  const player=state.players.get(state.playerId);
+  const canUseRoom=state.offline||!!(state.socket&&state.socket.readyState===WebSocket.OPEN);
+  if(!canUseRoom && action!=='seed' && action!=='coins' && action!=='weather' && action!=='gear' && action!=='zombie' && action!=='restock' && action!=='toggle-phase'){
+    status.textContent='Join a garden to use a dev action.';return;
+  }
+  const fallbackSelect=document.getElementById(action==='seed'?'devSeedSelect':action==='weather'?'devEventSelect':'');
+  const selectedValue=fallbackSelect&&(!value||value===action)?fallbackSelect.value:value;
+  const finalValue=selectedValue||value||'';
+  if(action!=='weather'&&action!=='seed'&&action!=='gear'&&action!=='coins'&&action!=='restock'&&action!=='zombie'&&action!=='toggle-phase'){
+    closeDevMenu();
+  }
+  if(action==='weather'){
+    const weather=finalValue||'solarFlare';
+    if(state.offline){state.weather=weather;updateWeather(weather,true);status.textContent=`Dev weather: ${weather}`;return;}
+    send('dev',{kind:'weather',value:weather});
+  }else if(action==='seed'){
+    const seedId=finalValue||'berry';
+    if(state.offline){handleOfflineAction('buy-seed',{item:seedId});status.textContent=`Dev spawn: ${seedId}`;return;}
+    send('dev',{kind:'seed',id:seedId});
+  }else if(action==='gear'){
+    const item=finalValue||'backpack';
+    if(state.offline){handleOfflineAction('buy-gear',{item});status.textContent=`Dev gear: ${item}`;return;}
+    send('dev',{kind:'gear',id:item});
+  }else if(action==='coins'){
+    const amount=Number(finalValue)||10000;
+    if(state.offline){if(player){player.coins=clampGardenCoins((Number(player.coins)||0)+amount);updateHud(player);saveOfflineGarden();}status.textContent=`Dev coins: +${amount}`;return;}
+    send('dev',{kind:'coins',amount});
+  }else if(action==='restock'){
+    if(state.offline){state.shopRestockAt=Math.max(0,Date.now()-1000);showRestockNotification();status.textContent='Dev restock triggered';return;}
+    send('dev',{kind:'restock'});
+  }else if(action==='zombie'){
+    if(state.offline){const angle=Math.random()*Math.PI*2;state.zombies.set(`dev-z-${Date.now()}-${Math.random()}`,{id:`dev-z-${Date.now()}` ,x:state.x+Math.cos(angle)*8,z:state.z+Math.sin(angle)*8,health:45,speed:.42});status.textContent='Dev zombie spawned';return;}
+    send('dev',{kind:'zombie'});
+  }else if(action==='toggle-phase'){
+    if(state.offline){state.phase=state.phase==='day'?'night':'day';status.textContent=`Dev phase: ${state.phase}`;return;}
+    send('dev',{kind:'toggle-phase'});
+  }else{
+    status.textContent='Unknown dev action.';return;
+  }
+  if(!state.offline){status.textContent=`Dev action: ${action}`;}
+}
 const offlineGrowthTimes={sunflower:25000,berry:18000,moonberry:32000,starfruit:38000,pumpkin:33000,glowMushroom:24000,clover:16000,lavender:28000,snowdrop:30000,apple:38000,dragonfruit:44000,bluebell:21000,marigold:27000,nightshade:35000,peashooter:12000,cornzooka:18000,thornGuard:26000,snapdragon:15000,frostFern:17000,melonMortar:22000,roseTurret:14000,bamboo:22000,reedTube:18000,magazineVine:25000,pumpkinShell:27000,blastCorn:28000,pollenPod:26000,triggerBloom:25000,thornVine:23000,crystalBud:36000,epicSoil:28000};
 const offlineSellValues={sunflower:38,berry:27,moonberry:64,starfruit:78,pumpkin:52,glowMushroom:42,clover:25,lavender:48,snowdrop:54,apple:43,dragonfruit:92,bluebell:35,marigold:46,nightshade:72,bamboo:6,reedTube:4,magazineVine:8,pumpkinShell:6,blastCorn:10,pollenPod:6,triggerBloom:7,thornVine:7,crystalBud:12};
 const offlinePartTypes={bamboo:'bamboo',reedTube:'reed',magazineVine:'magazine',pumpkinShell:'shell',blastCorn:'blastCorn',pollenPod:'pollen',triggerBloom:'trigger',thornVine:'grip',crystalBud:'crystal'};
@@ -861,7 +1080,7 @@ function saveOfflineGarden(){
   const player=state.players.get(state.playerId);
   if(!player)return;
   try{
-    localStorage.setItem('gardenfallOfflineSave',JSON.stringify({player,plants:Array.from(state.plants.values()),seedDrops:Array.from(state.seedDrops.values()),sprinklers:Array.from(state.sprinklers),soil:Array.from(state.soil),gardenHealth:state.gardenHealth,day:state.day,weather:state.weather}));
+    localStorage.setItem('gardenfallOfflineSave',JSON.stringify({player,plants:Array.from(state.plants.values()),seedDrops:Array.from(state.seedDrops.values()),sprinklers:Array.from(state.sprinklers),lanterns:Array.from(state.lanterns.values()),soil:Array.from(state.soil),gardenHealth:state.gardenHealth,day:state.day,weather:state.weather}));
   }catch(error){status.textContent='Could not save this offline garden in browser storage.';}
 }
 function offlineRefresh(){
@@ -883,10 +1102,11 @@ function startOfflineGarden(guestMode=false){
   player.weapons={peaBlaster:true,cornZooka:false,brambleRifle:false,bloomShotgun:false,sunseedRepeater:false,...player.weapons};
   player.ammo={peaBlaster:20,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.ammo};
   player.magazines={peaBlaster:10,cornZooka:0,brambleRifle:0,bloomShotgun:0,sunseedRepeater:0,...player.magazines};
-  player.gear={wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false,...player.gear};
+  player.gear={wateringCan:false,shovel:false,trowel:false,sprinkler:0,fertilizer:0,backpack:false,lights:false,...player.gear};
   state.offline=true;state.socket=null;state.roomId='offline-garden';state.roomMode='offline';state.playerId=player.id;state.clientId='offline';state.players=new Map([[player.id,player]]);
   state.plants=new Map((Array.isArray(saved?.plants)?saved.plants:[]).map(plant=>[gardenPlotKey(plant),plant]));
   state.seedDrops=new Map((Array.isArray(saved?.seedDrops)?saved.seedDrops:[]).map(drop=>[drop.id,drop]));
+  state.lanterns=new Map((Array.isArray(saved?.lanterns)?saved.lanterns:[]).map(lantern=>[gardenPlotKey(lantern),lantern]));
   state.sprinklers=new Set(saved?.sprinklers||[]);state.soil=new Set(saved?.soil||[]);state.zombies.clear();state.gardenHealth=Number(saved?.gardenHealth)||100;state.day=Math.max(1,Number(saved?.day)||1);
   state.weather='clear';state.weatherKnown=true;state.x=Number.isFinite(Number(player.x))?Number(player.x):0;state.z=Number.isFinite(Number(player.z))?Number(player.z):-64.3;
   state.targetX=state.x;state.targetZ=state.z;state.joinedPosition=true;state.selectedTile=null;state.phase='day';state.phaseRemaining=90000;state.phaseDeadline=performance.now()+90000;state.offlineNextZombieAt=0;state.offlineLastWeatherAt=performance.now()+45000;
@@ -904,11 +1124,22 @@ function handleOfflineAction(action,data={}){
   const fail=message=>{status.textContent=message;};
   const tile=offlineTile(data.tile),key=tile&&gardenPlotKey(tile),plant=key&&state.plants.get(key),now=Date.now();
   if(action==='move'){player.x=state.x=Number(data.x)||0;player.z=state.z=Number(data.z)||0;return;}
+  if(action==='cheat'){
+    if(String(data.code||'').toLowerCase()!=='theyseeyou'){fail('Unknown cheat code.');return;}
+    awardCheatTokens(player);
+    player.coins=clampGardenCoins(player.coins);
+    if(state.offline)saveOfflineGarden();
+    return;
+  }
   if(action==='buy-seed'){
     const seed=seeds.find(item=>item.id===data.item);if(!seed||player.coins<seed.cost){fail('Not enough coins for those seeds.');return;}player.coins-=seed.cost;
     const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
-    if(carried<capacity)player.seeds[seed.id]=(player.seeds[seed.id]||0)+1;
-    else{const angle=Math.random()*Math.PI*2,id=`offline-seed-${now}-${Math.random()}`;state.seedDrops.set(id,{id,type:seed.id,x:state.x+Math.cos(angle)*1.1,z:state.z+Math.sin(angle)*1.1,ownerId:player.id});}
+    if(carried<capacity){player.seeds[seed.id]=(player.seeds[seed.id]||0)+1;state.selectedSeed=seed.id;}
+    else{
+      const angle=Math.random()*Math.PI*2,id=`offline-seed-${now}-${Math.random()}`;
+      state.seedDrops.set(id,{id,type:seed.id,x:state.x+Math.cos(angle)*1.1,z:state.z+Math.sin(angle)*1.1,ownerId:player.id});
+      if(state.selectedSeed){status.textContent=`${seed.name} dropped on the ground because your seed pack is full.`;}
+    }
   }else if(action==='pickup-seed'){
     const drop=state.seedDrops.get(String(data.id||''));if(!drop){fail('That seed is no longer on the ground.');return;}
     const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+(Number(amount)||0),0);
@@ -916,7 +1147,10 @@ function handleOfflineAction(action,data={}){
     player.seeds[drop.type]=(player.seeds[drop.type]||0)+1;state.seedDrops.delete(drop.id);
   }else if(action==='buy-gear'){
     const item=gear.find(entry=>entry.id===data.item);if(!item||player.coins<item.cost){fail('Not enough coins for that gear.');return;}player.coins-=item.cost;
-    if(item.id==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}else if(item.id==='shovel'||item.id==='trowel'||item.id==='backpack')player.gear[item.id]=true;else player.gear[item.id]=(player.gear[item.id]||0)+1;
+    if(item.id==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}else if(item.id==='shovel'||item.id==='trowel'||item.id==='backpack')player.gear[item.id]=true;else if(item.id==='lights')player.gear.lights=(Number(player.gear.lights)||0)+1;else player.gear[item.id]=(player.gear[item.id]||0)+1;
+  }else if(action==='place-lantern'){
+    const tile=offlineTile(data.tile),key=tile&&gardenPlotKey(tile);if(!tile||tile.farmIndex!==player.farmIndex||!(Number(player.gear.lights||0)>0)){fail('Select a valid plot on your farm and own Garden Lights.');return;}if(state.plants.has(key)||state.sprinklers.has(key)||state.lanterns.has(key)){fail('That plot is occupied.');return;}
+    player.gear.lights=Math.max(0,(Number(player.gear.lights)||0)-1);state.lanterns.set(key,{id:`lantern-${Date.now()}-${Math.random()}`,farmIndex:tile.farmIndex,col:tile.col,row:tile.row,x:tile.x,z:tile.z,ownerId:player.id});
   }else if(action==='buy-weapon'){
     const item=purchasableWeapons.find(weapon=>weapon.id===data.item),specification=item&&weaponSpecs[item.id];
     if(!item||!specification||player.weapons[item.id]){fail('That weapon is unavailable or already owned.');return;}
@@ -948,7 +1182,7 @@ function handleOfflineAction(action,data={}){
   }else if(action==='shovel'){
     if(!player.gear.shovel||!plant||plant.ownerId!==player.id){fail('Buy a shovel and select one of your plants.');return;}state.plants.delete(key);state.soil.delete(key);
   }else if(action==='sprinkler'){
-    if(!tile||tile.farmIndex!==player.farmIndex||plant||state.sprinklers.has(key)||!(player.gear.sprinkler>0)){fail('Buy a sprinkler and select an empty plot.');return;}state.sprinklers.add(key);player.gear.sprinkler--;
+    if(!tile||tile.farmIndex!==player.farmIndex||plant||state.sprinklers.has(key)||!(player.gear.sprinkler>0)){fail('Buy a sprinkler and select an empty plot.');return;}state.sprinklers.add(key);state.sprinklerExpiry.set(key,Date.now()+120000);player.gear.sprinkler--;
   }else if(action==='refill-water'){
     if(!player.gear.wateringCan){fail('Buy a watering can from Gear first.');return;}if(Math.hypot(state.x,state.z)>12&&state.weather!=='rain'){fail('Stand by the market pond or wait for rain to refill your can.');return;}player.wateringCanCharges=5;
   }else if(action==='move-plant'){
@@ -969,19 +1203,23 @@ function handleOfflineAction(action,data={}){
       for(const zombie of targets){zombie.health-=damage;if(zombie.health<=0){state.zombies.delete(zombie.id);player.coins+=8;player.kills++;}}
     }
   }else if(action==='craft')fail('Custom crafting is available in multiplayer gardens.');
+  player.coins=clampGardenCoins(player.coins);
   offlineRefresh();
 }
 function updateOfflineSimulation(delta){
   if(!state.offline)return;
   const now=performance.now(),time=Date.now();
+  for(const [key,expiresAt] of state.sprinklerExpiry){if(time>=expiresAt){state.sprinklerExpiry.delete(key);state.sprinklers.delete(key);}}
   state.phaseRemaining=Math.max(0,state.phaseDeadline-now);
   if(state.phaseRemaining===0){
     if(state.phase==='day'){state.phase='night';state.phaseRemaining=300000;state.phaseDeadline=now+300000;state.offlineNextZombieAt=now+700;status.textContent='Nightfall. Defend the garden!';updateWeather(state.weather,true);}
     else{state.phase='day';state.day++;state.phaseRemaining=90000;state.phaseDeadline=now+90000;state.zombies.clear();status.textContent='Daylight. Grow and prepare.';updateWeather(state.weather,true);saveOfflineGarden();}
   }
   if(now>=state.offlineLastWeatherAt){
-    const next=state.weather==='aurora'?'clear':Math.random()<.28?'aurora':'clear';state.weather=next;state.weatherRemaining=45000;state.weatherDeadline=now+45000;updateWeather(next,true);
-    if(next==='aurora')for(const plant of state.plants.values())if(seeds.find(seed=>seed.id===plant.type)?.kind==='crop'&&plant.matureAt>time&&!plant.mutation&&Math.random()<.45)plant.mutation='aurora';
+    const weatherPool=['clear','clear','clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm'];
+    const next=state.weather==='aurora'?'clear':weatherPool[Math.floor(Math.random()*weatherPool.length)];
+    state.weather=next;state.weatherRemaining=45000;state.weatherDeadline=now+45000;updateWeather(next,true);
+    if(['aurora','solarFlare','fireworks','rainbow'].includes(next))for(const plant of state.plants.values())if(seeds.find(seed=>seed.id===plant.type)?.kind==='crop'&&!plant.mutation&&((plant.matureAt>time)||Number(plant.fruitsAvailable)>0)&&Math.random()<.45)plant.mutation=next;
     state.offlineLastWeatherAt=now+45000;
   }
   if(state.phase==='night'&&now>=state.offlineNextZombieAt&&state.zombies.size<12){
@@ -1093,6 +1331,12 @@ function connect(mode,roomId=''){
     state.plants=new Map((message.plants||[]).map(plant=>[gardenPlotKey(plant),plant]));
     state.seedDrops=new Map((message.seedDrops||[]).map(drop=>[drop.id,drop]));
     state.zombies=new Map((message.zombies||[]).map(zombie=>[zombie.id,zombie]));
+    state.lanterns=new Map((message.lanterns||[]).map(lantern=>[gardenPlotKey(lantern),lantern]));
+    state.shopStock={seeds:message.shopStock?.seeds||{},gear:message.shopStock?.gear||{},weapons:message.shopStock?.weapons||{}};
+    state.shopRestockAt=Number(message.shopRestockAt)||0;
+    state.shopRestockNotified = state.shopRestockAt && state.shopRestockAt <= Date.now() ? state.shopRestockNotified : false;
+    updateRestockState(Date.now());
+    renderShop();
     syncProjectiles(message.projectiles||[]);
     state.sprinklers=new Set(message.sprinklers||[]);
     state.ponds=message.ponds||[];
@@ -1109,11 +1353,15 @@ function connect(mode,roomId=''){
     state.weatherDeadline=performance.now()+state.weatherRemaining;
     updateWeather(state.weather,state.weatherKnown?state.weather!==previousWeather:state.weather!=='clear');
     state.weatherKnown=true;
-    const local=state.players.get(state.playerId);
+    if(!state.playerId || !state.players.has(state.playerId)){
+      const fallbackPlayer = Array.from(state.players.values()).find(player => player.clientId === state.clientId) || Array.from(state.players.values())[0];
+      if(fallbackPlayer){state.playerId=fallbackPlayer.id;}
+    }
+    const local=state.players.get(state.playerId) || Array.from(state.players.values()).find(player => player.clientId === state.clientId);
     if(local){
-        if(!state.joinedPosition){
+      if(!state.joinedPosition){
         state.x=local.x;state.z=local.z;
-          const offset=farmOffset(local.farmIndex);state.yaw=Math.atan2(-offset.radialX,offset.radialZ);
+        const offset=farmOffset(local.farmIndex);state.yaw=Math.atan2(-offset.radialX,offset.radialZ);
         state.joinedPosition=true;
       }
       state.targetX=local.x;state.targetZ=local.z;
@@ -1131,6 +1379,23 @@ function connect(mode,roomId=''){
   socket.addEventListener('error',()=>{if(state.socket===socket)joinStatus.textContent='Could not reach the garden server on this port.';});
 }
 
+function applyLandVisualTier(landTier='common'){
+  const palette={
+    common:{ground:0x507944,plot:0x704b31,edge:0x9a7045,path:0x9b865d,trim:0x8cb56d},
+    uncommon:{ground:0x628a74,plot:0x7c684d,edge:0xa17d44,path:0xc5ae7d,trim:0x92c08f},
+    rare:{ground:0x5b678d,plot:0x6d736a,edge:0x8e8c8d,path:0x8fa0c5,trim:0x92a7c2},
+    epic:{ground:0x4c7a6a,plot:0x6a5d4f,edge:0x8d7264,path:0xd7c49d,trim:0x8ed7b1},
+    legendary:{ground:0x6a5d82,plot:0x7a6a5e,edge:0xa08479,path:0xe0d4ff,trim:0xd0a9ff},
+  };
+  const colors=palette[landTier]||palette.common;
+  floor.material.color.setHex(colors.ground);
+  for(const material of farmGroundMaterials)material.color.setHex(colors.ground);
+  plotMaterial.color.setHex(colors.plot);
+  plotEdgeMaterial.color.setHex(colors.edge);
+  pathMaterial.color.setHex(colors.path);
+  for(const mesh of plotMeshes)mesh.material.color.setHex(colors.plot);
+  selectionHighlight.material.color.setHex(colors.trim);
+}
 function updateHud(player){
   $('phaseBadge').textContent=state.phase==='night'?'☾ NIGHT · ZOMBIES!':'☀ DAY · PREPARE';
   $('phaseBadge').classList.toggle('night',state.phase==='night');
@@ -1138,16 +1403,58 @@ function updateHud(player){
   $('dayClock').textContent=`DAY ${state.day} · ${formatTime(state.phaseRemaining)}`;
   $('coins').textContent=`🪙 ${player?.coins??0}`;
   const land=landTiers.find(tier=>tier.id===(player?.landTier||'common'))||landTiers[0];
+  applyLandVisualTier(land.id);
   $('landBadge').textContent=`🏡 ${land.name} land · ${land.multiplier}×`;
   $('gardenHealth').textContent=`🌿 Garden ${Math.ceil(state.gardenHealth)}%`;
   $('playerCount').textContent=`${state.players.size}/8 players`;
   $('farmBadge').textContent=`🌾 Farm ${(player?.farmIndex??0)+1}/8`;
 }
+function clampGardenCoins(value){
+  const numeric=Number(value)||0;
+  if(!Number.isFinite(numeric))return 0;
+  return Math.max(0,Math.min(GARDEN_COIN_CAP,numeric));
+}
+function awardCheatTokens(player){
+  if(!player)return false;
+  player.coins=clampGardenCoins((Number(player.coins)||0)+10000);
+  status.textContent='Cheat activated: +10,000 tokens.';
+  clearTimeout(statusTimeout);statusTimeout=setTimeout(()=>{if(state.socket&&state.socket.readyState===WebSocket.OPEN)status.textContent='Garden connected';else status.textContent='Not in a garden';},3000);
+  return true;
+}
 function formatTime(ms){
   const value=Number(ms),seconds=Math.max(0,Math.ceil((Number.isFinite(value)?value:0)/1000));return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
 }
+function formatCountdown(ms){
+  const value=Math.max(0,Number(ms)||0),seconds=Math.ceil(value/1000);return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+}
+function updateShopRestockUi(){
+  const timer=$('shopRestockTimer');
+  if(!timer)return;
+  if(!state.shopRestockAt){timer.textContent='Restocks soon';timer.classList.remove('ready');return;}
+  const remaining=state.shopRestockAt-Date.now();
+  if(remaining<=0){timer.textContent='Restocked';timer.classList.add('ready');return;}
+  timer.textContent=`Restocks in ${formatCountdown(remaining)}`;
+  timer.classList.remove('ready');
+}
+function showRestockNotification(){
+  const banner=$('restockBanner');
+  if(!banner)return;
+  banner.hidden=false;
+  banner.textContent='Market restocked!';
+  clearTimeout(state.restockBannerTimer);
+  state.restockBannerTimer=setTimeout(()=>{banner.hidden=true;},3000);
+}
+function updateRestockState(now=Date.now()){
+  if(!state.shopRestockAt){updateShopRestockUi();return;}
+  if(now>=state.shopRestockAt){
+    if(!state.shopRestockNotified){showRestockNotification();state.shopRestockNotified=true;}
+  }else{
+    state.shopRestockNotified=false;
+  }
+  updateShopRestockUi();
+}
 function weatherName(weather){
-  return ({solarFlare:'Solar Flare',aurora:'Aurora',fireworks:'Fireworks',rainbow:'Rainbow',snowstorm:'Snowstorm',rain:'Rain',clear:'Clear'})[weather]||weather;
+  return ({solarFlare:'Solar Flare',aurora:'Aurora',fireworks:'Fireworks',rainbow:'Rainbow',snowstorm:'Snowstorm',rain:'Rain',clear:'Clear',bloodMoon:'Blood Moon'})[weather]||weather;
 }
 function updateWeather(weather,announce=false){
   const styles={
@@ -1158,19 +1465,24 @@ function updateWeather(weather,announce=false){
     fireworks:{sky:0x394765,light:0xc8bcff,intensity:1.65},
     rainbow:{sky:0x88b6b0,light:0xfff0cb,intensity:2.35},
     snowstorm:{sky:0x9aaab0,light:0xd9e8ef,intensity:1.25},
+    bloodMoon:{sky:0x3a1624,light:0xffb4c3,intensity:1.2},
   };
   const style=styles[weather]||styles.clear;
-  const night=state.phase==='night',bloodNight=night&&state.day%4===0;
+  const night=state.phase==='night',bloodNight=night&&weather==='bloodMoon';
+  const player=state.players.get(state.playerId);
   const color=new THREE.Color(style.sky);
   if(night)color.lerp(new THREE.Color(bloodNight?0x5c2038:0x18263e),.7);
   scene.background.copy(color);scene.fog.color.copy(color);
-  sunlight.color.setHex(night?(bloodNight?0xd07988:0x8798bc):style.light);sunlight.intensity=style.intensity*(night?(bloodNight?.34:.24):1);
-  hemisphere.intensity=night?(bloodNight?.65:.48):2.1;
+  sunlight.color.setHex(night?(bloodNight?0xd07988:0x8798bc):style.light);sunlight.intensity=style.intensity*(night?(bloodNight?0.34:0.24):1);
+  hemisphere.intensity=night?(bloodNight?0.65:0.48):2.1;
+  const lanternBoost = !!player?.gear?.lights ? 1.6 : 1;
+  const lanternFactor = night ? (bloodNight ? 1.6 : 0.9 * lanternBoost) : 0.1;
+  for (const [index, light] of nightLanterns.entries()) { light.intensity = 0.5 + lanternFactor * (index % 2 ? 0.8 : 1.0); }
   $('weatherEffects').dataset.weather=weather;
   $('weatherLabel').textContent=`Weather · ${weatherName(weather)} · ${formatTime(state.weatherRemaining)}`;
   rainLines.visible=weather==='rain';snowflakes.visible=weather==='snowstorm';rainbowGroup.visible=weather==='rainbow';
   cloudMaterial.color.setHex(weather==='snowstorm'?0xc6d4dc:weather==='rain'?0x8798a5:0xf1f3eb);
-  cloudMaterial.opacity=weather==='snowstorm'?.72:weather==='rain'?.58:.34;
+  cloudMaterial.opacity=weather==='snowstorm'?0.72:weather==='rain'?0.58:0.34;
   if(announce&&(weather==='rain'||weather==='snowstorm'))resetWeatherParticles();
   const winter=weather==='snowstorm',wet=weather==='rain';
   floor.material.color.setHex(winter?0xc4d1ce:wet?0x465b56:0x507944);
@@ -1187,6 +1499,7 @@ function updateWeather(weather,announce=false){
     fireworks:'Fireworks may trigger rare crop mutations.',
     rainbow:'Rainbow light can create valuable crop mutations.',
     snowstorm:'Snow sweeps across the island and slows crop growth and movement.',
+    bloodMoon:'The blood moon is out. Zombies run heavier and deadlier tonight.',
   };
   const banner=$('weatherEvent');
   banner.dataset.weather=weather;
@@ -1212,22 +1525,34 @@ function updateWeatherInWorld(delta){
   for(const cloud of clouds){cloud.position.x+=cloud.userData.wind*delta;cloud.position.z+=Math.sin(state.weaponClock*.12+cloud.position.x)*.025;if(cloud.position.x>farmGrid.mapRadius)cloud.position.x=-farmGrid.mapRadius;}
 }
 
+function getShopStock(category,id){
+  const stock=state.shopStock?.[category]?.[id];
+  if(Number.isFinite(Number(stock)))return Math.max(0,Number(stock));
+  if(category==='seeds'&&seeds.some(item=>item.id===id))return 3;
+  if(category==='gear'&&gear.some(item=>item.id===id))return 2;
+  if(category==='weapons'&&purchasableWeapons.some(item=>item.id===id))return 1;
+  return 0;
+}
 function renderShop(){
   const listings=state.selectedShop==='seeds'?seeds:state.selectedShop==='gear'?gear:[];
   const player=state.players.get(state.playerId);
-  const signature=JSON.stringify([state.selectedShop,state.seedCategory,player?.landTier,player?.coins,player?.seeds,player?.gear,player?.weapons,player?.ammo,player?.customGuns,player?.goods]);
+  const signature=JSON.stringify([state.selectedShop,state.seedCategory,player?.landTier,player?.coins,player?.seeds,player?.gear,player?.weapons,player?.ammo,player?.customGuns,player?.goods,state.shopStock]);
   if(signature===state.shopSignature)return;
   state.shopSignature=signature;
   document.querySelector('.seed-filters').hidden=state.selectedShop!=='seeds';
   shopItems.replaceChildren();
-  const addRow=(name,description,label,onBuy,disabled=false,icon='')=>{
+  const addRow=(name,description,label,onBuy,disabled=false,icon='',stockCount=null)=>{
     const row=document.createElement('div');row.className='shop-item';
     if(icon){const preview=document.createElement('span');preview.className='seed-icon';preview.textContent=icon;preview.setAttribute('aria-hidden','true');row.append(preview);}
     const copy=document.createElement('div');copy.className='shop-item-copy';
     const title=document.createElement('strong');title.textContent=name;
-    const detail=document.createElement('span');detail.textContent=description;
+    const detail=document.createElement('span');
+    const isInStock=stockCount===null||stockCount>0;
+    const stockText=stockCount===null?'':(stockCount>0?` · In stock: ${stockCount}`:' · Not in stock');
+    detail.textContent=`${description}${stockText}`;
+    if(stockCount!==null){detail.style.color=isInStock?'#dfeec5':'#ff7a7a';detail.style.fontWeight='600';}
     copy.append(title,detail);
-    const buy=document.createElement('button');buy.type='button';buy.textContent=label;buy.disabled=disabled;buy.addEventListener('click',onBuy);
+    const buy=document.createElement('button');buy.type='button';buy.textContent=label;buy.disabled=disabled||stockCount===0;buy.addEventListener('click',onBuy);
     row.append(copy,buy);shopItems.append(row);
   };
   if(state.selectedShop==='sell'){
@@ -1264,15 +1589,17 @@ function renderShop(){
   }
   for(const item of listings){
     if(state.selectedShop==='seeds'&&state.seedCategory!=='all'&&item.kind!==state.seedCategory)continue;
+    const inStock=getShopStock(state.selectedShop==='seeds'?'seeds':'gear',item.id);
     addRow(item.name,item.description,`Buy · ${item.cost} 🪙`,
-      ()=>send(state.selectedShop==='seeds'?'buy-seed':'buy-gear',{item:item.id}),false,state.selectedShop==='seeds'?seedIcons[item.id]||'🌱':'');
+      ()=>{if(state.selectedShop==='seeds'){state.selectedSeed=item.id;send('buy-seed',{item:item.id});} else send('buy-gear',{item:item.id});},false,state.selectedShop==='seeds'?seedIcons[item.id]||'🌱':'',inStock);
   }
   if(state.selectedShop==='gear'){
     const player=state.players.get(state.playerId);
     for(const item of purchasableWeapons){
       const owned=!!player?.weapons[item.id];
+      const inStock=getShopStock('weapons',item.id);
       addRow(`${item.name}${owned?' · Owned':''}`,item.description,owned?'Owned':`Buy · ${item.cost} 🪙`,
-        ()=>send('buy-weapon',{item:item.id}),owned||Number(player?.coins||0)<item.cost);
+        ()=>send('buy-weapon',{item:item.id}),owned||Number(player?.coins||0)<item.cost||inStock<=0,'',inStock);
     }
     for(const item of ammoListings){
       const unlocked=!!player?.weapons[item.id],ammo=Number(player?.ammo[item.id])||0;
@@ -1344,9 +1671,11 @@ function updateNearbyStation(){
   if(!$('shopPopup').hidden||!$('workbenchPopup').hidden){interactionPrompt.hidden=true;return;}
   const prompts=[];
   const seedDrop=nearestSeedDrop();
-  if(seedDrop&&Math.hypot(state.x-seedDrop.x,state.z-seedDrop.z)<=2.5)prompts.push(`H · Pick up ${seeds.find(seed=>seed.id===seedDrop.type)?.name||'seed'} seed`);
+  if(seedDrop&&Math.hypot(state.x-seedDrop.x,state.z-seedDrop.z)<=2.5)prompts.push(`E · Pick up ${seeds.find(seed=>seed.id===seedDrop.type)?.name||'seed'} seed`);
   if(state.ziplineTarget)prompts.push(`T · Zipline to ${state.ziplineTarget==='farm'?'your farm':'the market'}`);
-  if(closest)prompts.push(`E · ${closest.title}`);
+  if(closest)prompts.push(`H · ${closest.title}`);
+  const player=state.players.get(state.playerId);
+  if(player && Number(player.gear?.lights||0)>0)prompts.push('L · Place lantern on selected plot');
   interactionPrompt.hidden=prompts.length===0;
   interactionPrompt.textContent=prompts.join(' · ');
 }
@@ -1473,19 +1802,30 @@ function harvestNearbyPlant(){
   send('harvest',{tile:gardenPlotKey(plant),confirmFavorite:true});
   return true;
 }
+function placeLanternAt(tile){
+  const player=state.players.get(state.playerId);
+  if(!tile){status.textContent='Select a plot on your farm for the lantern.';return;}
+  if(tile.farmIndex!==player?.farmIndex){status.textContent='Lanterns must be placed on your own farm.';return;}
+  if(!(Number(player?.gear?.lights||0)>0)){status.textContent='Buy Garden Lights before placing lanterns.';return;}
+  const key=gardenPlotKey(tile);
+  if(state.plants.has(key)||state.sprinklers.has(key)||state.lanterns.has(key)){status.textContent='That plot is already occupied by a plant, sprinkler, or lantern.';return;}
+  send('place-lantern',{tile:{...tile}});
+}
 function plantSeedAt(tile){
   if(!state.selectedSeed){status.textContent='Choose or buy a seed before planting.';return;}
   if(!tile){status.textContent='Select an empty plot on your farm before planting.';return;}
   const key=gardenPlotKey(tile);
   if(tile.farmIndex!==state.players.get(state.playerId)?.farmIndex){status.textContent='You can only plant on your own farm.';return;}
-  if(state.plants.has(key)||state.sprinklers.has(key)){status.textContent='That plot is occupied. Select another plot.';return;}
+  if(state.plants.has(key)||state.sprinklers.has(key)||state.lanterns.has(key)){status.textContent='That plot is occupied. Select another plot.';return;}
   if(!state.offline&&(!state.socket||state.socket.readyState!==WebSocket.OPEN)){status.textContent='Reconnect to the garden before planting.';return;}
   state.pendingPlantKey=key;
   send('plant',{item:state.selectedSeed,tile:{...tile}});
+  if(state.offline){state.selectedSeed='';}
 }
-function plantAimedSeed(){
+function plantAimedSeed(pointerOverride=null){
   if(!state.selectedSeed){status.textContent='Choose or buy a seed before planting.';return;}
-  raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+  const screenPointer=pointerOverride||new THREE.Vector2(0,0);
+  raycaster.setFromCamera(screenPointer,camera);
   const hit=raycaster.intersectObjects(plotMeshes,false)[0];
   const tile=hit?.object.userData||state.selectedTile;
   plantSeedAt(tile);
@@ -1493,8 +1833,14 @@ function plantAimedSeed(){
 function findRoot(object,property){
   let node=object;while(node){if(node.userData?.[property])return node;node=node.parent;}return null;
 }
+function isHoldingGardenItem(player=state.players.get(state.playerId)){
+  if(!player)return false;
+  if(state.trowelFrom)return true;
+  return !!(state.selectedSeed && (player.seeds?.[state.selectedSeed] ?? 0) > 0);
+}
 function fireGun(target=null){
   const player=state.players.get(state.playerId);
+  if(isHoldingGardenItem(player)){status.textContent='Put the item in your hand away before firing.';return;}
   if(player?.safetyOn){status.textContent='Gun safety is on. Press G to switch it off.';return;}
   if(!player?.weapons?.[player.weapon]&&!player?.customGuns?.some(gun=>gun.id===player.weapon)){status.textContent='Unlock or craft a weapon before shooting.';return;}
   if(!(player.magazines?.[player.weapon]>0)){status.textContent='Your magazine is empty. Press R to reload.';return;}
@@ -1507,6 +1853,15 @@ function fireGun(target=null){
   state.weaponKick=.11;
   send('shoot',{...(target?{target:target.id}:{}),direction:{x:direction.x,z:direction.z}});
 }
+canvas.addEventListener('touchstart',event=>{
+  if(joinScreen.hidden===false||state.disposed||event.touches.length<2)return;
+  event.preventDefault();
+  const touch=event.touches[0]||event.changedTouches[0];
+  if(!touch)return;
+  const bounds=canvas.getBoundingClientRect();
+  const touchPointer=new THREE.Vector2((touch.clientX-bounds.left)/bounds.width*2-1,-(touch.clientY-bounds.top)/bounds.height*2+1);
+  plantAimedSeed(touchPointer);
+}, { passive: false });
 canvas.addEventListener('click',event=>{
   if(joinScreen.hidden===false||state.disposed)return;
   if(document.pointerLockElement!==canvas){
@@ -1531,6 +1886,10 @@ canvas.addEventListener('click',event=>{
   const plotHit=raycaster.intersectObjects(plotMeshes,false)[0];
   if(plotHit){
     const tile=plotHit.object.userData;
+    if(state.selectedSeed && (state.players.get(state.playerId)?.seeds?.[state.selectedSeed] ?? 0) > 0){
+      plantSeedAt(tile);
+      return;
+    }
     if(state.trowelFrom){
       send('move-plant',{from:state.trowelFrom,to:tile});state.trowelFrom=null;
       updateActions(state.players.get(state.playerId));
@@ -1539,6 +1898,9 @@ canvas.addEventListener('click',event=>{
   }
   const point=raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),new THREE.Vector3());
   if(point){const tile=plotMeshes.find(mesh=>Math.abs(point.x-mesh.position.x)<=.88&&Math.abs(point.z-mesh.position.z)<=.88)?.userData;if(tile){
+    if(state.selectedSeed && (state.players.get(state.playerId)?.seeds?.[state.selectedSeed] ?? 0) > 0){
+      plantSeedAt(tile);return;
+    }
     if(state.trowelFrom){send('move-plant',{from:state.trowelFrom,to:tile});state.trowelFrom=null;updateActions(state.players.get(state.playerId));}
     else selectPlot(tile);
     return;
@@ -1628,6 +1990,27 @@ window.addEventListener('keydown',event=>{
   const popupOpen=!$('shopPopup').hidden||!$('workbenchPopup').hidden;
   const typing=['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName);
   const movementKeys=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+  const typedChar=event.key&&event.key.length===1?event.key.toLowerCase():'';
+  if(event.code==='Backquote'&&!typing){
+    event.preventDefault();
+    if(state.devMenuOpen)closeDevMenu();
+    else openDevMenu();
+    return;
+  }
+  if(!typing&&typedChar){
+    const cleaned=event.key===' '?'' : typedChar;
+    state.cheatBuffer=(state.cheatBuffer+cleaned).replace(/\s+/g,'').slice(-20);
+    if(state.cheatBuffer.includes('theyseeyou')){
+      state.cheatBuffer='';
+      const player=state.players.get(state.playerId);
+      if(player){
+        awardCheatTokens(player);
+        if(state.offline){saveOfflineGarden();offlineRefresh();}
+        else{send('cheat',{code:'theyseeyou'});}
+      }
+      openDevMenu();
+    }
+  }
   if(popupOpen&&movementKeys.includes(event.code)){event.preventDefault();return;}
   if(movementKeys.includes(event.code)&&!typing){state.keys.add(event.code);event.preventDefault();}
   if(event.code==='Space'&&!typing){event.preventDefault();if(!event.repeat&&!popupOpen&&!state.ziplineRide&&state.jumpHeight===0)state.jumpVelocity=8;return;}
@@ -1636,10 +2019,12 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyQ'){plantAimedSeed();return;}
   if(event.code==='KeyR'){send('reload');return;}
   if(event.code==='KeyG'){toggleGunSafety();return;}
+  if(event.code==='KeyL'){placeLanternAt(state.selectedTile);return;}
   if(event.code==='KeyB'){cycleWeapon();return;}
   if(event.code==='KeyN'){cycleSeed(1);return;}
   if(event.code==='KeyF'){send('refill-water');return;}
-  if(event.code==='KeyH'){if(harvestNearbyPlant())status.textContent=nearestSeedDrop()?'Picked up a seed.':'Harvested the nearest ripe plant.';return;}
+  if(event.code==='KeyE'){if(harvestNearbyPlant())status.textContent=nearestSeedDrop()?'Picked up a seed.':'Harvested the nearest ripe plant.';return;}
+  if(event.code==='KeyH'){if(state.nearbyStation)openStationPopup(state.nearbyStation);return;}
   if(event.code==='KeyU'){activateAction('waterButton');return;}
   if(event.code==='KeyX'){activateAction('shovelButton');return;}
   if(event.code==='KeyC'){activateAction('sprinklerButton');return;}
@@ -1647,7 +2032,6 @@ window.addEventListener('keydown',event=>{
   if(event.code==='KeyY'){activateAction('sellAllButton');return;}
   if(event.code==='KeyP'){if(!$('workbenchPopup').hidden)activateAction('craftCustomButton');else status.textContent='Open the workbench with E before crafting.';return;}
   if(event.code==='KeyT'){startZipline();return;}
-  if(event.code==='KeyE'){if(state.nearbyStation)openStationPopup(state.nearbyStation);return;}
   if(event.code==='KeyK')$('keybinds').open=!$('keybinds').open;
 });
 $('closeShopPopup').addEventListener('click',()=>{
@@ -1669,11 +2053,26 @@ document.addEventListener('mousemove',event=>{
   state.pitch=Math.max(-1.1,Math.min(.5,state.pitch-event.movementY*.002));
 });
 
+function animateMarketStalls(delta){
+  const time=performance.now()*0.001;
+  for(const object of scene.children){
+    if(!object.userData?.id || !object.userData?.title || !object.userData?.awning)continue;
+    const bob=Math.sin(time*2+object.position.x)*.05;
+    object.userData.awning.position.y=1.95+bob;
+    object.userData.awning.rotation.x=-.12+Math.sin(time*2.4+object.position.z)*.06;
+    if(object.userData.armLeft){
+      object.userData.armLeft.rotation.z=.9+Math.sin(time*2.1+object.position.x)*.12;
+      object.userData.armRight.rotation.z=-.9-Math.sin(time*2.1+object.position.x)*.12;
+    }
+  }
+}
+
 function animate(){
   if(state.disposed)return;
   const delta=Math.min(clock.getDelta(),.05);
   state.mapDrawElapsed+=delta;
   if(state.mapDrawElapsed>=.12){state.mapDrawElapsed=0;drawFarmMap();}
+  animateMarketStalls(delta);
   updateWeatherInWorld(delta);
   if(state.offline)updateOfflineSimulation(delta);
   if(state.roomId&&(state.offline||state.socket?.readyState===WebSocket.OPEN)){
@@ -1734,6 +2133,7 @@ function uiTick(){
     state.weatherRemaining=Math.max(0,state.weatherDeadline-now);
     const local=state.players.get(state.playerId);updateHud(local);updateActions(local);updatePlantLabels();
     $('weatherLabel').textContent=`Weather · ${weatherName(state.weather)} · ${formatTime(state.weatherRemaining)}`;
+    updateRestockState(Date.now());
   }
   setTimeout(uiTick,250);
 }
@@ -1746,4 +2146,18 @@ window.addEventListener('pagehide',()=>{
   state.disposed=true;state.socket?.close();renderer.setAnimationLoop(null);renderer.dispose();
 });
 init();
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./garden-siege-sw.js').catch(error=>console.warn('Could not cache Gardenfall for offline play.',error));
+if('serviceWorker' in navigator){
+  const localDevHost=location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname.endsWith('.app.github.dev');
+  navigator.serviceWorker.getRegistrations().then(async registrations => {
+    await Promise.all(registrations.map(registration => registration.unregister()));
+    if('caches' in window){
+      const keys=await caches.keys();
+      await Promise.all(keys.filter(key=>key.startsWith('gardenfall-offline-')).map(key=>caches.delete(key)));
+    }
+    if(localDevHost){
+      console.info('Gardenfall local development mode: bypassing cached service worker assets.');
+      return;
+    }
+    return navigator.serviceWorker.register('./garden-siege-sw.js?v=20261109-stale-cache-fix-1').catch(error => console.warn('Could not cache Gardenfall for offline play.', error));
+  }).catch(error => console.warn('Could not clear old Gardenfall service workers.', error));
+}

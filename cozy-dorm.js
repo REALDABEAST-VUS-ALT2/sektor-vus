@@ -238,8 +238,22 @@ function createFurniture(item) {
     box(.72,.12,.68,fabric,0,.55,0);box(.72,.72,.12,wood,0,.96,-.28);
     for(const x of [-.29,.29])for(const z of [-.24,.24])box(.08,.52,.08,wood,x,.27,z);
   } else if(item.type==='plant'){
-    cylinder(.32,.23,.42,pot,0,.21,0);cylinder(.025,.025,.5,wood,0,.66,0,8);
-    [[-.22,1.05,0],[.2,1.18,.06],[0,1.3,-.08],[-.12,.98,.15],[.19,.96,-.12]].forEach(([x,y,z])=>{const leaf=new THREE.Mesh(new THREE.SphereGeometry(.24,10,8),green);leaf.scale.set(.6,1.35,.55);leaf.position.set(x,y,z);leaf.castShadow=true;group.add(leaf);});
+    const potMesh=cylinder(.42,.54,.55,pot,0,.28,0,18);
+    const soil=new THREE.Mesh(new THREE.CylinderGeometry(.35,.45,.12,18),material(0x78513d));soil.position.y=.57;soil.castShadow=true;group.add(soil);
+    const stem=new THREE.Mesh(new THREE.CylinderGeometry(.06,.09,1.45,10),material(0x478a58));stem.position.y=.95;stem.castShadow=true;group.add(stem);
+    const bloom=new THREE.Mesh(new THREE.SphereGeometry(.28,18,14),material(0xffd166,.55,0xffa726));bloom.position.y=1.8;bloom.castShadow=true;group.add(bloom);
+    for(let i=0;i<8;i++){
+      const angle=(i/8)*Math.PI*2;
+      const petal=new THREE.Mesh(new THREE.SphereGeometry(.12,10,8),material(i%2?0xffd166:0xffa94d,.7,0xffb703));
+      petal.position.set(Math.cos(angle)*.23,1.8,Math.sin(angle)*.23);
+      petal.scale.set(1.4,1.1,.7);
+      petal.castShadow=true;group.add(petal);
+    }
+    for(const [x,y,z,tilt] of [[-.32,1.05,0,-.9],[.32,1.15,.04,.9],[-.2,1.28,.08,-.6],[.18,1.05,-.16,.55]]){
+      const leaf=new THREE.Mesh(new THREE.SphereGeometry(.18,12,9),material(0x70b866));
+      leaf.scale.set(1.4,1.8,.7);leaf.position.set(x,y,z);leaf.rotation.z=tilt;leaf.castShadow=true;group.add(leaf);
+    }
+    const center=new THREE.Mesh(new THREE.SphereGeometry(.1,12,8),material(0x7a4b1f));center.position.y=1.8;group.add(center);
   } else if(item.type==='lamp'){
     cylinder(.29,.29,.12,wood,0,.06,0);cylinder(.045,.045,1.65,lightWood,0,.88,0);cylinder(.32,.1,.42,material(0xffd49b,.4,0xffbb78),0,1.8,0);
   } else if(item.type==='shelf'){
@@ -248,6 +262,7 @@ function createFurniture(item) {
     for(let i=0;i<8;i++){const book=box(.12,.42+Math.random()*.24,.25,[0x9c5e65,0x6c8390,0xc49b62,0x648367][i%4],-.48+i*.13,.43,0);book.rotation.z=(Math.random()-.5)*.12;}
   }
   group.position.set(item.x||0,0,item.z||0);group.rotation.y=Number(item.rotation)||0;
+  group.userData.physics={velocity:new THREE.Vector3(),spring:Math.random()*Math.PI*2,phase:Math.random()*Math.PI*2};
   group.traverse(object=>{if(object.isMesh){object.castShadow=true;object.receiveShadow=true;}});
   return group;
 }
@@ -637,6 +652,18 @@ function animate() {
   if(state.disposed)return;
   const delta=Math.min(clock.getDelta(),.05);
   movePlayer(delta);animateDust(delta);updateComputer(delta);
+  const time=performance.now()*0.001;
+  for(const group of state.roomItems.values()){
+    const physics=group.userData.physics;if(!physics)continue;
+    const item=group.userData.dormItem;
+    physics.velocity.y -= 2.2 * delta;
+    group.position.y += physics.velocity.y * delta;
+    if(group.position.y < 0){group.position.y=0;physics.velocity.y*=-0.18;}
+    const wobble=item?.type==='plant'?Math.sin(time*2.4 + physics.spring)*.12:Math.sin(time*1.6 + physics.phase)*.04;
+    group.rotation.z=wobble;
+    group.rotation.x=Math.sin(time*1.3 + physics.phase)*.04;
+    if(item?.type==='plant')group.rotation.y += Math.sin(time*1.2 + physics.phase)*0.0015;
+  }
   camera.position.set(localAvatar.position.x,1.62,localAvatar.position.z);
   camera.rotation.order='YXZ';
   camera.rotation.set(state.pitch,state.yaw,0);

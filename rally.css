@@ -100,71 +100,10 @@ h1 {
   border: 1px solid rgba(255,255,255,0.08);
 }
 
-.rally-hud {
-  position: absolute;
-  inset: 12px 12px auto 12px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  pointer-events: none;
-}
-
-.player-panel {
-  min-width: 190px;
-  padding: 12px 14px 10px;
-  border-radius: 14px;
-  background: rgba(7, 12, 10, 0.44);
-  border: 1px solid rgba(255,255,255,0.08);
-  backdrop-filter: blur(4px);
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.86rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.dot.red { background: #ff7d7d; }
-.dot.blue { background: #7db8ff; }
-
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 4px;
-  font-size: 0.92rem;
-  color: var(--muted);
-}
-
-.stat-row strong {
-  color: var(--text);
-}
-
 @media (max-width: 760px) {
   .rally-topbar {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
-  }
-
-  .rally-hud {
-    flex-direction: column;
-    width: calc(100% - 24px);
-  }
-
-  .player-panel {
-    min-width: 0;
-    width: 100%;
   }
 }
