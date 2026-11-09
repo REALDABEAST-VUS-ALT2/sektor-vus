@@ -73,7 +73,7 @@ const gardenLands=[
   {id:'epic',name:'Epic',cost:750,multiplier:2.1},
   {id:'legendary',name:'Legendary',cost:1600,multiplier:3},
 ];
-const gardenGrid={columns:6,rows:4,farmCount:8,farmRadius:70,mapRadius:95};
+const gardenGrid={columns:6,rows:4,maxFarmLayers:10,farmCount:8,farmRadius:70,mapRadius:95};
 const gardenWeatherTypes=['clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm','bloodMoon'];
 const gardenWeatherPool=['clear','clear','clear','clear','clear','clear','clear','clear','rain','rain','aurora','solarFlare','fireworks','rainbow','snowstorm','bloodMoon'];
 const gardenWeatherDurations={clear:10*60*1000,event:45*1000,bloodMoon:50*1000};
@@ -138,6 +138,7 @@ function gardenPlayerView(player) {
     coins:player.coins,seeds:player.seeds,goods:player.goods,parts:player.parts,gear:player.gear,
     ammo:player.ammo,magazines:player.magazines,weapons:player.weapons,customGuns:player.customGuns,weapon:player.weapon,
     kills:player.kills,wateringCanCharges:player.wateringCanCharges,
+    farmLayers:Math.max(0,Math.min(gardenGrid.maxFarmLayers,Number(player.farmLayers)||0)),
     landTier:player.landTier||'common',
   };
 }
@@ -147,6 +148,65 @@ function gardenShopStockValue(itemId,defaultStock,now=Date.now()){
   const hash=Array.from(String(itemId||'')).reduce((total,char)=>total+char.charCodeAt(0),0);
   const maxStock=Math.max(1,Number(defaultStock)||1);
   return 1 + ((cycle + hash) % maxStock);
+}
+
+function gardenMutateCrops(room,weather,now=Date.now()){
+  const candidates=Array.from(room.plants.values()).filter(plant=>
+    gardenPlants[plant.type]?.kind==='crop'&&plant.mutation===''&&((now<plant.matureAt)||Number(plant.fruitsAvailable)>0)
+  );
+  for(let index=candidates.length-1;index>0;index--){
+    const swap=Math.floor(Math.random()*(index+1));
+    [candidates[index],candidates[swap]]=[candidates[swap],candidates[index]];
+  }
+  let mutated=0;
+  for(const plant of candidates){
+    if(mutated>=6)break;
+    if(Math.random()<.45){plant.mutation=weather;mutated++;}
+  }
+}
+
+function gardenSeedCount(player){
+  return Object.values(player.seeds||{}).reduce((total,amount)=>total+Math.max(0,Math.floor(Number(amount)||0)),0);
+}
+
+function gardenCreateSeedDrops(room,player,type,count=1){
+  for(let index=0;index<count;index++){
+    const angle=Math.random()*Math.PI*2,radius=1.05+Math.floor(index/8)*.2,id=randomUUID();
+    room.seedDrops.set(id,{id,type,x:player.x+Math.cos(angle)*radius,z:player.z+Math.sin(angle)*radius,ownerId:player.id});
+  }
+}
+
+function gardenEnforceSeedCapacity(room,player){
+  let overflow=Math.max(0,gardenSeedCount(player)-(player.gear?.backpack?10:1));
+  for(const type of Object.keys(player.seeds||{}).sort()){
+    if(!overflow)break;
+    const amount=Math.max(0,Math.floor(Number(player.seeds[type])||0));
+    const dropped=Math.min(amount,overflow);
+    if(!dropped)continue;
+    const remaining=amount-dropped;
+    if(remaining)player.seeds[type]=remaining;else delete player.seeds[type];
+    gardenCreateSeedDrops(room,player,type,dropped);
+    overflow-=dropped;
+  }
+}
+
+function gardenGrantSeed(room,player,type){
+  gardenEnforceSeedCapacity(room,player);
+  if(gardenSeedCount(player)>=(player.gear?.backpack?10:1)){
+    gardenCreateSeedDrops(room,player,type);
+    return false;
+  }
+  player.seeds[type]=(Number(player.seeds[type])||0)+1;
+  return true;
+}
+
+function gardenDropSeed(room,player,type){
+  gardenEnforceSeedCapacity(room,player);
+  const amount=Math.max(0,Math.floor(Number(player.seeds?.[type])||0));
+  if(!amount)return false;
+  if(amount===1)delete player.seeds[type];else player.seeds[type]=amount-1;
+  gardenCreateSeedDrops(room,player,type);
+  return true;
 }
 
 function gardenRefreshShopStock(room,now=Date.now()){
@@ -448,9 +508,10 @@ function gardenRoomForSocket(socket) {
   return room&&room.players.get(session.playerId)?room:null;
 }
 
-function gardenTile(value) {
+function gardenTile(value,player=null) {
   const farmIndex=value?.farmIndex===undefined?0:value.farmIndex;
-  if(!Number.isInteger(farmIndex)||farmIndex<0||farmIndex>=gardenGrid.farmCount||!Number.isInteger(value.col)||!Number.isInteger(value.row)||value.col<0||value.col>=gardenGrid.columns||value.row<0||value.row>=gardenGrid.rows)return null;
+  if(!Number.isInteger(farmIndex)||farmIndex<0||farmIndex>=gardenGrid.farmCount||!Number.isInteger(value.col)||!Number.isInteger(value.row)||value.col<0||value.col>=gardenGrid.columns||value.row<0||value.row>=gardenGrid.rows+gardenGrid.maxFarmLayers)return null;
+  if(player&&farmIndex===player.farmIndex&&value.row>=gardenGrid.rows+Math.max(0,Math.min(gardenGrid.maxFarmLayers,Number(player.farmLayers)||0)))return null;
   const offset=gardenFarmOffset(farmIndex);
   const radial=(value.col-2.5)*1.8,tangent=(value.row-1.5)*1.8;
   return {farmIndex,col:value.col,row:value.row,x:offset.x+offset.radialX*radial+offset.tangentX*tangent,z:offset.z+offset.radialZ*radial+offset.tangentZ*tangent};
@@ -522,6 +583,7 @@ function handleGardenJoin(socket,message) {
     kills:Math.max(0,Number(saved?.kills)||0),socket,lastActions:Object.create(null),lastMove:0,lastShot:0,
     weapon:saved?.weapon||'peaBlaster',safetyOn:saved?.safetyOn===true,
   };
+  player.gear.drone=Math.max(0,Math.min(2,Math.floor(Number(player.gear.drone)||0)));
   player.magazines=Object.fromEntries(Object.entries(gardenWeapons).map(([weapon,definition])=>[weapon,weapon==='peaBlaster'?definition.capacity:0]));
   for(const gun of player.customGuns)player.magazines[gun.id]=0;
   if(saved?.magazines&&typeof saved.magazines==='object'){
@@ -534,6 +596,7 @@ function handleGardenJoin(socket,message) {
     player.ammo.peaBlaster=Math.max(player.ammo.peaBlaster,10);
   }
   room.players.set(id,player);
+  gardenEnforceSeedCapacity(room,player);
   room.lastActivity=Date.now();
   gardenSaveRequested=true;
   socket.gardenSession={roomId:room.id,playerId:id};
@@ -561,13 +624,10 @@ function handleGardenAction(socket,message) {
       const allowed=['clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm','bloodMoon'];
       if(!allowed.includes(weather)){gardenSendError(socket,'Unknown dev weather');return;}
       room.weather=weather;room.nextWeatherAt=now+(weather==='clear'?gardenWeatherDurations.clear:gardenWeatherDurations.event);
-      if(['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(weather)) {
-        const candidates=Array.from(room.plants.values()).filter(plant=>gardenPlants[plant.type]?.kind==='crop'&&plant.mutation==='');
-        for(const plant of candidates)if(Math.random()<.45)plant.mutation=weather;
-      }
+      if(['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(weather))gardenMutateCrops(room,weather,now);
     } else if(kind==='seed') {
       const type=String(devMessage.id||'');if(!Object.prototype.hasOwnProperty.call(gardenPlants,type)){gardenSendError(socket,'Unknown seed type.');return;}
-      player.seeds[type]=(player.seeds[type]||0)+1;
+      gardenGrantSeed(room,player,type);
     } else if(kind==='gear') {
       const type=String(devMessage.id||'');
       if(type==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}
@@ -595,7 +655,10 @@ function handleGardenAction(socket,message) {
     if(!Number.isFinite(x)||!Number.isFinite(z)||Math.hypot(x,z)>gardenGrid.mapRadius||gardenPositionBlocked(room,x,z))return;
     player.x=x;player.z=z;player.lastMove=now;return;
   }
-  if(action==='buy-seed') {
+  if(action==='drop-seed') {
+    const type=String(message.item||'');
+    if(!gardenDropSeed(room,player,type)){gardenSendError(socket,'You do not have that seed to drop.');return;}
+  } else if(action==='buy-seed') {
     const type=String(message.item||'');const definition=Object.prototype.hasOwnProperty.call(gardenPlants,type)?gardenPlants[type]:null;
     if(!definition){gardenSendError(socket,'That seed is not available.');return;}
     const shopStock=gardenRefreshShopStock(room,now);
@@ -603,21 +666,18 @@ function handleGardenAction(socket,message) {
     if(player.coins<definition.cost){gardenSendError(socket,'Not enough coins for those seeds.');return;}
     player.coins-=definition.cost;
     shopStock.seeds[type]=Math.max(0,(shopStock.seeds[type]||0)-1);
-    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+Math.max(0,Number(amount)||0),0);
-    if(carried<capacity)player.seeds[type]=(player.seeds[type]||0)+1;
-    else{
-      const angle=Math.random()*Math.PI*2,id=randomUUID();
-      room.seedDrops.set(id,{id,type,x:player.x+Math.cos(angle)*1.1,z:player.z+Math.sin(angle)*1.1,ownerId:player.id});
-    }
+    gardenGrantSeed(room,player,type);
   } else if(action==='pickup-seed') {
     const drop=room.seedDrops.get(String(message.id||''));
     if(!drop){gardenSendError(socket,'That seed is no longer on the ground.');return;}
-    const capacity=player.gear.backpack?10:1,carried=Object.values(player.seeds).reduce((total,amount)=>total+Math.max(0,Number(amount)||0),0);
-    if(carried>=capacity){gardenSendError(socket,player.gear.backpack?'Your backpack is full.':'You are already carrying a seed. Buy a backpack to carry more.');return;}
-    player.seeds[drop.type]=(player.seeds[drop.type]||0)+1;room.seedDrops.delete(drop.id);
+    gardenEnforceSeedCapacity(room,player);
+    if(gardenSeedCount(player)>=(player.gear.backpack?10:1)){gardenSendError(socket,player.gear.backpack?'Your backpack is full.':'You are already carrying a seed. Buy a backpack to carry more.');return;}
+    gardenGrantSeed(room,player,drop.type);room.seedDrops.delete(drop.id);
   } else if(action==='buy-gear') {
     const type=String(message.item||''),cost=Object.prototype.hasOwnProperty.call(gardenGear,type)?gardenGear[type]:0;
     if(!cost){gardenSendError(socket,'That gear is not available.');return;}
+    if(type==='drone'&&Number(player.gear.drone||0)>=2){gardenSendError(socket,'You already own the maximum of 2 scout drones.');return;}
+    if(type==='farmLayer'&&Number(player.farmLayers||0)>=gardenGrid.maxFarmLayers){gardenSendError(socket,'Your farm already has the maximum of 10 layers.');return;}
     const shopStock=gardenRefreshShopStock(room,now);
     if((shopStock?.gear?.[type]||0)<=0){gardenSendError(socket,'That item is not in stock. It restocks in 5 minutes.');return;}
     if(player.coins<cost){gardenSendError(socket,'Not enough coins for that gear.');return;}
@@ -628,7 +688,7 @@ function handleGardenAction(socket,message) {
     else if(type==='lights')player.gear.lights=(Number(player.gear.lights)||0)+1;
     else if(type==='sprinkler')player.gear.sprinkler++;
     else if(type==='backpack')player.gear.backpack=true;
-    else if(type==='drone'){player.gear.drone=Math.min(2,(player.gear.drone||0)+1);player.nextDroneRun=player.nextDroneRun||now+30000;}
+    else if(type==='drone'){player.gear.drone=Math.min(2,(player.gear.drone||0)+1);player.nextDroneRun=now;room.lastDroneRun=now;}
     else if(type==='farmLayer'){player.farmLayers=Math.min(10,(Number(player.farmLayers)||0)+1);}
     else player.gear.fertilizer++;
   } else if(action==='buy-weapon') {
@@ -665,7 +725,7 @@ function handleGardenAction(socket,message) {
     if(player.coins<next.cost){gardenSendError(socket,`You need ${next.cost} coins for ${next.name} land.`);return;}
     player.coins-=next.cost;player.landTier=next.id;
   } else if(action==='plant') {
-    const type=String(message.item||''),definition=Object.prototype.hasOwnProperty.call(gardenPlants,type)?gardenPlants[type]:null,tile=gardenTile(message.tile);
+    const type=String(message.item||''),definition=Object.prototype.hasOwnProperty.call(gardenPlants,type)?gardenPlants[type]:null,tile=gardenTile(message.tile,player);
     if(!definition||!tile||tile.farmIndex!==player.farmIndex||room.plants.has(gardenPlotKey(tile))||room.sprinklers.has(gardenPlotKey(tile))){gardenSendError(socket,'Choose an empty plot on your farm and a valid seed.');return;}
     if(!(player.seeds[type]>0)){gardenSendError(socket,'Buy that seed before planting it.');return;}
     player.seeds[type]--;
@@ -725,12 +785,12 @@ function handleGardenAction(socket,message) {
     room.plants.delete(key);
     room.soil.delete(key);
   } else if(action==='sprinkler') {
-    const tile=gardenTile(message.tile),key=tile&&gardenPlotKey(tile);
+    const tile=gardenTile(message.tile,player),key=tile&&gardenPlotKey(tile);
     if(!tile||tile.farmIndex!==player.farmIndex||room.plants.has(key)||room.sprinklers.has(key)||room.lanterns.has(key)){gardenSendError(socket,'Choose an empty plot on your farm for the sprinkler.');return;}
     if(!(player.gear.sprinkler>0)){gardenSendError(socket,'Buy a sprinkler from Gear first.');return;}
     room.sprinklers.add(key);room.sprinklerExpires.set(key,now+120000);player.gear.sprinkler--;
   } else if(action==='place-lantern') {
-    const tile=gardenTile(message.tile),key=tile&&gardenPlotKey(tile);
+    const tile=gardenTile(message.tile,player),key=tile&&gardenPlotKey(tile);
     if(!tile||tile.farmIndex!==player.farmIndex||room.plants.has(key)||room.sprinklers.has(key)||room.lanterns.has(key)){gardenSendError(socket,'Choose an empty plot on your farm for the lantern.');return;}
     if(!(Number(player.gear.lights||0)>0)){gardenSendError(socket,'Buy Garden Lights before placing a lantern.');return;}
     player.gear.lights=Math.max(0,(Number(player.gear.lights)||0)-1);
@@ -741,7 +801,7 @@ function handleGardenAction(socket,message) {
     if(!atPond&&room.weather!=='rain'){gardenSendError(socket,'Stand by a pond or wait for rain to refill your watering can.');return;}
     player.wateringCanCharges=5;
   } else if(action==='move-plant') {
-    const from=gardenTile(message.from),to=gardenTile(message.to);
+    const from=gardenTile(message.from,player),to=gardenTile(message.to,player);
     if(!player.gear.trowel){gardenSendError(socket,'Buy a trowel from Gear first.');return;}
     if(!from||!to||from.farmIndex!==player.farmIndex||to.farmIndex!==player.farmIndex||room.plants.has(gardenPlotKey(to))||room.sprinklers.has(gardenPlotKey(to))){gardenSendError(socket,'Choose an empty destination plot on your farm.');return;}
     const fromKey=gardenPlotKey(from),toKey=gardenPlotKey(to),plant=room.plants.get(fromKey);
@@ -781,13 +841,10 @@ function handleGardenAction(socket,message) {
       const allowed=['clear','rain','aurora','solarFlare','fireworks','rainbow','snowstorm','bloodMoon'];
       if(!allowed.includes(weather)){gardenSendError(socket,'Unknown dev weather');return;}
       room.weather=weather;room.nextWeatherAt=now+(weather==='clear'?gardenWeatherDurations.clear:gardenWeatherDurations.event);
-      if(['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(weather)){
-        const candidates=Array.from(room.plants.values()).filter(plant=>gardenPlants[plant.type]?.kind==='crop'&&plant.mutation==='');
-        for(const plant of candidates)if(Math.random()<.45)plant.mutation=weather;
-      }
+      if(['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(weather))gardenMutateCrops(room,weather,now);
     } else if(kind==='seed') {
       const type=String(message.id||'');if(!Object.prototype.hasOwnProperty.call(gardenPlants,type)){gardenSendError(socket,'Unknown seed type.');return;}
-      player.seeds[type]=(player.seeds[type]||0)+1;
+      gardenGrantSeed(room,player,type);
     } else if(kind==='gear') {
       const type=String(message.id||'');
       if(type==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}
@@ -904,7 +961,7 @@ function tickGardenRooms() {
         for(let index=0;index<drones;index++){
           const choice=options[Math.floor(Math.random()*options.length)];
           if(Object.prototype.hasOwnProperty.call(gardenPlants,choice)){
-            player.seeds[choice]=(player.seeds[choice]||0)+1;
+            gardenGrantSeed(room,player,choice);
           }else if(Object.prototype.hasOwnProperty.call(gardenGear,choice)){
             if(choice==='wateringCan'){player.gear.wateringCan=true;player.wateringCanCharges=Math.max(player.wateringCanCharges||0,5);}
             else if(choice==='shovel'||choice==='trowel')player.gear[choice]=true;
@@ -929,10 +986,7 @@ function tickGardenRooms() {
       const availableWeather=gardenWeatherPool.filter(weather=>weather!==previous);
       room.weather=availableWeather[Math.floor(Math.random()*availableWeather.length)];
       room.nextWeatherAt=now+(room.weather==='clear'?gardenWeatherDurations.clear:room.weather==='bloodMoon'?gardenWeatherDurations.bloodMoon:gardenWeatherDurations.event);
-      if(room.weather!==previous&&['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(room.weather)) {
-        const candidates=Array.from(room.plants.values()).filter(plant=>gardenPlants[plant.type]?.kind==='crop'&&plant.mutation===''&&((now<plant.matureAt)||Number(plant.fruitsAvailable)>0));
-        for(const plant of candidates)if(Math.random()<.45)plant.mutation=room.weather;
-      }
+      if(room.weather!==previous&&['aurora','solarFlare','fireworks','rainbow','bloodMoon'].includes(room.weather))gardenMutateCrops(room,room.weather,now);
       gardenSaveRequested=true;
     }
     if(offline) {

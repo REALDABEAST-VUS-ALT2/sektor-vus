@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#17241e">
   <title>Gardenfall · Sektor</title>
-  <link rel="stylesheet" href="./garden-siege.css?v=20261109-stale-cache-fix-1">
+  <link rel="stylesheet" href="./garden-siege.css?v=20261109-upgrade-visual-fix-1">
   <script type="importmap">
     {
       "imports": {
@@ -13,7 +13,7 @@
       }
     }
   </script>
-  <script type="module" src="./garden-siege.js?v=20261109-stale-cache-fix-1"></script>
+  <script type="module" src="./garden-siege.js?v=20261109-upgrade-visual-fix-1"></script>
 </head>
 <body>
   <main class="game-shell">
@@ -24,6 +24,8 @@
         <span id="dayClock">DAY 1 · —</span>
         <span id="coins">🪙 100</span>
         <span id="farmBadge">🌾 Farm 1/8</span>
+        <span id="droneBadge">🚁 Drones 0/2</span>
+        <span id="farmLayerBadge">▤ Layers 0/10</span>
         <span id="landBadge">🏡 Common land · 1×</span>
         <span id="gunSafety" class="safety-indicator">Gun safety · OFF</span>
         <span id="gardenHealth">🌿 Garden 100%</span>
@@ -37,7 +39,7 @@
 
     <section class="world-layout">
       <div class="world-wrap">
-          <canvas id="gardenCanvas" aria-label="Large shared garden with eight personal farms. Click a plot to select it and click zombies to shoot."></canvas>
+          <canvas id="gardenCanvas" tabindex="0" aria-label="Large shared garden with eight personal farms. Use WASD to move. Click a plot to select it and click zombies to shoot."></canvas>
         <div class="weather-effects" id="weatherEffects" aria-hidden="true"></div>
         <div class="world-tip">WASD move · Space jump · E stand · T zipline · K controls</div>
         <div class="crosshair" aria-hidden="true">+</div>
@@ -138,6 +140,7 @@
           </div>
           <label class="selection-label">Seed to plant<select id="seedSelect" disabled></select></label>
           <div class="seed-capacity" id="seedCapacity">Seed pack 0 / 1</div>
+          <button id="dropSeedButton" class="drop-seed-button" type="button" disabled>Drop selected seed</button>
           <label class="selection-label">Weapon<select id="weaponSelect" disabled><option value="peaBlaster">Pea Blaster</option><option value="cornZooka">Cornzooka</option><option value="brambleRifle" disabled>Bramble Rifle</option><option value="bloomShotgun" disabled>Bloom Shotgun</option><option value="sunseedRepeater" disabled>Sunseed Repeater</option></select></label>
           <div class="ammo-readout" id="ammoReadout">Pea Blaster · Magazine 0/10 · Reserve 0 · R reloads</div>
         </section>
@@ -148,7 +151,7 @@
           <dl>
             <dt>W A S D</dt><dd>Move</dd><dt>Space</dt><dd>Jump</dd><dt>Mouse click</dt><dd>Shoot or select a plot</dd>
             <dt>G</dt><dd>Toggle gun safety</dd><dt>R</dt><dd>Reload</dd><dt>B</dt><dd>Cycle weapon</dd>
-            <dt>Q</dt><dd>Plant selected seed</dd><dt>1-9 / N</dt><dd>Select / cycle seed</dd>
+            <dt>Q</dt><dd>Plant selected seed</dd><dt>1-9 / N</dt><dd>Select / cycle seed</dd><dt>J</dt><dd>Drop selected seed</dd>
             <dt>H</dt><dd>Harvest nearby plant</dd><dt>U</dt><dd>Water selected plant</dd>
             <dt>X</dt><dd>Remove plant</dd><dt>C</dt><dd>Place sprinkler</dd><dt>V</dt><dd>Move plant with trowel</dd>
             <dt>F</dt><dd>Refill watering can</dd><dt>Y</dt><dd>Sell harvested goods</dd><dt>P</dt><dd>Craft at workbench</dd>
@@ -159,6 +162,6 @@
     </section>
     <footer><span>Private gardens save on the server. Offline gardens save in this browser.</span><a href="./VUS-Servers.html">Back to Sektor</a></footer>
   </main>
-  <script src="./garden-auth.js?v=20261109-stale-cache-fix-1"></script>
+  <script src="./garden-auth.js?v=20261109-upgrade-visual-fix-1"></script>
 </body>
 </html>

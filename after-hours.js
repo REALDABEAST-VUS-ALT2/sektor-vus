@@ -3,508 +3,501 @@ import * as THREE from 'three';
 const $=id=>document.getElementById(id);
 const canvas=$('world');
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x29382e);
-scene.fog=new THREE.Fog(0x29382e,48,180);
-const camera=new THREE.PerspectiveCamera(54,1,.08,180);
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
-renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.shadowMap.enabled=false;
+const camera=new THREE.PerspectiveCamera(68,1,.08,150);
+let renderer;
+try{
+  renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.35));
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled=false;
+}catch(error){
+  $('engineError').hidden=false;
+  console.error('After Hours could not start WebGL.',error);
+}
 const clock=new THREE.Clock();
-const ambient=new THREE.HemisphereLight(0xe4e9d8,0x354337,1.5);scene.add(ambient);
-const keyLight=new THREE.DirectionalLight(0xffddb0,1.35);keyLight.position.set(-14,28,12);scene.add(keyLight);
-const fillLight=new THREE.DirectionalLight(0xb9d7c4,.55);fillLight.position.set(13,15,-18);scene.add(fillLight);
-const storeGroup=new THREE.Group();scene.add(storeGroup);
+const store=new THREE.Group();scene.add(store);
 const lootGroup=new THREE.Group();scene.add(lootGroup);
 const buildGroup=new THREE.Group();scene.add(buildGroup);
 const staffGroup=new THREE.Group();scene.add(staffGroup);
-const colors={floor:0x62685a,wall:0x717466,metal:0x65746a,shelf:0x839080,wood:0x947855,woodDark:0x584b3a,cream:0xe9e5d7,green:0x6f916f,orange:0xc98652,red:0xb95d4c,blue:0x6e8d9c};
-const chunkSize=48,gridSize=2,dayLength=360000,nightLength=180000;
-const buildDefinitions={
-  pallet:{label:'Pallet wall',cost:1,width:3.6,height:1.55,depth:.38,color:0x9e7951},
-  shelf:{label:'Shelf block',cost:2,width:2.4,height:2.65,depth:.9,color:0x72877a},
-  table:{label:'Table',cost:1,width:2.6,height:1.08,depth:1.45,color:0xb39363},
-};
+const materialCache=new Map();
 const state={
-  chunks:new Map(),worldItems:new Map(),collected:new Set(),blockers:[],builds:[],staff:[],
-  keys:new Set(),touchKeys:new Set(),player:new THREE.Vector3(0,0,0),yaw:0,pitch:-.08,velocity:new THREE.Vector3(),
-  health:100,hunger:100,stamina:100,inventory:{food:0,med:0,furniture:0},selectedBuild:'pallet',buildMode:false,buildRotation:0,preview:null,
-  day:1,cycleElapsed:0,night:false,paused:false,jumpY:0,jumpVelocity:0,lastDamageAt:0,nextAutoSave:0,lastUi:0,
-  toastTimer:0,bannerTimer:0,lastChunk:'',lookPointer:null,audioContext:null,hum:null,disposed:false,
+  player:new THREE.Vector3(0,0,31),yaw:0,pitch:-.04,keys:new Set(),touch:new Set(),
+  health:100,hunger:100,stamina:100,inventory:{food:1,med:0,furniture:0},
+  day:1,cycleElapsed:0,night:false,paused:false,over:false,jumpY:0,jumpVelocity:0,
+  loot:[],staff:[],blocks:[],built:[],lastUi:0,nextSave:0,lastDamage:0,
+  selectedBuild:'pallet',rotation:0,buildMode:false,preview:null,
+  disposed:false,toastTimer:0,bannerTimer:0,lastNoise:0,
 };
-const materials={
-  floor:new THREE.MeshStandardMaterial({color:colors.floor,roughness:.92}),
-  shelf:new THREE.MeshStandardMaterial({color:colors.shelf,roughness:.75}),
-  shelfDark:new THREE.MeshStandardMaterial({color:0x44544b,roughness:.84}),
-  wood:new THREE.MeshStandardMaterial({color:colors.wood,roughness:.9}),
-  pillar:new THREE.MeshStandardMaterial({color:0xb3b4a2,roughness:.8}),
-  light:new THREE.MeshBasicMaterial({color:0xffe6b3}),
+const dims={width:88,depth:88,half:44,day:360000,night:180000};
+const buildSpecs={
+  pallet:{label:'Pallet barricade',cost:1,size:[3.4,1.6,.38],color:0x9a7954,block:[1.7,.35]},
+  shelf:{label:'Shelf wall',cost:2,size:[2.6,2.7,.9],color:0x788b78,block:[1.3,.55]},
+  table:{label:'Work table',cost:1,size:[2.8,1.1,1.5],color:0xb49565,block:[1.4,.85]},
 };
-const sharedMaterials=new Set(Object.values(materials));
-function box(parent,width,height,depth,material,x,y,z){
-  const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,height,depth),material);
+const colors={
+  floor:0x62675c,wall:0x77786b,metal:0x444c46,wood:0x947855,woodDark:0x514839,
+  ceiling:0x303833,fixture:0xe9ddb7,leaf:0xbdd47a,amber:0xe9a15c,coral:0xdc7565,
+};
+const sharedMaterials=new Set();
+function material(color,options={}){
+  const key=`${color}:${options.roughness??.8}:${options.emissive??0}:${options.emissiveIntensity??0}:${options.metalness??0}`;
+  if(materialCache.has(key))return materialCache.get(key);
+  const value=new THREE.MeshStandardMaterial({color,roughness:options.roughness??.8,metalness:options.metalness??0,emissive:options.emissive??0,emissiveIntensity:options.emissiveIntensity??0});
+  materialCache.set(key,value);sharedMaterials.add(value);return value;
+}
+const basicLight=new THREE.MeshBasicMaterial({color:colors.fixture});sharedMaterials.add(basicLight);
+function box(parent,width,height,depth,mat,x,y,z){
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(width,height,depth),mat);
   mesh.position.set(x,y,z);parent.add(mesh);return mesh;
 }
-function hashSeed(x,z,index=0){
-  let value=(x*374761393+z*668265263+index*2246822519)|0;
-  value=(value^(value>>>13))*1274126177;
-  return(value^(value>>>16))>>>0;
+function signTexture(title,subtitle='STORE 01'){
+  const surface=document.createElement('canvas');surface.width=512;surface.height=128;
+  const context=surface.getContext('2d');
+  context.fillStyle='#19221d';context.fillRect(0,0,512,128);
+  context.fillStyle='#c2d77c';context.font='800 16px monospace';context.fillText(subtitle,22,32);
+  context.fillStyle='#f0e9d8';context.font='600 42px Georgia';context.fillText(title,22,88);
+  const texture=new THREE.CanvasTexture(surface);texture.colorSpace=THREE.SRGBColorSpace;
+  const mat=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
+  return mat;
 }
-function seeded(seed){let value=seed>>>0;return()=>{value=(value*1664525+1013904223)>>>0;return value/4294967296;};}
-function textureSign(text){
-  const sign=document.createElement('canvas');sign.width=512;sign.height=128;
-  const context=sign.getContext('2d');context.fillStyle='#28352d';context.fillRect(0,0,512,128);
-  context.fillStyle='#d9dfc9';context.font='700 34px system-ui';context.textAlign='center';context.textBaseline='middle';context.fillText(text,256,64);
-  const texture=new THREE.CanvasTexture(sign);texture.colorSpace=THREE.SRGBColorSpace;
-  return new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
+function addSign(parent,title,x,y,z,rotation=0){
+  const sign=box(parent,5,.9,.13,signTexture(title),x,y,z);sign.rotation.y=rotation;return sign;
 }
-function shelfRow(parent,cx,cz,zOffset,blockers){
-  const rowZ=cz+zOffset,length=chunkSize-5;
-  const shelf=box(parent,length,3.2,1.15,materials.shelf,cx,1.6,rowZ);
-  shelf.position.y=1.6;
-  for(const height of [.25,1.15,2.1,3.0])box(parent,length+.08,.09,1.36,materials.shelfDark,cx,height,rowZ);
-  for(const xOffset of [-length*.45,-length*.15,length*.15,length*.45])box(parent,.14,3.3,1.42,materials.shelfDark,cx+xOffset,1.62,rowZ);
-  blockers.push({x:cx,z:rowZ,halfX:length/2,halfZ:.78});
-  if(Math.abs(zOffset)===12){
-    const sign=box(parent,4,.65,.1,textureSign(zOffset<0?'HOME / SLEEP':'LIVING / LIGHT'),cx,3.8,rowZ+(zOffset<0?-.8:.8));
-    sign.rotation.y=zOffset<0?0:Math.PI;
-  }
-}
-function makePillar(parent,x,z){
-  box(parent,1.15,7.8,1.15,materials.pillar,x,3.9,z);
-  box(parent,1.35,.2,1.35,materials.shelfDark,x,7.82,z);
-}
-function lootMesh(type){
+function addShelf(x,z,length,aisleIndex){
   const group=new THREE.Group();
-  if(type==='food'){
-    const packageColor=[0xc78350,0x739c80,0xd1ad68][Math.floor(Math.random()*3)];
-    box(group,.62,.62,.52,new THREE.MeshStandardMaterial({color:packageColor,roughness:.45}),0,.36,0);
-    box(group,.4,.06,.54,new THREE.MeshStandardMaterial({color:0xf0e3c3,roughness:.35}),0,.34,.01);
-  }else if(type==='med'){
-    box(group,.58,.42,.46,new THREE.MeshStandardMaterial({color:0xe4e4d7,roughness:.5}),0,.25,0);
-    box(group,.12,.27,.03,new THREE.MeshBasicMaterial({color:0xb95d4c}),0,.25,-.24);
-    box(group,.32,.1,.03,new THREE.MeshBasicMaterial({color:0xb95d4c}),0,.25,-.24);
-  }else{
-    box(group,.9,.42,.72,new THREE.MeshStandardMaterial({color:0x96754f,roughness:.88}),0,.25,0);
-    for(const z of [-.22,.22])box(group,.94,.06,.08,new THREE.MeshStandardMaterial({color:0xc3a475,roughness:.8}),0,.25,z);
+  const rack=material(0x687a6d,{roughness:.7,metalness:.18}),dark=material(0x39463f,{roughness:.86});
+  box(group,1.7,2.8,.22,rack,0,1.4,0);
+  for(const height of [.25,.92,1.62,2.32,2.78])box(group,2.05,.1,.75,dark,0,height,0);
+  for(const side of [-.78,.78])box(group,.12,2.9,.92,rack,side,1.42,0);
+  const productColors=[0xc78350,0x739c80,0xd1ad68,0x71899a,0xb85f48];
+  const spacing=length/6;
+  for(let section=0;section<5;section++){
+    const productMat=material(productColors[(section+aisleIndex)%productColors.length],{roughness:.72});
+    const zAt=-length/2+spacing*(section+1);
+    for(let level=0;level<3;level++){
+      const xOffset=(section%2?-.23:.23);
+      box(group,.48,.42,.42,productMat,xOffset,.52+level*.7,zAt);
+      box(group,.38,.35,.36,productMat,-xOffset,.52+level*.7,zAt+.48);
+    }
   }
+  group.position.set(x,0,z);store.add(group);
+  state.blocks.push({x,z,halfX:1.13,halfZ:length/2+.38});
+}
+function buildStore(){
+  scene.background=new THREE.Color(0x505c52);scene.fog=new THREE.Fog(0x505c52,45,105);
+  box(store,dims.width,.3,dims.depth,material(colors.floor,{roughness:.95}),0,-.2,0);
+  const ceiling=box(store,dims.width,.24,dims.depth,material(colors.ceiling),0,8.7,0);
+  for(const z of [-32,-16,0,16,32])box(store,dims.width,.18,.32,material(0x232b27),0,8.45,z);
+  for(const x of [-32,-16,0,16,32]){
+    box(store,.28,.18,dims.depth,material(0x232b27),x,8.45,0);
+    for(const z of [-30,-10,10,30])box(store,5,.09,.55,basicLight,x,8.28,z);
+  }
+  box(store,.8,8, dims.depth,material(colors.wall),-44.2,4,0);
+  box(store,.8,8, dims.depth,material(colors.wall),44.2,4,0);
+  box(store,dims.width,8,.8,material(colors.wall),0,4,-44.2);
+  box(store,32,8,.8,material(colors.wall),-28,4,44.2);
+  box(store,32,8,.8,material(colors.wall),28,4,44.2);
+  const aisleXs=[-31,-21,-11,11,21,31];
+  aisleXs.forEach((x,index)=>{
+    addShelf(x,-16,22,index);
+    addShelf(x,13,22,index+1);
+    addSign(['HOME','PANTRY','GARDEN','LIGHTING','HARDWARE','SEASONAL'][index],x,4.1,-31,.0);
+  });
+  const counter=material(0x9a7954,{roughness:.88});
+  box(store,7,1.3,1.6,counter,0,.65,-36);
+  box(store,7.2,.12,1.75,material(0x3f4942),0,1.36,-36);
+  addSign('SERVICE DESK',0,2.55,-36,0);
+  for(const x of [-7,7]){
+    box(store,.12,4,.12,material(0x514d40),x,2,-40);
+    box(store,6,.1,.12,material(0x514d40),0,3.8,-40);
+  }
+  addSign('STAFF ONLY',0,3.3,-40,0);
+  const entrance=material(0x444d46,{metalness:.32});
+  for(const x of [-5.7,5.7])box(store,.22,4,.5,entrance,x,2,43.25);
+  for(const x of [-28,-14,0,14,28]){
+    const lamp=new THREE.PointLight(0xffe6be,1.15,26,1.7);lamp.position.set(x,7.8,2);store.add(lamp);
+  }
+  const keyLight=new THREE.DirectionalLight(0xffdcae,1.1);keyLight.position.set(-15,28,12);scene.add(keyLight);
+  const ambient=new THREE.HemisphereLight(0xe4e9d8,0x303c35,1.45);scene.add(ambient);
+  state.keyLight=keyLight;state.ambient=ambient;
+  state.blocks.push({x:0,z:-36,halfX:3.8,halfZ:1.2},{x:0,z:-40,halfX:7,halfZ:.4});
+  ceiling.visible=true;
+}
+function makeLootMesh(type){
+  const group=new THREE.Group();
+  const colorsByType={food:0xd19a4f,med:0xe9e5d8,furniture:0x9d7954};
+  const body=material(colorsByType[type],{roughness:.45});
+  box(group,.72,.56,.58,body,0,.34,0);
+  if(type==='med'){
+    const red=material(0xb64943,{roughness:.4});
+    box(group,.15,.4,.06,red,0,.35,-.3);box(group,.42,.14,.06,red,0,.35,-.3);
+  }else{
+    box(group,.5,.08,.61,material(0xf1e8d5),0,.38,-.02);
+  }
+  const glow=new THREE.PointLight(type==='med'?0xb3d6c6:type==='food'?0xe9a15c:0xc2d77c,.25,3,2);
+  glow.position.y=.6;group.add(glow);
   return group;
 }
-function addLoot(chunk,cx,cz,index,type,x,z){
-  const id=`${cx}:${cz}:${index}`;
-  if(state.collected.has(id))return;
-  const mesh=lootMesh(type);mesh.position.set(x,.04,z);lootGroup.add(mesh);
-  const data={id,type,mesh,x:cx*chunkSize+x,z:cz*chunkSize+z,amount:1};
-  mesh.userData.loot=data;state.worldItems.set(id,data);chunk.userData.items.push(id);
+function canStand(x,z,radius=.42){
+  if(Math.abs(x)>dims.half-1.2||Math.abs(z)>dims.half-1.2)return false;
+  for(const block of state.blocks){
+    if(Math.abs(x-block.x)<block.halfX+radius&&Math.abs(z-block.z)<block.halfZ+radius)return false;
+  }
+  for(const structure of state.built){
+    if(Math.abs(x-structure.x)<structure.halfX+radius&&Math.abs(z-structure.z)<structure.halfZ+radius)return false;
+  }
+  return true;
 }
-function makeChunk(cx,cz){
-  const key=`${cx},${cz}`;
-  if(state.chunks.has(key))return;
-  const group=new THREE.Group();group.position.set(cx*chunkSize,0,cz*chunkSize);group.userData={items:[],blockers:[]};
-  const blockers=group.userData.blockers;
-  box(group,chunkSize,.14,chunkSize,materials.floor,0,-.08,0);
-  for(const rowZ of [-12,12])shelfRow(group,0,0,rowZ,blockers);
-  for(const cornerX of [-chunkSize/2+1,chunkSize/2-1])for(const cornerZ of [-chunkSize/2+1,chunkSize/2-1])makePillar(group,cornerX,cornerZ);
-  for(const beamZ of [-chunkSize/2+2,chunkSize/2-2])box(group,chunkSize,.18,.28,materials.shelfDark,0,7.7,beamZ);
-  for(const lightX of [-14,0,14])box(group,7,.08,.42,materials.light,lightX,7.45,0);
-  const random=seeded(hashSeed(cx,cz));
-  const lootSpots=[[-10+random()*5,-3+random()*6,'food'],[5+random()*5,-3+random()*6,random()<.7?'furniture':'med']];
-  lootSpots.forEach(([x,z,type],index)=>addLoot(group,cx,cz,index,type,x,z));
-  storeGroup.add(group);state.chunks.set(key,group);
+function seedLoot(){
+  let randomSeed=721;
+  const random=()=>{randomSeed=(randomSeed*1664525+1013904223)>>>0;return randomSeed/4294967296;};
+  const kinds=['food','food','food','med','furniture','furniture'];
+  for(let index=0;index<30;index++){
+    let x=0,z=0;
+    for(let attempt=0;attempt<80;attempt++){
+      x=-37+random()*74;z=-31+random()*63;
+      if(canStand(x,z,1.1)&&Math.hypot(x,z-31)>6)break;
+    }
+    const type=kinds[Math.floor(random()*kinds.length)],mesh=makeLootMesh(type);
+    mesh.position.set(x,.04,z);lootGroup.add(mesh);
+    state.loot.push({id:`stock-${index}`,type,x,z,mesh,taken:false,phase:random()*Math.PI*2});
+  }
+}
+function makeStaff(index,x,z){
+  const group=new THREE.Group();
+  const shirt=material(index%2?0x687f76:0x8c644d,{roughness:.8});
+  const skin=material(0xc29d7c,{roughness:.9});
+  const dark=material(0x29332d,{roughness:.9});
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.34,.7,4,8),shirt);body.position.y=1.18;group.add(body);
+  const legs=new THREE.Mesh(new THREE.CapsuleGeometry(.15,.55,3,7),dark);legs.position.set(0,.42,0);group.add(legs);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.24,12,10),skin);head.position.y=1.82;group.add(head);
+  const cap=box(group,.5,.12,.48,material(0x332a23),0,2.06,0);
+  const eye=material(0xd25f4f,{emissive:0xd25f4f,emissiveIntensity:.3});
+  for(const side of [-1,1]){const dot=new THREE.Mesh(new THREE.SphereGeometry(.035,6,5),eye);dot.position.set(side*.08,1.84,-.205);group.add(dot);}
+  group.position.set(x,0,z);staffGroup.add(group);
+  const staff={id:index,group,x,z,speed:2.1,nextAttack:0,roamAt:0,targetX:x,targetZ:z,lastSeenX:x,lastSeenZ:z,mode:'idle'};
+  state.staff.push(staff);return staff;
+}
+function createThreats(){
+  [[-36,-28],[35,-22],[-34,22],[34,30]].forEach(([x,z],index)=>makeStaff(index,x,z));
+}
+function makeBuild(type,x,z,rotation=0,locked=true){
+  const spec=buildSpecs[type],group=new THREE.Group();
+  const core=material(locked?spec.color:0xb4a06a,{roughness:.86});
+  const trim=material(0x4c4940,{roughness:.9});
+  if(type==='pallet'){
+    for(let level=0;level<5;level++)box(group,spec.size[0],.22,.13,core,0,.18+level*.27,0);
+    for(const xx of [-1.45,0,1.45])box(group,.24,1.5,.4,trim,xx,.76,0);
+  }else if(type==='shelf'){
+    for(const xx of [-1,1])box(group,.12,spec.size[1],.12,trim,xx,spec.size[1]/2,0);
+    for(const yy of [.22,.92,1.62,2.42])box(group,spec.size[0],.1,spec.size[2],core,0,yy,0);
+  }else{
+    box(group,spec.size[0],.13,spec.size[2],core,0,.84,0);
+    for(const xx of [-1.1,1.1])for(const zz of [-.55,.55])box(group,.13,.82,.13,trim,xx,.42,zz);
+  }
+  group.position.set(x,0,z);group.rotation.y=rotation;buildGroup.add(group);
+  const rotated=Math.abs(Math.sin(rotation))>.5;
+  const structure={type,group,x,z,rotation,locked,halfX:rotated?spec.size[2]/2:spec.block[0],halfZ:rotated?spec.block[0]:spec.block[1]};
+  state.built.push(structure);return structure;
+}
+function makePreview(){
+  if(state.preview){buildGroup.remove(state.preview);state.preview.geometry?.dispose();state.preview.material?.dispose();}
+  const spec=buildSpecs[state.selectedBuild],geo=new THREE.BoxGeometry(...spec.size);
+  const mat=new THREE.MeshBasicMaterial({color:0xbedd76,transparent:true,opacity:.36,depthWrite:false});
+  state.preview=new THREE.Mesh(geo,mat);buildGroup.add(state.preview);
 }
 function disposeTree(group){
   group.traverse(object=>{
     if(object.geometry)object.geometry.dispose();
-    if(object.material){
-      const list=Array.isArray(object.material)?object.material:[object.material];
-      for(const material of list)if(!sharedMaterials.has(material)){material.map?.dispose();material.dispose();}
-    }
+    if(object.material){const items=Array.isArray(object.material)?object.material:[object.material];for(const item of items)if(!sharedMaterials.has(item)){item.map?.dispose();item.dispose();}}
   });
+  group.parent?.remove(group);
 }
-function ensureChunks(){
-  const cx=Math.floor(state.player.x/chunkSize),cz=Math.floor(state.player.z/chunkSize),chunkKey=`${cx},${cz}`;
-  if(chunkKey===state.lastChunk)return;state.lastChunk=chunkKey;
-  for(const [key,group]of state.chunks){
-    const [gx,gz]=key.split(',').map(Number);
-    if(Math.abs(gx-cx)>1||Math.abs(gz-cz)>1){
-      for(const id of group.userData.items){const item=state.worldItems.get(id);if(item){lootGroup.remove(item.mesh);disposeTree(item.mesh);state.worldItems.delete(id);}}
-      storeGroup.remove(group);disposeTree(group);state.chunks.delete(key);
-    }
+function toast(text){
+  const element=$('toast');element.textContent=text;element.hidden=false;
+  clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>{element.hidden=true;},2400);
+}
+function showAnnouncement(title,copy,night=false){
+  $('bannerTitle').textContent=title;$('bannerText').textContent=copy;
+  $('phaseBanner').classList.toggle('night',night);$('phaseBanner').hidden=false;
+  clearTimeout(state.bannerTimer);state.bannerTimer=setTimeout(()=>{$('phaseBanner').hidden=true;},6500);
+}
+function updateLighting(){
+  const darkness=state.night;
+  const sky=new THREE.Color(darkness?0x202c32:0x7d8c7c);
+  scene.background.copy(sky);scene.fog.color.copy(sky);
+  state.keyLight.intensity=darkness?.18:1.1;
+  state.ambient.intensity=darkness?.48:1.45;
+  for(const child of store.children)if(child.isPointLight)child.intensity=darkness?1.5:1.15;
+}
+function nearestLoot(){
+  let closest=null,best=3.1;
+  for(const item of state.loot){
+    if(item.taken)continue;
+    const distance=Math.hypot(state.player.x-item.x,state.player.z-item.z);
+    if(distance<best){best=distance;closest=item;}
   }
-  state.blockers=[];
-  for(const group of state.chunks.values())state.blockers.push(...group.userData.blockers.map(blocker=>({x:blocker.x+group.position.x,z:blocker.z+group.position.z,halfX:blocker.halfX,halfZ:blocker.halfZ})));
-  for(let x=cx-1;x<=cx+1;x++)for(let z=cz-1;z<=cz+1;z++)makeChunk(x,z);
-  state.blockers=[];
-  for(const group of state.chunks.values())state.blockers.push(...group.userData.blockers.map(blocker=>({x:blocker.x+group.position.x,z:blocker.z+group.position.z,halfX:blocker.halfX,halfZ:blocker.halfZ})));
-  updateMap();
+  return closest;
 }
-function makeStaff(id,x,z){
-  const group=new THREE.Group();
-  const shirt=new THREE.MeshStandardMaterial({color:0x899c84,roughness:.82});
-  const trousers=new THREE.MeshStandardMaterial({color:0x33433b,roughness:.9});
-  const skin=new THREE.MeshStandardMaterial({color:0xc29d7c,roughness:.9});
-  const vest=new THREE.MeshStandardMaterial({color:0xb85f48,roughness:.8});
-  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.34,.68,4,8),shirt);body.position.y=1.22;group.add(body);
-  const waist=new THREE.Mesh(new THREE.CapsuleGeometry(.3,.4,3,7),trousers);waist.position.y=.56;group.add(waist);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.24,12,10),skin);head.position.y=1.93;group.add(head);
-  const cap=new THREE.Mesh(new THREE.CylinderGeometry(.24,.25,.12,12),vest);cap.position.y=2.16;group.add(cap);
-  const badge=box(group,.2,.26,.045,new THREE.MeshStandardMaterial({color:0xe5d6a7,metalness:.2}),0,1.42,-.33);
-  group.position.set(x,0,z);staffGroup.add(group);
-  const staff={id,group,x,z,mode:'idle',speed:2.2,nextAttack:0,roamAt:0,targetX:x,targetZ:z,lastSeenX:x,lastSeenZ:z};state.staff.push(staff);return staff;
+function collectLoot(item){
+  item.taken=true;lootGroup.remove(item.mesh);disposeTree(item.mesh);
+  if(item.type==='food'){state.inventory.food++;toast('Ration secured.');}
+  else if(item.type==='med'){state.inventory.med++;toast('First-aid kit secured.');}
+  else{state.inventory.furniture++;toast('Salvage secured. Build materials +1.');}
+  updateHud();saveGame();
 }
-function makeStructure(type,x,z,rotation=0,locked=true){
-  const definition=buildDefinitions[type],group=new THREE.Group();
-  const main=new THREE.MeshStandardMaterial({color:definition.color,roughness:.82});
-  const dark=new THREE.MeshStandardMaterial({color:0x554b3c,roughness:.9});
-  if(type==='pallet'){
-    for(let index=0;index<5;index++)box(group,definition.width,.22,.13,main,0,.2+index*.27,0);
-    for(const xx of [-1.45,0,1.45])box(group,.24,1.5,.4,dark,xx,.76,0);
-  }else if(type==='shelf'){
-    for(const xx of [-1,1])box(group,.12,definition.height,.1,dark,xx,definition.height/2,0);
-    for(const yy of [.22,.92,1.62,2.42])box(group,definition.width,.1,definition.depth,main,0,yy,0);
-    box(group,definition.width,.14,.12,dark,0,definition.height-.08,0);
-  }else{
-    box(group,definition.width,.12,definition.depth,main,0,.84,0);
-    for(const xx of [-1.08,1.08])for(const zz of [-.5,.5])box(group,.12,.82,.12,dark,xx,.42,zz);
-  }
-  group.position.set(x,0,z);group.rotation.y=rotation;buildGroup.add(group);
-  const build={type,group,x,z,rotation,locked};state.builds.push(build);
-  if(!locked)toggleStructureMaterial(build,false);
-  return build;
+function interact(){
+  const item=nearestLoot();
+  if(!item){toast('Nothing within reach.');return;}
+  collectLoot(item);
 }
-function toggleStructureMaterial(build,locked){
-  build.group.traverse(object=>{if(object.material?.color)object.material.color.setHex(locked?buildDefinitions[build.type].color:0xa8a15f);});
+function eatFood(){
+  if(!state.inventory.food){toast('No rations left.');return;}
+  if(state.hunger>94){toast('You are not hungry yet.');return;}
+  state.inventory.food--;state.hunger=Math.min(100,state.hunger+42);state.health=Math.min(100,state.health+5);
+  updateHud();toast('Meal eaten. Hunger restored.');saveGame();
 }
-function makePreview(){
-  if(state.preview){buildGroup.remove(state.preview);disposeTree(state.preview);}
-  const definition=buildDefinitions[state.selectedBuild];
-  const group=new THREE.Group(),ghost=new THREE.MeshBasicMaterial({color:0xa8d58a,transparent:true,opacity:.38,depthWrite:false});
-  const dims=state.selectedBuild==='pallet'?[definition.width,definition.height,definition.depth]:state.selectedBuild==='shelf'?[definition.width,definition.height,definition.depth]:[definition.width,definition.height,definition.depth];
-  const body=new THREE.Mesh(new THREE.BoxGeometry(...dims),ghost);body.position.y=definition.height/2;group.add(body);
-  group.userData.body=body;state.preview=group;buildGroup.add(group);
+function useMed(){
+  if(!state.inventory.med){toast('No first-aid kit in your pack.');return;}
+  if(state.health>92){toast('You are in good condition.');return;}
+  state.inventory.med--;state.health=Math.min(100,state.health+45);state.lastDamage=performance.now();
+  updateHud();toast('First aid applied.');saveGame();
 }
-function intersectsBlock(x,z,halfX,halfZ){
-  for(const blocker of state.blockers){if(Math.abs(x-blocker.x)<halfX+blocker.halfX&&Math.abs(z-blocker.z)<halfZ+blocker.halfZ)return true;}
-  for(const build of state.builds){
-    const definition=buildDefinitions[build.type],rotated=Math.abs(Math.sin(build.rotation))>.5;
-    const bx=rotated?definition.depth/2:definition.width/2,bz=rotated?definition.width/2:definition.depth/2;
-    if(Math.abs(x-build.x)<halfX+bx&&Math.abs(z-build.z)<halfZ+bz)return true;
-  }
-  return false;
-}
-function updatePreview(){
+function updateBuildPreview(){
   if(!state.buildMode||!state.preview)return;
-  const definition=buildDefinitions[state.selectedBuild];
-  const targetX=state.player.x,targetZ=state.player.z-4;
-  const x=Math.round(targetX/gridSize)*gridSize,z=Math.round(targetZ/gridSize)*gridSize;
-  const rotated=Math.abs(Math.sin(state.buildRotation))>.5;
-  const halfX=(rotated?definition.depth:definition.width)/2,halfZ=(rotated?definition.width:definition.depth)/2;
-  const valid=state.inventory.furniture>=definition.cost&&!intersectsBlock(x,z,halfX,halfZ)&&Math.hypot(x-state.player.x,z-state.player.z)>2.1;
-  state.preview.position.set(x,0,z);state.preview.rotation.y=state.buildRotation;
-  state.preview.userData.body.material.color.setHex(valid?0xa8d58a:0xdf795f);state.preview.userData.valid=valid;
+  const ahead=6,forwardX=-Math.sin(state.yaw),forwardZ=-Math.cos(state.yaw);
+  const x=Math.round((state.player.x+forwardX*ahead)/2)*2,z=Math.round((state.player.z+forwardZ*ahead)/2)*2;
+  const spec=buildSpecs[state.selectedBuild],rotated=Math.abs(Math.sin(state.rotation))>.5;
+  const halfX=rotated?spec.size[2]/2:spec.block[0],halfZ=rotated?spec.block[0]:spec.block[1];
+  const valid=state.inventory.furniture>=spec.cost&&canStand(x,z,0)&&!state.built.some(item=>Math.abs(x-item.x)<halfX+item.halfX&&Math.abs(z-item.z)<halfZ+item.halfZ)&&Math.hypot(x-state.player.x,z-state.player.z)>2.2;
+  state.preview.position.set(x,spec.size[1]/2,z);state.preview.rotation.y=state.rotation;
+  state.preview.material.color.setHex(valid?0xbedd76:0xdc7565);state.preview.visible=valid;
+  state.preview.userData={valid,x,z};
 }
 function placeBuild(){
-  if(!state.buildMode||!state.preview?.userData.valid)return;
-  const definition=buildDefinitions[state.selectedBuild];state.inventory.furniture-=definition.cost;
-  makeStructure(state.selectedBuild,state.preview.position.x,state.preview.position.z,state.buildRotation,true);
-  showToast(`${definition.label} placed and locked.`);updateHud();saveGame();
+  const preview=state.preview;
+  if(!state.buildMode||!preview?.userData.valid)return;
+  const spec=buildSpecs[state.selectedBuild];
+  if(state.inventory.furniture<spec.cost){toast(`Need ${spec.cost} salvage for ${spec.label.toLowerCase()}.`);return;}
+  state.inventory.furniture-=spec.cost;
+  makeBuild(state.selectedBuild,preview.userData.x,preview.userData.z,state.rotation,true);
+  toast(`${spec.label} placed and secured.`);updateHud();saveGame();
 }
 function selectBuild(type){
-  if(!buildDefinitions[type])return;state.selectedBuild=type;
+  if(!buildSpecs[type])return;
+  state.selectedBuild=type;
   document.querySelectorAll('[data-build]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.build===type)));
-  if(state.buildMode){makePreview();updatePreview();}
+  $('buildState').textContent=state.buildMode?`PLACING ${buildSpecs[type].label.toUpperCase()}`:`${state.inventory.furniture} SALVAGE AVAILABLE`;
+  updateBuildPreview();
 }
 function toggleBuildMode(){
   state.buildMode=!state.buildMode;
   $('buildModeButton').setAttribute('aria-pressed',String(state.buildMode));
-  $('buildState').textContent=state.buildMode?`Placing ${buildDefinitions[state.selectedBuild].label}`:'Scavenge furniture to build';
+  $('buildState').textContent=state.buildMode?`PLACING ${buildSpecs[state.selectedBuild].label.toUpperCase()}`:`${state.inventory.furniture} SALVAGE AVAILABLE`;
   if(state.buildMode&&!state.preview)makePreview();
   if(state.preview)state.preview.visible=state.buildMode;
-  if(!state.buildMode&&state.preview){buildGroup.remove(state.preview);disposeTree(state.preview);state.preview=null;}
   canvas.classList.toggle('building',state.buildMode);
-}
-function canMove(x,z){
-  const radius=.38;
-  for(const blocker of state.blockers){if(Math.abs(x-blocker.x)<blocker.halfX+radius&&Math.abs(z-blocker.z)<blocker.halfZ+radius)return false;}
-  for(const build of state.builds){
-    const definition=buildDefinitions[build.type],rotated=Math.abs(Math.sin(build.rotation))>.5;
-    const halfX=(rotated?definition.depth:definition.width)/2,halfZ=(rotated?definition.width:definition.depth)/2;
-    if(Math.abs(x-build.x)<halfX+radius&&Math.abs(z-build.z)<halfZ+radius)return false;
-  }
-  return true;
-}
-function distance2(x1,z1,x2,z2){return Math.hypot(x1-x2,z1-z2);}
-function nearestLoot(){
-  let nearest=null,best=3.2;
-  for(const item of state.worldItems.values()){
-    const distance=distance2(state.player.x,state.player.z,item.x,item.z);
-    if(distance<best){best=distance;nearest=item;}
-  }
-  return nearest;
-}
-function interact(){
-  const item=nearestLoot();
-  if(!item){showToast('Nothing close enough to scavenge.');return;}
-  state.collected.add(item.id);state.worldItems.delete(item.id);lootGroup.remove(item.mesh);disposeTree(item.mesh);
-  if(item.type==='food'){state.inventory.food++;showToast('Meal packed. Press F when hunger drops.');}
-  else if(item.type==='med'){state.inventory.med++;showToast('First-aid kit secured. Press M to use it.');}
-  else{state.inventory.furniture+=item.amount;showToast('Furniture salvaged. Build with B.');}
-  updateHud();saveGame();
-}
-function eatFood(){
-  if(!state.inventory.food){showToast('No food in your pack.');return;}
-  if(state.hunger>=96){showToast('You are not hungry yet.');return;}
-  state.inventory.food--;state.hunger=Math.min(100,state.hunger+38);state.health=Math.min(100,state.health+4);updateHud();showToast('You eat a meal. Hunger restored.');saveGame();
-}
-function useMed(){
-  if(!state.inventory.med){showToast('No first-aid kit in your pack.');return;}
-  if(state.health>=96){showToast('You are already in good shape.');return;}
-  state.inventory.med--;state.health=Math.min(100,state.health+42);updateHud();showToast('First-aid kit used.');saveGame();
+  if(state.buildMode&&document.pointerLockElement===canvas)document.exitPointerLock();
 }
 function lockNearby(){
-  const nearby=state.builds.map(build=>({...build,distance:distance2(state.player.x,state.player.z,build.x,build.z)})).filter(build=>build.distance<5).sort((a,b)=>a.distance-b.distance)[0];
-  if(!nearby){showToast('No structure close enough to lock.');return;}
-  const build=state.builds.find(item=>item.group===nearby.group);build.locked=!build.locked;toggleStructureMaterial(build,build.locked);
-  showToast(`${buildDefinitions[build.type].label} ${build.locked?'locked':'unlocked'}.`);saveGame();
+  const nearby=state.built.map(item=>({...item,distance:Math.hypot(item.x-state.player.x,item.z-state.player.z)})).filter(item=>item.distance<5).sort((a,b)=>a.distance-b.distance)[0];
+  if(!nearby){toast('No structure close enough to secure.');return;}
+  const structure=state.built.find(item=>item.group===nearby.group);
+  structure.locked=!structure.locked;
+  structure.group.traverse(object=>{if(object.material?.color)object.material.color.setHex(structure.locked?buildSpecs[structure.type].color:0xb4a06a);});
+  toast(`${buildSpecs[structure.type].label} ${structure.locked?'secured':'unlocked'}.`);saveGame();
 }
-function checkLineOfSight(a,b){
-  for(const blocker of state.blockers){
-    const steps=8;
-    for(let index=1;index<steps;index++){
-      const t=index/steps,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;
-      if(Math.abs(x-blocker.x)<blocker.halfX&&Math.abs(z-blocker.z)<blocker.halfZ)return false;
-    }
-  }
-  return true;
+function updateSurvival(delta){
+  const moving=state.keys.size>0||state.touch.size>0;
+  const sprint=(state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'))&&state.stamina>2;
+  state.hunger=Math.max(0,state.hunger-delta*(moving?.022:.011));
+  if(sprint&&moving)state.stamina=Math.max(0,state.stamina-delta*24);else state.stamina=Math.min(100,state.stamina+delta*16);
+  if(state.hunger===0)state.health=Math.max(0,state.health-delta*2.4);
+  else if(state.hunger>68&&!state.night&&performance.now()-state.lastDamage>4500)state.health=Math.min(100,state.health+delta*.22);
+  return sprint?6.5:state.hunger<18?2.45:4.1;
+}
+function movePlayer(delta){
+  const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')||state.touch.has('forward')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')||state.touch.has('back')?1:0);
+  const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')||state.touch.has('right')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')||state.touch.has('left')?1:0);
+  const length=Math.hypot(forward,side)||1,speed=updateSurvival(delta);
+  const sprinting=(state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'))&&state.stamina>2;
+  const scale=sprinting?1:.72;
+  const moveX=(Math.sin(state.yaw)*forward+Math.cos(state.yaw)*side)/length*speed*scale*delta;
+  const moveZ=(-Math.cos(state.yaw)*forward+Math.sin(state.yaw)*side)/length*speed*scale*delta;
+  const nextX=state.player.x+moveX,nextZ=state.player.z+moveZ;
+  if(canStand(nextX,state.player.z))state.player.x=nextX;
+  if(canStand(state.player.x,nextZ))state.player.z=nextZ;
+  state.jumpVelocity-=19*delta;state.jumpY+=state.jumpVelocity*delta;
+  if(state.jumpY<0){state.jumpY=0;state.jumpVelocity=0;}
 }
 function moveStaff(staff,dx,dz,delta){
   const distance=Math.hypot(dx,dz)||1,step=staff.speed*delta;
-  const x=staff.x+dx/distance*step,z=staff.z+dz/distance*step;
-  if(canMove(x,staff.z))staff.x=x;
-  else if(canMove(staff.x+(-dz/distance)*step,staff.z))staff.x+=(-dz/distance)*step;
-  if(canMove(staff.x,z))staff.z=z;
-  else if(canMove(staff.x,staff.z+(dx/distance)*step))staff.z+=(dx/distance)*step;
+  const nextX=staff.x+dx/distance*step,nextZ=staff.z+dz/distance*step;
+  if(canStand(nextX,staff.z,.55))staff.x=nextX;
+  else if(canStand(staff.x-dz/distance*step,staff.z,.55))staff.x-=dz/distance*step;
+  if(canStand(staff.x,nextZ,.55))staff.z=nextZ;
+  else if(canStand(staff.x,staff.z+dx/distance*step,.55))staff.z+=dx/distance*step;
   staff.group.position.set(staff.x,0,staff.z);staff.group.rotation.y=Math.atan2(dx,dz);
 }
 function updateStaff(delta,now){
   for(const staff of state.staff){
     const dx=state.player.x-staff.x,dz=state.player.z-staff.z,distance=Math.hypot(dx,dz);
     if(state.night){
-      const visible=checkLineOfSight(staff,state.player);
-      if(visible){staff.lastSeenX=state.player.x;staff.lastSeenZ=state.player.z;}
-      const targetX=visible?state.player.x:staff.lastSeenX,targetZ=visible?state.player.z:staff.lastSeenZ;
-      const targetDistance=distance2(staff.x,staff.z,targetX,targetZ);
-      staff.mode=visible?(distance<2.1?'attack':'chase'):'search';staff.speed=state.day%4===0?3.7:3.05;
-      if(targetDistance>.55)moveStaff(staff,targetX-staff.x,targetZ-staff.z,delta);
-      if(distance<2&&now>staff.nextAttack){
-        const damage=state.day%4===0?16:12;
-        staff.nextAttack=now+1650;state.health=Math.max(0,state.health-damage);state.lastDamageAt=now;playHitSound();showToast('A Staff caught up to you. Find cover!');
+      staff.mode=distance<1.65?'attack':'hunt';staff.speed=state.day%4===0?3.5:2.85;
+      if(distance>1.45)moveStaff(staff,dx,dz,delta);
+      if(distance<1.8&&now>staff.nextAttack){
+        staff.nextAttack=now+1450;state.health=Math.max(0,state.health-(state.day%4===0?18:12));
+        state.lastDamage=now;state.lastNoise=now;toast('Staff found you. Break line of sight or get moving.');
       }
     }else{
-      staff.mode='idle';staff.speed=1.1;
-      if(now>staff.roamAt){staff.targetX=staff.x+(Math.random()-.5)*8;staff.targetZ=staff.z+(Math.random()-.5)*8;staff.roamAt=now+4500+Math.random()*3500;}
-      if(distance2(staff.x,staff.z,staff.targetX,staff.targetZ)>.55)moveStaff(staff,staff.targetX-staff.x,staff.targetZ-staff.z,delta*.7);
+      staff.mode='patrol';staff.speed=1.05;
+      if(now>staff.roamAt){staff.targetX=staff.x+(Math.random()-.5)*12;staff.targetZ=staff.z+(Math.random()-.5)*12;staff.roamAt=now+3500+Math.random()*3500;}
+      if(Math.hypot(staff.targetX-staff.x,staff.targetZ-staff.z)>.7)moveStaff(staff,staff.targetX-staff.x,staff.targetZ-staff.z,delta*.7);
     }
   }
 }
-function showToast(message){
-  const toast=$('toast');toast.textContent=message;toast.hidden=false;
-  clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>{toast.hidden=true;},2400);
-}
-function showPhaseBanner(night){
-  const bloodNight=night&&state.day%4===0;
-  $('bannerTitle').textContent=bloodNight?'BLOOD NIGHT':night?'STORE CLOSED':'DAY SHIFT';
-  $('bannerText').textContent=bloodNight?'Emergency lighting is red. Staff are moving faster and hitting harder.':night?'Please exit the building. Staff are now searching the aisles.':'The doors are open. Gather supplies and secure a place to sleep.';
-  $('phaseBanner').classList.toggle('blood-night',bloodNight);
-  const banner=$('phaseBanner');banner.hidden=false;clearTimeout(state.bannerTimer);state.bannerTimer=setTimeout(()=>{banner.hidden=true;},7200);
-  if(night)playNightSound();
+function showGameOver(){
+  state.over=true;state.paused=true;
+  $('pauseScreen').querySelector('.section-label').textContent='SHIFT COMPLETE / PERSONNEL LOST';
+  $('pauseScreen').querySelector('h1').textContent='The store got you.';
+  $('pauseScreen').querySelector('p').textContent='Your supplies and shift record are saved on this device.';
+  $('resumeButton').textContent='Start over';$('pauseScreen').hidden=false;
 }
 function updateCycle(delta){
   state.cycleElapsed+=delta*1000;
-  const full=dayLength+nightLength;
+  const full=dims.day+dims.night;
   while(state.cycleElapsed>=full){state.cycleElapsed-=full;state.day++;}
-  const night=state.cycleElapsed>=dayLength;
-  if(night!==state.night){state.night=night;showPhaseBanner(night);}
-  const phaseElapsed=night?state.cycleElapsed-dayLength:state.cycleElapsed;
-  const phaseRemaining=(night?nightLength:dayLength)-phaseElapsed;
-  const mins=Math.floor(phaseRemaining/60000),secs=Math.floor((phaseRemaining%60000)/1000);
-  $('clock').textContent=`${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-  $('phaseName').textContent=night?'CLOSED':'DAY SHIFT';$('dayStamp').textContent=`DAY ${String(state.day).padStart(2,'0')}`;
-  document.querySelector('.cycle-status').classList.toggle('night',night);
-  const darkness=night?1:Math.max(0,Math.min(1,phaseElapsed/(dayLength*.82)))*.08,bloodNight=night&&state.day%4===0;
-  scene.background.setRGB(bloodNight?.18:night?.075:.16,bloodNight?.055:night?.095:.22,bloodNight?.065:night?.12:.18);
-  scene.fog.color.copy(scene.background);ambient.intensity=night?(bloodNight?.52:.48):1.5;keyLight.intensity=night?(bloodNight?.3:.22):1.35;fillLight.intensity=night?.08:.55;
-  $('cycleDot').style.background=night?'var(--coral)':'var(--lime)';
-}
-function updateSurvival(delta){
-  const sprinting=(state.keys.has('ShiftLeft')||state.keys.has('ShiftRight'))&&state.stamina>2;
-  const moving=state.keys.size>0||state.touchKeys.size>0;
-  state.hunger=Math.max(0,state.hunger-delta*(moving?.024:.012));
-  if(sprinting&&moving)state.stamina=Math.max(0,state.stamina-delta*23);else state.stamina=Math.min(100,state.stamina+delta*17);
-  if(state.hunger===0)state.health=Math.max(0,state.health-delta*2.2);
-  else if(state.hunger>65&&!state.night&&performance.now()-state.lastDamageAt>5000)state.health=Math.min(100,state.health+delta*.22);
-  const speedBase=sprinting?6.6:state.hunger<18?2.45:4.15;
-  return speedBase;
+  const night=state.cycleElapsed>=dims.day;
+  if(night!==state.night){
+    state.night=night;updateLighting();
+    showAnnouncement(night?'STORE CLOSED':'DOORS OPEN',night?'Closing alarm. Staff are sweeping the aisles. Secure a room.':'The shift starts again. Stock up and fortify before closing.',night);
+  }
+  const elapsed=night?state.cycleElapsed-dims.day:state.cycleElapsed;
+  const remaining=(night?dims.night:dims.day)-elapsed;
+  $('clock').textContent=`${String(Math.floor(remaining/60000)).padStart(2,'0')}:${String(Math.floor(remaining%60000/1000)).padStart(2,'0')}`;
+  $('phaseName').textContent=night?'CLOSED':'OPEN HOURS';$('dayStamp').textContent=`SHIFT ${String(state.day).padStart(2,'0')}`;
+  $('.shift-readout').classList.toggle('closed',night);
 }
 function updateHud(){
   for(const [valueId,barId,value]of [['healthValue','healthBar',state.health],['hungerValue','hungerBar',state.hunger],['staminaValue','staminaBar',state.stamina]]){
     $(valueId).textContent=Math.ceil(value);$(barId).style.width=`${Math.max(0,Math.min(100,value))}%`;
   }
   $('foodCount').textContent=state.inventory.food;$('medCount').textContent=state.inventory.med;$('furnitureCount').textContent=state.inventory.furniture;
-  $('objectiveText').textContent=state.night?'Stay alive until the doors reopen.':state.inventory.furniture<3?'Scavenge furniture and food before closing.':'Fortify a quiet aisle before closing.';
-  $('buildState').textContent=state.buildMode?`Place ${buildDefinitions[state.selectedBuild].label} · ${state.inventory.furniture} salvaged`:`${state.inventory.furniture} furniture salvaged`;
+  $('buildState').textContent=state.buildMode?`PLACING ${buildSpecs[state.selectedBuild].label.toUpperCase()}`:`${state.inventory.furniture} SALVAGE AVAILABLE`;
+  $('objectiveText').textContent=state.night?'Stay out of sight until the doors reopen.':state.inventory.furniture<3?'Find supplies and salvage before closing.':'Secure a quiet aisle before closing.';
+  $('objectiveMeta').textContent=state.night?'Keep moving. Locked barricades buy time.':'Rations and first aid are limited. Choose what to carry.';
 }
 function updateInteraction(){
   const item=nearestLoot(),prompt=$('interactionPrompt');
-  if(item){prompt.hidden=false;$('interactionText').textContent=`Scavenge ${item.type==='med'?'first-aid kit':item.type==='food'?'meal':'furniture'}`;}
-  else prompt.hidden=true;
+  if(item){
+    const type=item.type==='food'?'ration':item.type==='med'?'first-aid kit':'salvage';
+    prompt.hidden=false;$('interactionText').textContent=`Scavenge ${type}`;
+  }else prompt.hidden=true;
 }
 function updateMap(){
-  const map=$('mapPlayer'),fractionX=((state.player.x/chunkSize)%1+1)%1,fractionZ=((state.player.z/chunkSize)%1+1)%1;
-  map.style.left=`${15+fractionX*70}%`;map.style.top=`${31+fractionZ*55}%`;
+  const map=$('mapPlayer');
+  map.style.left=`${50+state.player.x/(dims.half*2)*76}%`;
+  map.style.top=`${50+state.player.z/(dims.half*2)*76}%`;
 }
-function showGameOver(){
-  state.paused=true;$('pauseScreen').hidden=false;$('pauseScreen').querySelector('.section-label').textContent='SHIFT ENDED';
-  $('pauseScreen').querySelector('h1').textContent='You did not make it.';$('pauseScreen').querySelector('p').textContent='Your supplies and store position are saved on this device.';
-  $('resumeButton').textContent='Try again';
+function updateUi(){
+  const now=performance.now();
+  if(now-state.lastUi<100)return;
+  state.lastUi=now;updateHud();updateInteraction();updateMap();
 }
 function saveGame(){
   try{
-    const data={version:1,day:state.day,cycleElapsed:state.cycleElapsed,health:state.health,hunger:state.hunger,stamina:state.stamina,inventory:state.inventory,player:{x:state.player.x,z:state.player.z,yaw:state.yaw},collected:Array.from(state.collected),builds:state.builds.map(({type,x,z,rotation,locked})=>({type,x,z,rotation,locked}))};
-    localStorage.setItem('afterHoursSave',JSON.stringify(data));$('saveStatus').textContent='Autosaved';
-  }catch(error){$('saveStatus').textContent='Save unavailable';}
+    const save={version:2,day:state.day,cycleElapsed:state.cycleElapsed,health:state.health,hunger:state.hunger,stamina:state.stamina,inventory:state.inventory,player:{x:state.player.x,z:state.player.z,yaw:state.yaw},loot:state.loot.filter(item=>item.taken).map(item=>item.id),built:state.built.map(({type,x,z,rotation,locked})=>({type,x,z,rotation,locked}))};
+    localStorage.setItem('afterHoursSaveV2',JSON.stringify(save));$('saveStatus').textContent='SAVED LOCALLY';
+  }catch(error){$('saveStatus').textContent='SAVE UNAVAILABLE';}
 }
 function loadGame(){
   try{
-    const data=JSON.parse(localStorage.getItem('afterHoursSave')||'null');if(!data||data.version!==1)return;
-    state.day=Math.max(1,Number(data.day)||1);state.cycleElapsed=Math.max(0,Number(data.cycleElapsed)||0);
-    state.health=Math.max(1,Math.min(100,Number(data.health)||100));state.hunger=Math.max(0,Math.min(100,Number(data.hunger)||100));state.stamina=Math.max(0,Math.min(100,Number(data.stamina)||100));
-    state.inventory={food:0,med:0,furniture:0,...data.inventory};state.player.set(Number(data.player?.x)||0,0,Number(data.player?.z)||0);state.yaw=Number(data.player?.yaw)||0;
-    state.collected=new Set(Array.isArray(data.collected)?data.collected:[]);
-    for(const build of Array.isArray(data.builds)?data.builds:[])if(buildDefinitions[build.type]&&Number.isFinite(build.x)&&Number.isFinite(build.z))makeStructure(build.type,build.x,build.z,Number(build.rotation)||0,build.locked!==false);
-  }catch(error){console.warn('Could not restore the local After Hours save.',error);}
+    const save=JSON.parse(localStorage.getItem('afterHoursSaveV2')||'null');
+    if(!save||save.version!==2)return;
+    state.day=Math.max(1,Number(save.day)||1);state.cycleElapsed=Math.max(0,Number(save.cycleElapsed)||0);
+    state.health=Math.max(1,Math.min(100,Number(save.health)||100));state.hunger=Math.max(0,Math.min(100,Number(save.hunger)||100));state.stamina=Math.max(0,Math.min(100,Number(save.stamina)||100));
+    state.inventory={food:0,med:0,furniture:0,...save.inventory};
+    state.player.set(Number(save.player?.x)||0,0,Number(save.player?.z)||31);state.yaw=Number(save.player?.yaw)||0;
+    const taken=new Set(Array.isArray(save.loot)?save.loot:[]);
+    for(const item of state.loot)if(taken.has(item.id)){item.taken=true;lootGroup.remove(item.mesh);disposeTree(item.mesh);}
+    for(const item of Array.isArray(save.built)?save.built:[])if(buildSpecs[item.type]&&Number.isFinite(item.x)&&Number.isFinite(item.z))makeBuild(item.type,item.x,item.z,Number(item.rotation)||0,item.locked!==false);
+  }catch(error){console.warn('Could not restore the After Hours shift.',error);}
 }
-function resetGame(){
-  localStorage.removeItem('afterHoursSave');location.reload();
-}
-function startAudio(){
-  if(state.audioContext)return;
-  try{
-    const context=new AudioContext(),oscillator=context.createOscillator(),gain=context.createGain(),filter=context.createBiquadFilter();
-    oscillator.type='sine';oscillator.frequency.value=56;filter.type='lowpass';filter.frequency.value=120;gain.gain.value=.009;
-    oscillator.connect(filter).connect(gain).connect(context.destination);oscillator.start();state.audioContext=context;state.hum={oscillator,gain};
-  }catch(error){console.warn('Ambient audio is unavailable.',error);}
-}
-function playNightSound(){
-  startAudio();if(!state.audioContext)return;
-  const context=state.audioContext,oscillator=context.createOscillator(),gain=context.createGain();
-  oscillator.type='triangle';oscillator.frequency.setValueAtTime(190,context.currentTime);oscillator.frequency.exponentialRampToValueAtTime(72,context.currentTime+1.1);
-  gain.gain.setValueAtTime(.0001,context.currentTime);gain.gain.exponentialRampToValueAtTime(.12,context.currentTime+.06);gain.gain.exponentialRampToValueAtTime(.0001,context.currentTime+1.3);
-  oscillator.connect(gain).connect(context.destination);oscillator.start();oscillator.stop(context.currentTime+1.35);
-}
-function playHitSound(){
-  if(!state.audioContext)return;
-  const context=state.audioContext,oscillator=context.createOscillator(),gain=context.createGain();
-  oscillator.type='sawtooth';oscillator.frequency.value=95;gain.gain.value=.055;oscillator.connect(gain).connect(context.destination);oscillator.start();gain.gain.exponentialRampToValueAtTime(.0001,context.currentTime+.16);oscillator.stop(context.currentTime+.18);
+function resetGame(){localStorage.removeItem('afterHoursSaveV2');location.reload();}
+function setPaused(paused){
+  state.paused=paused;$('pauseScreen').hidden=!paused;
+  if(paused){saveGame();if(document.pointerLockElement===canvas)document.exitPointerLock();}
+  if(paused&&!state.over){
+    $('pauseScreen').querySelector('.section-label').textContent='STORE 01 / SHIFT PAUSED';
+    $('pauseScreen').querySelector('h1').textContent='Shift suspended.';
+    $('pauseScreen').querySelector('p').textContent='Your position and supplies are saved on this device.';
+    $('resumeButton').textContent='Resume shift';
+  }
 }
 function resize(){
+  if(!renderer)return;
   const width=canvas.clientWidth,height=canvas.clientHeight;if(!width||!height)return;
   renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();
 }
-function setPaused(paused){
-  state.paused=paused;$('pauseScreen').hidden=!paused;
-  if(paused&&document.pointerLockElement===canvas)document.exitPointerLock();
-  if(paused){$('pauseScreen').querySelector('.section-label').textContent='STORE 01 · SHIFT PAUSED';$('pauseScreen').querySelector('h1').textContent='Take a breath.';$('pauseScreen').querySelector('p').textContent='Your progress is saved on this device.';$('resumeButton').textContent='Resume shift';}
-}
-function clamp(value,min,max){return Math.min(Math.max(value,min),max);}
-function movePlayer(delta){
-  const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')||state.touchKeys.has('forward')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')||state.touchKeys.has('back')?1:0);
-  const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')||state.touchKeys.has('right')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')||state.touchKeys.has('left')?1:0);
-  const length=Math.hypot(forward,side)||1;
-  const speed=updateSurvival(delta);
-  const moveX = (side/length)*speed*delta;
-  const moveZ = (forward/length)*speed*delta;
-  const cameraForward=new THREE.Vector3(-Math.sin(state.yaw),0,-Math.cos(state.yaw));
-  const cameraRight=new THREE.Vector3(Math.cos(state.yaw),0,-Math.sin(state.yaw));
-  const moveVector=new THREE.Vector3();
-  moveVector.addScaledVector(cameraForward, moveZ);
-  moveVector.addScaledVector(cameraRight, moveX);
-  const nextX=state.player.x+moveVector.x;
-  const nextZ=state.player.z+moveVector.z;
-  if(canMove(nextX,state.player.z))state.player.x=nextX;
-  if(canMove(state.player.x,nextZ))state.player.z=nextZ;
-  state.jumpVelocity-=18*delta;state.jumpY+=state.jumpVelocity*delta;
-  if(state.jumpY<0){state.jumpY=0;state.jumpVelocity=0;}
-  ensureChunks();
-}
-function updateCamera(){
-  camera.rotation.order='YXZ';
-  camera.position.set(state.player.x,1.7+state.jumpY,state.player.z);
-  camera.rotation.y=state.yaw;
-  camera.rotation.x=state.pitch;
-  camera.up.set(0,1,0);
-}
 function animate(){
-  if(state.disposed)return;requestAnimationFrame(animate);
-  const delta=Math.min(clock.getDelta(),.05);
+  if(state.disposed||!renderer)return;
+  requestAnimationFrame(animate);
+  const delta=Math.min(clock.getDelta(),.05),now=performance.now();
   if(!state.paused){
-    movePlayer(delta);updateCycle(delta);updateStaff(delta,performance.now());
-    if(state.health<=0)showGameOver();
-    if(state.buildMode)updatePreview();
-    if(performance.now()-state.lastUi>120){state.lastUi=performance.now();updateHud();updateInteraction();updateMap();}
-    if(performance.now()>state.nextAutoSave){state.nextAutoSave=performance.now()+5000;saveGame();}
+    movePlayer(delta);updateCycle(delta);updateStaff(delta,now);updateBuildPreview();
+    if(state.health<=0&&!state.over)showGameOver();
+    if(now>state.nextSave){state.nextSave=now+5000;saveGame();}
+    updateUi();
   }
-  updateCamera();renderer.render(scene,camera);
+  camera.position.set(state.player.x,1.66+state.jumpY,state.player.z);
+  camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=state.pitch;
+  renderer.render(scene,camera);
 }
 function init(){
-  loadGame();ensureChunks();
-  for(const [index,position]of [[0,[9,8]],[1,[-16,-12]],[2,[18,-18]],[3,[-20,18]]])makeStaff(index,position[0],position[1]);
-  resize();updateHud();updateMap();requestAnimationFrame(animate);
+  if(!renderer)return;
+  buildStore();seedLoot();createThreats();loadGame();updateLighting();resize();updateHud();updateMap();requestAnimationFrame(animate);
 }
 canvas.addEventListener('pointerdown',event=>{
-  startAudio();
-  if(document.pointerLockElement!==canvas && !state.paused){canvas.requestPointerLock?.();}
+  if(state.paused)return;
   if(state.buildMode&&event.button===0){placeBuild();return;}
+  if(document.pointerLockElement!==canvas)canvas.requestPointerLock?.();
 });
-document.addEventListener('pointerlockchange',()=>{
-  if(document.pointerLockElement!==canvas){canvas.classList.remove('pointer-locked');}
-  else canvas.classList.add('pointer-locked');
-});
+document.addEventListener('pointerlockchange',()=>canvas.classList.toggle('locked',document.pointerLockElement===canvas));
 document.addEventListener('mousemove',event=>{
   if(document.pointerLockElement!==canvas||state.paused)return;
-  state.yaw -= event.movementX * 0.0025;
-  state.pitch = clamp(state.pitch - event.movementY * 0.0018, -1.35, 1.35);
+  state.yaw-=event.movementX*.0023;state.pitch=Math.max(-1.3,Math.min(1.2,state.pitch-event.movementY*.0018));
 });
 window.addEventListener('keydown',event=>{
   if(event.code==='Escape'){setPaused(!state.paused);return;}
-  if(state.paused)return;
-  if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;
+  if(state.paused||['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;
   state.keys.add(event.code);
   if(event.repeat)return;
   if(event.code==='KeyE')interact();
   if(event.code==='KeyB')toggleBuildMode();
-  if(event.code==='KeyQ'){state.buildRotation+=Math.PI/2;}
+  if(event.code==='KeyQ'){state.rotation+=Math.PI/2;updateBuildPreview();}
   if(event.code==='KeyL')lockNearby();
   if(event.code==='KeyF')eatFood();
   if(event.code==='KeyM')useMed();
-  if(event.code==='Space'&&state.jumpY===0&&state.stamina>12){state.jumpVelocity=7.2;state.stamina-=10;}
-  if(event.code==='Digit1')selectBuild('pallet');if(event.code==='Digit2')selectBuild('shelf');if(event.code==='Digit3')selectBuild('table');
+  if(event.code==='Space'&&state.jumpY===0&&state.stamina>12){state.jumpVelocity=7.1;state.stamina-=10;}
+  if(event.code==='Digit1')selectBuild('pallet');
+  if(event.code==='Digit2')selectBuild('shelf');
+  if(event.code==='Digit3')selectBuild('table');
 });
 window.addEventListener('keyup',event=>state.keys.delete(event.code));
-window.addEventListener('blur',()=>state.keys.clear());
+window.addEventListener('blur',()=>{state.keys.clear();state.touch.clear();});
+$('pauseButton').addEventListener('click',()=>setPaused(true));
+$('resumeButton').addEventListener('click',()=>{if(state.over){resetGame();return;}setPaused(false);});
+$('newGameButton').addEventListener('click',resetGame);
 $('buildModeButton').addEventListener('click',toggleBuildMode);
-$('rotateBuildButton').addEventListener('click',()=>{state.buildRotation+=Math.PI/2;});
+$('rotateBuildButton').addEventListener('click',()=>{state.rotation+=Math.PI/2;updateBuildPreview();});
 $('lockButton').addEventListener('click',lockNearby);
 $('eatButton').addEventListener('click',eatFood);
-$('pauseButton').addEventListener('click',()=>setPaused(true));
-$('resumeButton').addEventListener('click',()=>{if(state.health<=0){resetGame();return;}setPaused(false);});
-$('newGameButton').addEventListener('click',resetGame);
 document.querySelectorAll('[data-build]').forEach(button=>button.addEventListener('click',()=>selectBuild(button.dataset.build)));
 document.querySelectorAll('[data-move]').forEach(button=>{
   const direction=button.dataset.move;
-  button.addEventListener('pointerdown',event=>{event.preventDefault();state.touchKeys.add(direction);button.setPointerCapture(event.pointerId);});
-  for(const eventName of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(eventName,()=>state.touchKeys.delete(direction));
+  button.addEventListener('pointerdown',event=>{event.preventDefault();state.touch.add(direction);button.setPointerCapture(event.pointerId);});
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(name,()=>state.touch.delete(direction));
 });
 window.addEventListener('resize',resize);
-window.addEventListener('pagehide',()=>{state.disposed=true;saveGame();if(state.audioContext)state.audioContext.close();renderer.dispose();});
+window.addEventListener('pagehide',()=>{state.disposed=true;saveGame();renderer?.dispose();});
 init();
