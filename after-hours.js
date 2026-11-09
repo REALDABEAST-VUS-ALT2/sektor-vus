@@ -416,13 +416,21 @@ function setPaused(paused){
   if(paused&&document.pointerLockElement===canvas)document.exitPointerLock();
   if(paused){$('pauseScreen').querySelector('.section-label').textContent='STORE 01 · SHIFT PAUSED';$('pauseScreen').querySelector('h1').textContent='Take a breath.';$('pauseScreen').querySelector('p').textContent='Your progress is saved on this device.';$('resumeButton').textContent='Resume shift';}
 }
+function clamp(value,min,max){return Math.min(Math.max(value,min),max);}
 function movePlayer(delta){
   const forward=(state.keys.has('KeyW')||state.keys.has('ArrowUp')||state.touchKeys.has('forward')?1:0)-(state.keys.has('KeyS')||state.keys.has('ArrowDown')||state.touchKeys.has('back')?1:0);
   const side=(state.keys.has('KeyD')||state.keys.has('ArrowRight')||state.touchKeys.has('right')?1:0)-(state.keys.has('KeyA')||state.keys.has('ArrowLeft')||state.touchKeys.has('left')?1:0);
-  const length=Math.hypot(forward,side)||1,speed=updateSurvival(delta);
-  const dx=side/length*speed*delta;
-  const dz=-forward/length*speed*delta;
-  const nextX=state.player.x+dx,nextZ=state.player.z+dz;
+  const length=Math.hypot(forward,side)||1;
+  const speed=updateSurvival(delta);
+  const moveX = (side/length)*speed*delta;
+  const moveZ = (forward/length)*speed*delta;
+  const cameraForward=new THREE.Vector3(-Math.sin(state.yaw),0,-Math.cos(state.yaw));
+  const cameraRight=new THREE.Vector3(Math.cos(state.yaw),0,-Math.sin(state.yaw));
+  const moveVector=new THREE.Vector3();
+  moveVector.addScaledVector(cameraForward, moveZ);
+  moveVector.addScaledVector(cameraRight, moveX);
+  const nextX=state.player.x+moveVector.x;
+  const nextZ=state.player.z+moveVector.z;
   if(canMove(nextX,state.player.z))state.player.x=nextX;
   if(canMove(state.player.x,nextZ))state.player.z=nextZ;
   state.jumpVelocity-=18*delta;state.jumpY+=state.jumpVelocity*delta;
@@ -430,9 +438,11 @@ function movePlayer(delta){
   ensureChunks();
 }
 function updateCamera(){
-  camera.up.set(0,0,-1);
-  camera.position.set(state.player.x,34+state.jumpY,state.player.z+15);
-  camera.lookAt(state.player.x,0,state.player.z);
+  camera.rotation.order='YXZ';
+  camera.position.set(state.player.x,1.7+state.jumpY,state.player.z);
+  camera.rotation.y=state.yaw;
+  camera.rotation.x=state.pitch;
+  camera.up.set(0,1,0);
 }
 function animate(){
   if(state.disposed)return;requestAnimationFrame(animate);
@@ -453,7 +463,17 @@ function init(){
 }
 canvas.addEventListener('pointerdown',event=>{
   startAudio();
+  if(document.pointerLockElement!==canvas && !state.paused){canvas.requestPointerLock?.();}
   if(state.buildMode&&event.button===0){placeBuild();return;}
+});
+document.addEventListener('pointerlockchange',()=>{
+  if(document.pointerLockElement!==canvas){canvas.classList.remove('pointer-locked');}
+  else canvas.classList.add('pointer-locked');
+});
+document.addEventListener('mousemove',event=>{
+  if(document.pointerLockElement!==canvas||state.paused)return;
+  state.yaw -= event.movementX * 0.0025;
+  state.pitch = clamp(state.pitch - event.movementY * 0.0018, -1.35, 1.35);
 });
 window.addEventListener('keydown',event=>{
   if(event.code==='Escape'){setPaused(!state.paused);return;}
